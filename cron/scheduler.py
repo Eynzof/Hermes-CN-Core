@@ -40,7 +40,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from cron.worker_bootstrap import WORKER_MARKER, finish_worker_boot
 from hermes_constants import get_hermes_home, hermes_home_key
 from hermes_cli.observability.shared_metrics_gateway import note_cron_execution, note_cron_skipped
-from hermes_constants import hermes_home_key
 import hermes_constants
 from cron.env_settings import cron_env_setting
 from hermes_cli._subprocess_compat import windows_hide_flags
@@ -4131,7 +4130,6 @@ def _maybe_run_worktree_maintenance() -> None:
     global _last_worktree_maintenance_at
     import contextvars
 
-    from hermes_constants import get_hermes_home
 
     home = str(get_hermes_home())
     now = time.monotonic()
@@ -4484,7 +4482,7 @@ from cron.scheduler_delivery import (
     _deliver_result, _delivery_lane_value, _normalize_deliver_value, _resolve_delivery_target,
     _resolve_delivery_targets,
 )
-from cron.scheduler_script import (  # noqa: E402
+from cron.scheduler_script import (
     # [CN-fork] P-019 — ``_run_job_script`` keeps its pre-split name on ``cron.scheduler`` (the
     # frozen-runtime CN contract and the fork's cron tests import it from here).
     _get_session_db_timeout, _run_job_script, _run_job_script_with_claim_heartbeat,

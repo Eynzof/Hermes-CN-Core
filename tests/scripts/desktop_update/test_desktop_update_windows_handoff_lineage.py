@@ -11,7 +11,7 @@ import time
 import pytest
 
 from tests.scripts.desktop_update.windows_handoff_support import (
-    SCRIPT, MARKER, MARKER_PS1, POWERSHELL, _wait_for_log, sleeper as sleeper,
+    SCRIPT, MARKER, MARKER_PS1, POWERSHELL, _wait_for_log, sleeper as sleeper,  # noqa: PLC0414 -- re-exported pytest fixture
 )
 
 from tests.scripts.desktop_update.lineage_rule_cases import ENV_CASES, RULE_CASES

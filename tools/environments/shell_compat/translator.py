@@ -80,7 +80,7 @@ class PlanEdit:
     replacement: str = ""
 
 
-def render_splices(source: str, edits: List[Tuple[int, int, str]]) -> str:
+def render_splices(source: str, edits: list[tuple[int, int, str]]) -> str:
     """Apply ``(start, end, replacement)`` splices to *source* once, sorted.
 
     Byte-for-byte the legacy ``_BashFixScanner._apply_edits`` behaviour,
@@ -90,7 +90,7 @@ def render_splices(source: str, edits: List[Tuple[int, int, str]]) -> str:
     """
     if not edits:
         return source
-    pieces: List[str] = []
+    pieces: list[str] = []
     previous = 0
     for start, end, replacement in sorted(edits):
         pieces.extend((source[previous:start], replacement))
@@ -112,13 +112,13 @@ class EditPlan:
     __slots__ = ("_edits",)
 
     def __init__(self) -> None:
-        self._edits: List[Tuple[int, int, str]] = []
+        self._edits: list[tuple[int, int, str]] = []
 
     def __len__(self) -> int:
         return len(self._edits)
 
     @property
-    def edits(self) -> Tuple[Tuple[int, int, str], ...]:
+    def edits(self) -> tuple[tuple[int, int, str], ...]:
         """The recorded splices in recording order (a snapshot tuple)."""
         return tuple(self._edits)
 
@@ -141,7 +141,7 @@ class EditPlan:
                 )
         self._edits.append((start, end, replacement))
 
-    def add_span(self, span: "SourceSpan", replacement: str) -> None:
+    def add_span(self, span: SourceSpan, replacement: str) -> None:
         """``add`` over a ``SourceSpan`` with ``.start``/``.end``."""
         self.add(span.start, span.end, replacement)
 
@@ -164,25 +164,25 @@ class TranslationContext:
     """
 
     __slots__ = (
-        "names",
-        "path_notes",
-        "shell_notes",
-        "nul_fixes",
-        "unsupported",
         "cmd_conditional_notes",
-        "plan",
-        "pending_dispatch",
         "consumed_end",
         "heredoc_events",
+        "names",
+        "nul_fixes",
+        "path_notes",
+        "pending_dispatch",
+        "plan",
+        "shell_notes",
+        "unsupported",
     )
 
     def __init__(self) -> None:
-        self.names: List[str] = []
-        self.path_notes: List[str] = []
-        self.shell_notes: List[str] = []
-        self.nul_fixes: List[str] = []
-        self.unsupported: List[str] = []
-        self.cmd_conditional_notes: List[str] = []
+        self.names: list[str] = []
+        self.path_notes: list[str] = []
+        self.shell_notes: list[str] = []
+        self.nul_fixes: list[str] = []
+        self.unsupported: list[str] = []
+        self.cmd_conditional_notes: list[str] = []
         self.plan = EditPlan()
         self.pending_dispatch: Optional[int] = None
         #: Index just past the outermost cmd construct whose validated match
@@ -196,7 +196,7 @@ class TranslationContext:
         #: ``(redir_line_end, terminator_end)`` pairs collected by the slot-8
         #: heredoc handler for the final trailing-operator repair (mirrors the
         #: LIVE scanner's ``heredoc_events``).
-        self.heredoc_events: List[Tuple[int, int]] = []
+        self.heredoc_events: list[tuple[int, int]] = []
 
     # ── recording (source order preserved by construction) ────────────────
 
@@ -228,7 +228,7 @@ class TranslationContext:
 
     # ── nested-script merge (LIVE rules) ──────────────────────────────────
 
-    def merge_inner(self, inner: "TranslationContext") -> None:
+    def merge_inner(self, inner: TranslationContext) -> None:
         """Merge a nested script translation's events exactly like the LIVE
         scanner merge blocks (``_inline_script_operand`` /
         ``_fix_shell_c_script_in_place`` / ``_handle_shell_wrapper``).
@@ -295,11 +295,11 @@ class RuleResult:
     their own command nodes whose re-validation would re-schedule the same
     region). """
 
-    edit: Optional[Tuple[int, int, str]] = None
-    events: Tuple[Tuple[str, str], ...] = ()
+    edit: Optional[tuple[int, int, str]] = None
+    events: tuple[tuple[str, str], ...] = ()
     dispatch: Optional[int] = None
-    extra_edits: Tuple[Tuple[int, int, str], ...] = ()
-    heredoc_events: Tuple[Tuple[int, int], ...] = ()
+    extra_edits: tuple[tuple[int, int, str], ...] = ()
+    heredoc_events: tuple[tuple[int, int], ...] = ()
     consumed_end: Optional[int] = None
 
 
@@ -330,7 +330,7 @@ class RuleDispatcher:
     PRIORITY_HEREDOC = 8
 
     def __init__(self) -> None:
-        self._rules: List[Tuple[int, str, Callable[..., Optional[RuleResult]]]] = []
+        self._rules: list[tuple[int, str, Callable[..., Optional[RuleResult]]]] = []
 
     def register(
         self,
@@ -342,13 +342,13 @@ class RuleDispatcher:
         self._rules.sort(key=lambda item: item[0])
 
     @property
-    def rules(self) -> Tuple[Tuple[int, str], ...]:
+    def rules(self) -> tuple[tuple[int, str], ...]:
         """Registered ``(priority, name)`` pairs in dispatch order."""
         return tuple((priority, name) for priority, name, _ in self._rules)
 
     def dispatch(
-        self, command: "CommandNode", source: str, context: TranslationContext,
-        on_dispatch: "Optional[Callable[[int], None]]" = None,
+        self, command: CommandNode, source: str, context: TranslationContext,
+        on_dispatch: Optional[Callable[[int], None]] = None,
     ) -> None:
         """Run every registered rule for *command* in priority order.
 
@@ -422,7 +422,7 @@ def register_cmd_rules(dispatcher: RuleDispatcher) -> RuleDispatcher:
 # ── shared nested-script repair helpers (used by the dispatcher rules) ──────
 
 
-def translate_inner(inner: Any) -> Tuple[str, bool]:
+def translate_inner(inner: Any) -> tuple[str, bool]:
     """Return ``(fixed_source, has_edits)`` for a scanned inner scanner.
 
     ``inner`` exposes ``_build_fixed_source()`` and ``edits`` (the live
@@ -551,12 +551,10 @@ def translate(command: str) -> Any:
 #: Re-exported so the prefix implementation has one import surface (the
 #: generator itself lives in ``wrappers.fallback_prefix`` — the scanner,
 #: the context and the tests all call the same function).
-from .wrappers import fallback_prefix  # noqa: E402
+from .wrappers import fallback_prefix
 
 __all__ = [
     "EditPlan",
-    "result_to_bashfix",
-    "translate",
     "OverlappingEdits",
     "PlanEdit",
     "RuleDispatcher",
@@ -566,6 +564,8 @@ __all__ = [
     "merge_inner_events",
     "register_cmd_rules",
     "render_splices",
+    "result_to_bashfix",
     "single_quote_script",
+    "translate",
     "translate_inner",
 ]

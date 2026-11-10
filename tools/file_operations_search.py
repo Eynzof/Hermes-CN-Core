@@ -1603,7 +1603,7 @@ class SearchMixin:
     # =========================================================================
 
     def _collect_fallback_files(self, path: str,
-                               has_hidden_ancestor: bool) -> tuple[List[str], bool]:
+                               has_hidden_ancestor: bool) -> tuple[list[str], bool]:
         """Walk *path* and return (file_paths, hit_scan_cap).
 
         Prunes ``_FALLBACK_PRUNE_DIRS`` and hidden dirs/files. The
@@ -1617,7 +1617,7 @@ class SearchMixin:
         if isinstance(path, str) and os.path.isfile(path):
             return [path], False
 
-        paths: List[str] = []
+        paths: list[str] = []
         for root, dirs, files in os.walk(path):  # topdown=True so dirs[:] prunes
             kept_dirs = []
             for d in dirs:
@@ -1701,9 +1701,9 @@ class SearchMixin:
                 if fnmatch.fnmatch(os.path.basename(p), file_glob)
             ]
 
-        matches: List[SearchMatch] = []
-        files_with_matches: List[str] = []
-        counts: Dict[str, int] = {}
+        matches: list[SearchMatch] = []
+        files_with_matches: list[str] = []
+        counts: dict[str, int] = {}
 
         for fp in all_paths:
             ext = os.path.splitext(fp)[1].lower()

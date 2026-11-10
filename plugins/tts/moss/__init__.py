@@ -35,7 +35,7 @@ def register(ctx) -> None:
 
     # Importing the module runs the @register("moss") decorator, populating
     # tools/tts_streaming._REGISTRY.
-    from plugins.tts.moss import streaming  # noqa: F401
+    from plugins.tts.moss import streaming
 
     # Lazy import — keeps discovery cheap and mirrors MossProvider.
     from plugins.tts.moss.transcription import MossTranscriptionProvider

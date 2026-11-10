@@ -9,6 +9,16 @@ import pytest
 import hermes_logging
 
 
+@pytest.fixture(autouse=True)
+def reset_logging():
+    hermes_logging._logging_initialized = False
+    hermes_logging._reset_queued_handlers()
+    yield
+    hermes_logging._reset_queued_handlers()
+    hermes_logging._logging_initialized = False
+    hermes_logging.clear_session_context()
+
+
 @pytest.fixture
 def make_agent(monkeypatch):
     from hermes_constants import get_hermes_home

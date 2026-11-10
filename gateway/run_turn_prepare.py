@@ -250,6 +250,7 @@ class GatewayTurnPrepareMixin:
                 route["model"], provider=runtime["provider"], base_url=runtime["base_url"], tier=tier,
             )
         except Exception:
+            logger.debug('GatewayTurnPrepareMixin._resolve_turn_agent_config failed', exc_info=True)
             overrides = None
         # Fast-mode keys (service_tier / speed) are top-level and don't collide with extra_body.
         route["request_overrides"] = _deep_merge_request_overrides(base_request_overrides, overrides or {})
@@ -481,6 +482,7 @@ class GatewayTurnPrepareMixin:
             # recall. Deterministic — no extra API/DB calls (#36220).
             continuity_note = build_channel_continuity_note(session_entry, source)
         except Exception:
+            logger.debug('GatewayTurnPrepareMixin._hmwa_deliver_auto_reset_notice failed', exc_info=True)
             continuity_note = None
         if continuity_note:
             context_note = context_note + "\n\n" + continuity_note
@@ -498,7 +500,7 @@ class GatewayTurnPrepareMixin:
                         notice = f"{notice}\n\n{session_info}"
                 await adapter.send(source.chat_id, notice, metadata=self._thread_metadata_for_source(source))
         except Exception as e:
-            logger.debug("Auto-reset notification failed (non-fatal): %s", e)
+            logger.debug("Auto-reset notification failed (non-fatal): %s", e, exc_info=True)
 
         # was_auto_reset was consumed in _hmwa_open_session; only the reason needs clearing.
         session_entry.auto_reset_reason = None

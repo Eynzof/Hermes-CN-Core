@@ -3,7 +3,7 @@ adapter and the standalone send paths emit the same bodyRanges."""
 
 from __future__ import annotations
 
-from agent.re_compat import re
+import re
 
 from agent.markdown_tables import is_table_divider, realign_markdown_tables
 

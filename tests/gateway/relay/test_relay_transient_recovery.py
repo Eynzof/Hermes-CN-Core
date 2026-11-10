@@ -48,7 +48,7 @@ def _relay_env(monkeypatch):
               "GATEWAY_RELAY_WAKE_URL", "GATEWAY_RELAY_BOT_IDS", "GATEWAY_RELAY_IDP_TOKEN_URL"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("GATEWAY_RELAY_PLATFORMS", "slack")
-    monkeypatch.setattr("gateway.run._load_gateway_config", dict, raising=False)
+    monkeypatch.setattr("gateway.relay._load_cfg", dict, raising=False)
     monkeypatch.setattr("hermes_cli.auth.resolve_nous_access_token", lambda: TOKEN)
     # Upload retry pacing is a production constant; collapse it so tests run in
     # milliseconds. raising=False: on a tree without the retry the constant is absent

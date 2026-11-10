@@ -109,24 +109,24 @@ _LITERAL_WORD_VALUE: Callable[[str], Optional[str]] = _BashFixScanner._literal_w
 _NUL_FORBIDDEN_OPERATORS = frozenset({"<", "<<", "<<-", "<<<", "<&"})
 
 __all__ = [
-    # pure string primitives (ported)
-    "windows_path_replacement",
-    "git_bash_abs_path_replacement",
-    "quote_virtual_path",
-    "path_replacement",
-    "decode_unquoted_word",
-    "normalize_windows_path",
-    "quote_path_word",
-    "plausible_path_segments",
-    "decode_virtual_path_span",
-    "split_virtual_path_expansions",
-    "is_effective_nul_word",
-    # IR-driven pure functions (Phase 4 design surface)
-    "path_replacement_for_word",
-    "nul_replacement_for_redirection",
+    "NUL_REPLACEMENT",
     "cd_d_flag_span",
     "cd_flag_span_after",
-    "NUL_REPLACEMENT",
+    "decode_unquoted_word",
+    "decode_virtual_path_span",
+    "git_bash_abs_path_replacement",
+    "is_effective_nul_word",
+    "normalize_windows_path",
+    "nul_replacement_for_redirection",
+    "path_replacement",
+    # IR-driven pure functions (Phase 4 design surface)
+    "path_replacement_for_word",
+    "plausible_path_segments",
+    "quote_path_word",
+    "quote_virtual_path",
+    "split_virtual_path_expansions",
+    # pure string primitives (ported)
+    "windows_path_replacement",
 ]
 
 
@@ -144,7 +144,7 @@ def decode_virtual_path_span(span: str) -> Optional[str]:
     (that name stays re-exported from bash_core and delegates here through
     ``_split_virtual_path_expansions``' shared implementation).
     """
-    out: List[str] = []
+    out: list[str] = []
     i = 0
     n = len(span)
     while i < n:
@@ -166,7 +166,7 @@ def decode_virtual_path_span(span: str) -> Optional[str]:
     return "".join(out)
 
 
-def split_virtual_path_expansions(text: str) -> Optional[List[Tuple[bool, str]]]:
+def split_virtual_path_expansions(text: str) -> Optional[list[tuple[bool, str]]]:
     """Split a rewritten virtual path into literal and expansion spans.
 
     Byte-for-byte identical to :func:`bash_core._split_virtual_path_expansions`.
@@ -174,7 +174,7 @@ def split_virtual_path_expansions(text: str) -> Optional[List[Tuple[bool, str]]]
     when the word embeds a command substitution / ``$"..."`` / an unterminated
     expansion / a quote character.
     """
-    spans: List[Tuple[bool, str]] = []
+    spans: list[tuple[bool, str]] = []
     literal_start = 0
     i = 0
     n = len(text)
@@ -246,7 +246,7 @@ def decode_unquoted_word(raw: str) -> str:
 
     Byte-for-byte identical to ``_BashFixScanner._decode_unquoted_word``.
     """
-    value: List[str] = []
+    value: list[str] = []
     i = 0
     while i < len(raw):
         ch = raw[i]
@@ -264,7 +264,7 @@ def normalize_windows_path(raw: str) -> str:
 
     Byte-for-byte identical to ``_BashFixScanner._normalize_windows_path``.
     """
-    out: List[str] = []
+    out: list[str] = []
     i = 0
     n = len(raw)
     if n >= 2 and raw.startswith("\\\\"):
@@ -304,8 +304,8 @@ def quote_path_word(normalized: str) -> str:
         if rest.startswith("/"):
             return "~/" + quote_path_word(rest[1:])
         return "~" + quote_path_word(rest)
-    out: List[str] = []
-    buf: List[str] = []
+    out: list[str] = []
+    buf: list[str] = []
 
     def _flush() -> None:
         if not buf:
@@ -350,16 +350,12 @@ def windows_path_replacement(raw: str) -> Optional[str]:
             backslashes += 1
         elif ch in "'\"`$\n\r":
             return None
-    if _PATH_DRIVE_RE.fullmatch(raw):
-        pass
-    elif raw.startswith("\\\\") and len(raw) > 2:
+    if _PATH_DRIVE_RE.fullmatch(raw) or raw.startswith("\\\\") and len(raw) > 2:
         pass
     elif raw.startswith("\\") and not raw.startswith("\\\\") and backslashes >= 2:
         if not plausible_path_segments(raw):
             return None
-    elif raw.startswith("~\\") or raw.startswith("~/"):
-        pass
-    elif (
+    elif raw.startswith("~\\") or raw.startswith("~/") or (
         raw.startswith(".\\")
         or raw.startswith("./")
         or raw.startswith("..\\")
@@ -388,7 +384,7 @@ def quote_virtual_path(normalized: str) -> Optional[str]:
     spans = split_virtual_path_expansions(normalized)
     if spans is None:
         return None
-    out: List[str] = []
+    out: list[str] = []
     for is_expansion, span in spans:
         if is_expansion:
             out.append(span)
@@ -482,7 +478,7 @@ NUL_REPLACEMENT = "/dev/null"
 
 
 def path_replacement_for_word(
-    word: "WordNode", source: str, temp_dir: Optional[str] = None
+    word: WordNode, source: str, temp_dir: Optional[str] = None
 ) -> Optional[str]:
     """IR wrapper: the path replacement for a parsed ``WordNode``, or ``None``.
 
@@ -496,7 +492,7 @@ def path_replacement_for_word(
 
 
 def nul_replacement_for_redirection(
-    redir: "RedirectionNode", source: str
+    redir: RedirectionNode, source: str
 ) -> Optional[str]:
     """IR rule: the null-device replacement for a parsed ``RedirectionNode``.
 
@@ -598,7 +594,7 @@ def cd_flag_span_after(reader, source: str, start: int, end: int):
     return SourceSpan(j, flag_end)
 
 
-def cd_d_flag_span(command: "CommandNode", source: str) -> Optional["SourceSpan"]:
+def cd_d_flag_span(command: CommandNode, source: str) -> Optional[SourceSpan]:
     """IR rule: the span of a deletable cmd.exe ``cd /d`` flag, or ``None``.
 
     A pure check over a parsed ``CommandNode`` (whose ``command_word`` is the

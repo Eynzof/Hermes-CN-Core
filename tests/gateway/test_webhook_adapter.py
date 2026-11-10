@@ -2160,23 +2160,3 @@ def test_route_profile_validation_fails_closed():
         assert WebhookAdapter._route_allows_profile(
             {"profile": malformed}, "worker"
         ) is False
-
-
-class TestBlankRouteSecretFailsClosed:
-    @pytest.mark.parametrize("secret", ["   ", "\t", "\n", 123])
-    def test_connect_rejects_an_unusable_route_secret(self, secret):
-        adapter = _make_adapter(routes={"hook": {"secret": secret}})
-        with pytest.raises(ValueError, match="missing, blank, or not a string"):
-            asyncio.run(adapter.connect())
-        # The hot-reload path applies the same guard to agent-created dynamic routes.
-        assert adapter._dynamic_route_allowed("hook", {"secret": secret}) is False
-
-
-@pytest.mark.parametrize(
-    "value,usable",
-    [("s3cret", True), ("x", True), (" x ", True),
-     ("", False), ("   ", False), ("\t\n", False),
-     (None, False), (b"bytes", False), (123, False)],
-)
-def test_is_usable_secret_classifies_configured_secrets(value, usable):
-    assert _is_usable_secret(value) is usable

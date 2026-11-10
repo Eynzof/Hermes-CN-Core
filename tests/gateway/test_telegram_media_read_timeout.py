@@ -37,7 +37,7 @@ def _allow_public_image_urls(monkeypatch):
     the assertion is about. Stub it to True so the test drives the send path
     deterministically on every host.
     """
-    import tools.url_safety as url_safety
+    from tools import url_safety
 
     monkeypatch.setattr(url_safety, "is_safe_url", lambda url: True)
 

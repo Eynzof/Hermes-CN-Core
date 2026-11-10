@@ -33,6 +33,8 @@ import os
 import re
 import secrets
 import subprocess
+
+from hermes_cli._subprocess_compat import windows_hide_flags
 import sys
 import time
 from pathlib import Path
@@ -159,7 +161,7 @@ def _docker(docker_exe: str, target: list[str], argv: list[str], deadline: float
     instead of running on with the sandbox volumes."""
     try:
         stdin = kwargs.pop("stdin", None if "input" in kwargs else subprocess.DEVNULL)
-        return subprocess.run([docker_exe, *target, *argv], capture_output=True, stdin=stdin,
+        return subprocess.run([docker_exe, *target, *argv], capture_output=True, creationflags=windows_hide_flags(), stdin=stdin,
                               timeout=max(1.0, deadline - time.monotonic()), check=False, **kwargs)
     except subprocess.TimeoutExpired:
         if "--name" in target:

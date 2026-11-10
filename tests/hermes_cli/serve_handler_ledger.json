@@ -2,12 +2,12 @@
  "counts": {
   "http": {
    "keep-host-wide": 1,
-   "undecided": 343
+   "undecided": 349
   },
   "rpc": {
    "authority": 108,
    "keep-host-wide": 1,
-   "undecided": 182
+   "undecided": 184
   },
   "websocket": {
    "undecided": 10
@@ -120,14 +120,17 @@
   {"current_path": "hermes_cli.web_routers.local_models:local_models_search_files", "decision": "undecided", "handler": "GET /api/local-models/search/files", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.local_models:local_models_status", "decision": "undecided", "handler": "GET /api/local-models/status", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.status:get_logs", "decision": "undecided", "handler": "GET /api/logs", "kind": "http", "ref": ""},
+  {"current_path": "hermes_cli.web_routers.mcp:list_mcp_servers_summary", "decision": "undecided", "handler": "GET /api/mcp-servers", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.mcp:list_mcp_catalog", "decision": "undecided", "handler": "GET /api/mcp/catalog", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.mcp:mcp_oauth_callback", "decision": "undecided", "handler": "GET /api/mcp/oauth/callback/{server_name:path}", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.mcp:mcp_oauth_flow_status", "decision": "undecided", "handler": "GET /api/mcp/oauth/flows/{flow_id}", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.mcp:list_mcp_servers", "decision": "undecided", "handler": "GET /api/mcp/servers", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.files:get_media", "decision": "undecided", "handler": "GET /api/media", "kind": "http", "ref": ""},
+  {"current_path": "hermes_cli.web_routers.files:stream_media_file", "decision": "undecided", "handler": "GET /api/media/file", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.files:proxy_remote_media", "decision": "undecided", "handler": "GET /api/media/proxy", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.ops:get_memory_status", "decision": "undecided", "handler": "GET /api/memory", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.memory_providers:get_memory_provider_config", "decision": "undecided", "handler": "GET /api/memory/providers/{name}/config", "kind": "http", "ref": ""},
+  {"current_path": "hermes_cli.web_routers.memory_providers:get_memory_provider_runtime_status", "decision": "undecided", "handler": "GET /api/memory/providers/{name}/status", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.memory_oauth:memory_oauth_status", "decision": "undecided", "handler": "GET /api/memory/providers/{provider}/oauth/status", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.messaging:get_messaging_platforms", "decision": "undecided", "handler": "GET /api/messaging/platforms", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.messaging_relay:get_relay_links", "decision": "undecided", "handler": "GET /api/messaging/relay", "kind": "http", "ref": ""},
@@ -184,6 +187,7 @@
   {"current_path": "hermes_cli.web_routers.tools:get_toolset_config", "decision": "undecided", "handler": "GET /api/tools/toolsets/{name}/config", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.tools:get_toolset_models", "decision": "undecided", "handler": "GET /api/tools/toolsets/{name}/models", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.ui_preferences:get_ui_preferences; surface: ui_preferences", "decision": "undecided", "handler": "GET /api/ui-preferences", "kind": "http", "ref": ""},
+  {"current_path": "hermes_cli.web_routers.status:api_version", "decision": "undecided", "handler": "GET /api/version", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.webapp_access:webapp_access_status; surface: web_access", "decision": "undecided", "handler": "GET /api/webapp-access/status", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.ops:list_webhooks", "decision": "undecided", "handler": "GET /api/webhooks", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.dashboard_auth.routes:auth_callback", "decision": "undecided", "handler": "GET /auth/callback", "kind": "http", "ref": ""},
@@ -322,6 +326,7 @@
   {"current_path": "hermes_cli.web_routers.skills:update_skills_hub", "decision": "undecided", "handler": "POST /api/skills/hub/update", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.tools:grant_computer_use_permissions", "decision": "undecided", "handler": "POST /api/tools/computer-use/permissions/grant", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.tools:run_toolset_post_setup", "decision": "undecided", "handler": "POST /api/tools/toolsets/{name}/post-setup", "kind": "http", "ref": ""},
+  {"current_path": "hermes_cli.web_routers.files:upload_attachment", "decision": "undecided", "handler": "POST /api/upload", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.webapp_access:restart_webapp_access; surface: web_access", "decision": "undecided", "handler": "POST /api/webapp-access/restart", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.webapp_access:start_webapp_access; surface: web_access", "decision": "undecided", "handler": "POST /api/webapp-access/start", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.webapp_access:stop_webapp_access; surface: web_access", "decision": "undecided", "handler": "POST /api/webapp-access/stop", "kind": "http", "ref": ""},
@@ -353,6 +358,7 @@
   {"current_path": "hermes_cli.web_routers.memory_providers:update_memory_provider_config", "decision": "undecided", "handler": "PUT /api/memory/providers/{name}/config", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.messaging:update_messaging_platform", "decision": "undecided", "handler": "PUT /api/messaging/platforms/{platform_id}", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.models:set_moa_models", "decision": "undecided", "handler": "PUT /api/model/moa", "kind": "http", "ref": ""},
+  {"current_path": "hermes_cli.web_routers.profiles:set_active_profile_endpoint", "decision": "undecided", "handler": "PUT /api/profiles/active", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.profiles:update_profile_description_endpoint", "decision": "undecided", "handler": "PUT /api/profiles/{name}/description", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.profiles:update_profile_model_endpoint", "decision": "undecided", "handler": "PUT /api/profiles/{name}/model", "kind": "http", "ref": ""},
   {"current_path": "hermes_cli.web_routers.profiles:update_profile_soul", "decision": "undecided", "handler": "PUT /api/profiles/{name}/soul", "kind": "http", "ref": ""},
@@ -561,6 +567,8 @@
   {"current_path": "authority; standalone: unknown method", "decision": "authority", "handler": "prompt.resolve_unknown", "kind": "rpc", "ref": ""},
   {"current_path": "authority; standalone: unknown method", "decision": "authority", "handler": "prompt.steer_queued", "kind": "rpc", "ref": ""},
   {"current_path": "authority; standalone: legacy server.dispatch", "decision": "authority", "handler": "prompt.submit", "kind": "rpc", "ref": ""},
+  {"current_path": "legacy fallback; standalone: legacy server.dispatch", "decision": "undecided", "handler": "provider.models", "kind": "rpc", "ref": "D3"},
+  {"current_path": "legacy fallback; standalone: legacy server.dispatch", "decision": "undecided", "handler": "provider.probe", "kind": "rpc", "ref": "D3"},
   {"current_path": "authority; standalone: legacy server.dispatch", "decision": "authority", "handler": "reload.env", "kind": "rpc", "ref": ""},
   {"current_path": "authority; standalone: legacy server.dispatch", "decision": "authority", "handler": "reload.mcp", "kind": "rpc", "ref": ""},
   {"current_path": "legacy fallback; standalone: legacy server.dispatch", "decision": "undecided", "handler": "request.answer", "kind": "rpc", "ref": "D3"},

@@ -111,7 +111,7 @@ class AtPrefixDecision:
 
     index: int
     mode: str
-    edit: Tuple[int, int, str]
+    edit: tuple[int, int, str]
     note: Optional[str]
 
 
@@ -194,7 +194,7 @@ def at_boundary_ok(source: str, pos: int, end: int) -> bool:
 # ── ``if`` comparison-side primitives (read-only pure functions) ──────────────
 
 
-def split_top_eq(raw: str) -> Optional[Tuple[str, str]]:
+def split_top_eq(raw: str) -> Optional[tuple[str, str]]:
     r"""Split a glued cmd ``LHS==RHS`` compare word on the first ``==``.
 
     Byte-for-byte port of ``_BashFixScanner._split_top_eq``.  cmd.exe toggles a
@@ -221,7 +221,7 @@ def split_top_eq(raw: str) -> Optional[Tuple[str, str]]:
 
 def cmd_cmp_side(
     raw: str, *, folded: bool, numeric: bool
-) -> Optional[Tuple[str, bool]]:
+) -> Optional[tuple[str, bool]]:
     r"""Return ``(bash_operand, was_cmd_quoted)`` for one compare side.
 
     Byte-for-byte port of ``_BashFixScanner._cmd_cmp_side``.  Accepts only the
@@ -375,14 +375,14 @@ def validate_cmd_if(  # health: allow CC -- faithful port of the upstream `shell
         m = _HSPACE_RE.match(s, p, end)
         return m.end() if m is not None else p
 
-    def word(p: int) -> Tuple[Optional[str], int, int]:
+    def word(p: int) -> tuple[Optional[str], int, int]:
         q = space(p)
         r = reader._read_word(q, end, scan_substitutions=False)
         if r <= q:
             return None, q, q
         return reader._literal_word_value(s[q:r]), q, r
 
-    segments: List[_CmdIfSegment] = []
+    segments: list[_CmdIfSegment] = []
     header_start = if_start
     while True:
         negated = False
@@ -684,7 +684,7 @@ def cmd_body_has_bare_ampersand(body: str) -> bool:
 
 def validate_cmd_for_list(
     reader: Any, source: str, i: int, close: int
-) -> Optional[Tuple[Tuple[Tuple[int, int], ...], Tuple[Tuple[int, int, str], ...]]]:
+) -> Optional[tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int, str], ...]]]:
     r"""Validate a cmd ``for`` item list and emit its data edits.
 
     Byte-for-byte port of ``_BashFixScanner._match_cmd_for_list``.  Splits the
@@ -698,8 +698,8 @@ def validate_cmd_for_list(
     whole loop.  ``reader`` must expose ``_read_word``.
     """
     s = source
-    commas: List[Tuple[int, int]] = []
-    paths: List[Tuple[int, int, str]] = []
+    commas: list[tuple[int, int]] = []
+    paths: list[tuple[int, int, str]] = []
     while i < close:
         ch = s[i]
         if ch in " \t\r":
@@ -733,7 +733,7 @@ def validate_cmd_for_list(
 
 def validate_cmd_for_body(
     reader: Any, source: str, start: int, stop: int, name: str
-) -> Optional[Tuple[Tuple[int, int], ...]]:
+) -> Optional[tuple[tuple[int, int], ...]]:
     """Validate a cmd ``for`` do-body and collect its loop-var word spans.
 
     Byte-for-byte port of ``_BashFixScanner._match_cmd_for_body``.  Returns the
@@ -752,7 +752,7 @@ def validate_cmd_for_body(
         return None
     if cmd_body_has_bare_ampersand(body):
         return None
-    var_edits: List[Tuple[int, int]] = []
+    var_edits: list[tuple[int, int]] = []
     i = start
     while i < stop:
         word_end = reader._read_word(i, stop, scan_substitutions=False)
@@ -793,7 +793,7 @@ def validate_cmd_for(
         m = _HSPACE_RE.match(s, p, end)
         return m.end() if m is not None else p
 
-    def word(p: int) -> Tuple[Optional[str], int, int]:
+    def word(p: int) -> tuple[Optional[str], int, int]:
         q = space(p)
         r = reader._read_word(q, end, scan_substitutions=False)
         if r <= q:
@@ -810,7 +810,7 @@ def validate_cmd_for(
     name = token.group(2)
 
     # 2. ``in``
-    lit, in_start, in_end = word(tok_end)
+    lit, _in_start, in_end = word(tok_end)
     if lit != "in":
         return None
 
@@ -999,7 +999,7 @@ class CmdIfNode:
     end: int
 
     @property
-    def span(self) -> Tuple[int, int]:
+    def span(self) -> tuple[int, int]:
         return (self.if_start, self.end)
 
     @property
@@ -1023,7 +1023,7 @@ class CmdForNode:
     end: int
 
     @property
-    def span(self) -> Tuple[int, int]:
+    def span(self) -> tuple[int, int]:
         return (self.for_start, self.end)
 
     @property
@@ -1088,7 +1088,7 @@ def cmd_jump_refusal(
 
 def cmd_if_structural_edits(
     source: str, match: _CmdIfMatch
-) -> List[Tuple[int, int, str]]:
+) -> list[tuple[int, int, str]]:
     """The outer ``if`` header/close/else edits (no body recursion) of a match.
 
     Produces exactly the edits :func:`commit_cmd_if` would append *for the
@@ -1098,7 +1098,7 @@ def cmd_if_structural_edits(
     is a flat, pairwise-disjoint set over the conditional's own spans.
     """
     s = source
-    edits: List[Tuple[int, int, str]] = []
+    edits: list[tuple[int, int, str]] = []
     last = len(match.segments) - 1
     for index, seg in enumerate(match.segments):
         keyword = "if" if index == 0 else "elif"
@@ -1145,7 +1145,7 @@ def cmd_if_structural_edits(
 
 def cmd_for_structural_edits(
     source: str, match: _CmdForMatch
-) -> List[Tuple[int, int, str]]:
+) -> list[tuple[int, int, str]]:
     """The outer ``for`` loop edits (no body recursion) of a match.
 
     The flat pairwise-disjoint set over the loop's own spans: the loop-name
@@ -1154,7 +1154,7 @@ def cmd_for_structural_edits(
     insertion.  The body's recursive scan (inner ``2>nul``/path/nested
     control-flow edits) is omitted.
     """
-    edits: List[Tuple[int, int, str]] = []
+    edits: list[tuple[int, int, str]] = []
     edits.append((match.tok_start, match.tok_end, match.name))
     edits.append((match.open_pos, match.open_pos + 1, ""))
     edits.append((match.close_pos, match.close_pos + 1, ";"))
@@ -1172,8 +1172,8 @@ def cmd_for_structural_edits(
 
 
 def rule_cmd_at(
-    command: "CommandNode", source: str, context: "TranslationContext"
-) -> Optional["RuleResult"]:
+    command: CommandNode, source: str, context: TranslationContext
+) -> Optional[RuleResult]:
     """§3.5 priority-1 handler: the leading-``@`` command-word rule.
 
     Inspects a parsed ``CommandNode``'s command word at its source span.  When
@@ -1198,15 +1198,15 @@ def rule_cmd_at(
     )
     if decision is None:
         return None
-    events: List[Tuple[str, str]] = []
+    events: list[tuple[str, str]] = []
     if decision.note is not None:
         events.append(("record_cmd_conditional", decision.note))
     return RuleResult(edit=decision.edit, events=tuple(events))
 
 
 def rule_cmd_control(
-    command: "CommandNode", source: str, context: "TranslationContext"
-) -> Optional["RuleResult"]:
+    command: CommandNode, source: str, context: TranslationContext
+) -> Optional[RuleResult]:
     """Priority-2 handler: the cmd if/for structural rule (plan 3.5).
 
     Recognises a command word that is the literal if or for keyword, runs the
@@ -1239,7 +1239,7 @@ def rule_cmd_control(
         node = cmd_if_node(reader, source, word_start, word_end, len(source))
         if node is None:
             return None
-        events: List[Tuple[str, str]] = (("record_cmd_conditional", node.note),)
+        events: list[tuple[str, str]] = (("record_cmd_conditional", node.note),)
         seg0 = node.match.segments[0]
         if seg0.kind == "exist":
             from .paths import path_replacement
@@ -1282,8 +1282,8 @@ def rule_cmd_control(
 
 
 def rule_cmd_jump(
-    command: "CommandNode", source: str, context: "TranslationContext"
-) -> Optional["RuleResult"]:
+    command: CommandNode, source: str, context: TranslationContext
+) -> Optional[RuleResult]:
     """§3.5 priority-3 handler: the untranslatable cmd jump refusal.
 
     Records ``goto``/glued ``:label``/``call :label``/``call *.bat|*.cmd``/
@@ -1309,12 +1309,6 @@ def rule_cmd_jump(
 
 
 __all__ = [
-    "AtPrefixDecision",
-    "CmdForNode",
-    "CmdIfNode",
-    "_CmdForMatch",
-    "_CmdIfMatch",
-    "_CmdIfSegment",
     "_CALL_BATCH_RE",
     "_CMD_IF_TAIL_SAFE_CHARS",
     "_CMD_REL_OPS",
@@ -1322,6 +1316,12 @@ __all__ = [
     "_FOR_LOOP_TOKEN_RE",
     "_GLUED_LABEL_RE",
     "_INT_RE",
+    "AtPrefixDecision",
+    "CmdForNode",
+    "CmdIfNode",
+    "_CmdForMatch",
+    "_CmdIfMatch",
+    "_CmdIfSegment",
     "at_boundary_ok",
     "at_prefix_rule",
     "build_cmd_cmp",
@@ -1330,10 +1330,10 @@ __all__ = [
     "cmd_cmp_side",
     "cmd_for_item_ok",
     "cmd_for_node",
+    "cmd_for_structural_edits",
     "cmd_if_branch_ok",
     "cmd_if_node",
     "cmd_if_structural_edits",
-    "cmd_for_structural_edits",
     "cmd_jump_record",
     "cmd_jump_refusal",
     "commit_cmd_for",

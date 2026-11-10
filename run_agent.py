@@ -138,7 +138,7 @@ from agent.reasoning_params import ReasoningParamsMixin
 from agent.lazy_forward import forward as _forward, forward_static as _forward_static
 from agent.session_activity import ActivityProvenance
 from agent.model_metadata import is_local_endpoint
-from agent.message_utils import (  # noqa: F401
+from agent.message_utils import (
     VALID_API_ROLES,
     get_tool_call_id,
     get_tool_call_name,
@@ -156,7 +156,7 @@ from agent.codex_responses_adapter import (
 from agent.tool_guardrails import ToolGuardrailDecision, append_toolguard_guidance, toolguard_synthetic_result
 from hermes_cli.observability.shared_metrics_harness import record_guardrail_decision, record_guardrail_warnings
 from utils import base_url_host_matches, base_url_hostname, env_float, model_forces_max_completion_tokens
-from agent.tool_result_store import (  # noqa: F401
+from agent.tool_result_store import (
     # Memory-bounded tool-result buffer with transparent disk spill, for large-result handling
     # in long-running sessions. Re-exported here so callers and tests can
     # `from run_agent import ToolResultStore` (plan surface).

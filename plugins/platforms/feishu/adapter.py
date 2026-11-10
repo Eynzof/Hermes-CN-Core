@@ -56,6 +56,13 @@ if TYPE_CHECKING:
     from lark_oapi.event.callback.model.p2_card_action_trigger import (
         CallBackCard, P2CardActionTriggerResponse,
     )
+else:
+    CreateFileRequest = CreateFileRequestBody = CreateImageRequest = None
+    CreateImageRequestBody = CreateMessageRequest = CreateMessageRequestBody = None
+    DeleteMessageRequest = GetChatRequest = GetMessageRequest = None
+    GetMessageResourceRequest = P2ImMessageMessageReadV1 = ReplyMessageRequest = None
+    ReplyMessageRequestBody = UpdateMessageRequest = UpdateMessageRequestBody = None
+    CallBackCard = P2CardActionTriggerResponse = None
 
 # aiohttp/websockets are independent optional deps — import outside lark_oapi
 # so they remain available for tests and webhook mode even if lark_oapi is missing.

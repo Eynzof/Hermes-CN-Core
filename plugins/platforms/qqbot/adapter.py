@@ -38,7 +38,8 @@ except ImportError:
     HTTPX_AVAILABLE = False
     httpx = None  # type: ignore[assignment]
 
-from hermes_cli._subprocess_compat import IS_WINDOWS, windows_hide_flags
+import sys
+import subprocess
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
     gateway_trust_env, BasePlatformAdapter, ExecApprovalPrompt, SendResult,
@@ -1179,8 +1180,8 @@ class QQAdapter(OwnAccessPolicyMixin, BasePlatformAdapter):
     async def _convert_ffmpeg_to_wav(self, src_path: str, wav_path: str) -> Optional[str]:
         try:
             _subprocess_kwargs = {}
-            if IS_WINDOWS:
-                _subprocess_kwargs["creationflags"] = windows_hide_flags()
+            if sys.platform == "win32":
+                _subprocess_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
             proc = await asyncio.create_subprocess_exec(
                 "ffmpeg", "-y", "-i", src_path, "-ar", "16000", "-ac", "1", wav_path,
                 stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,

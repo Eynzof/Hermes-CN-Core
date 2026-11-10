@@ -33,7 +33,7 @@ def parse_iso_datetime(text: str) -> datetime:
     """
     if _HAS_CISO8601:
         return _parse_datetime(text)
-    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    return datetime.fromisoformat(text)
 
 logger = logging.getLogger(__name__)
 

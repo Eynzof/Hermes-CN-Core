@@ -587,13 +587,15 @@ def remove_wrapper_script(name: str) -> bool:
     except ValueError:
         return False
 
-    wrapper_path = _find_our_wrapper(canon)
-    if wrapper_path is None:
-        return False
-    with contextlib.suppress(Exception):
-        wrapper_path.unlink()
-        return True
-    return False
+    removed = False
+    for wrapper_path in (_get_wrapper_dir() / canon, _get_wrapper_dir() / f"{canon}.bat"):
+        if _is_our_wrapper(wrapper_path):
+            try:
+                wrapper_path.unlink()
+                removed = True
+            except OSError:
+                logger.debug("Unable to remove profile wrapper %s", wrapper_path, exc_info=True)
+    return removed
 
 
 def find_alias_for_profile(profile_name: str) -> Optional[str]:

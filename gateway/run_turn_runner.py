@@ -814,7 +814,7 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
                 # the destination the connector just refused.
                 raise
             except Exception as e:
-                logger.warning("Button-based approval failed, falling back to text: %s", e)
+                logger.warning("Button-based approval failed, falling back to text: %s", e, exc_info=True)
         # Plain-text prompt with the adapter's typed prefix (e.g. `!approve`): typed "/" is blocked
         # in Slack threads and reserved by Matrix clients.
         msg = approval_text_prompt(adapter, ctx._status_chat_id, ctx.session_key or "", approval_data.get("request_id"),
@@ -837,7 +837,7 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
                 # the /approve instructions, so the timeout notice is posted as a new message.
                 register_timeout_notice(self, approval_data, command=cmd, card_message_id=None)
         except Exception as e:
-            logger.error("Failed to send approval request: %s", e)
+            logger.error("Failed to send approval request: %s", e, exc_info=True)
 
     # ── run_sync phases ─────────────────────────────────────────────────────────────────────
 

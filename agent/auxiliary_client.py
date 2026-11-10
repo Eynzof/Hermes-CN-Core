@@ -5501,7 +5501,7 @@ def get_available_vision_backends() -> list[str]:
     explicit vision override. Single source of truth for setup, tool gating, and
     runtime auto-routing of vision tasks.
     """
-    available: List[str] = []
+    available: list[str] = []
     # 1. Active provider — if the user configured a provider, try it first.
     main_provider = _read_main_provider()
     if (

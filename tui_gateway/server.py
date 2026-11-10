@@ -2086,7 +2086,7 @@ def _(rid, params: dict) -> dict:
     try:
         r = subprocess.run(
             hermes_cli_argv(*argv),
-            capture_output=True,
+            check=False, capture_output=True,
             text=True, encoding="utf-8", errors="replace",
             timeout=min(int(params.get("timeout", 240)), 600),
             cwd=os.getcwd(),

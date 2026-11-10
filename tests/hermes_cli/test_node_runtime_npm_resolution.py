@@ -29,7 +29,7 @@ def test_resolve_node_runtime_npm_never_rescans_path_past_a_windows_shim(monkeyp
 def test_resolve_node_runtime_npm_rescans_past_windows_drive_to_native_mount(monkeypatch):
     """When PATH interop hands back a Windows npm first, the re-scan skips the Windows drive
     mount but still accepts a native npm living under ``/mnt/data``."""
-    native_npm = "/mnt/data/node/bin/npm"
+    _native_npm = "/mnt/data/node/bin/npm"
     monkeypatch.setenv("PATH", os.pathsep.join(["/mnt/c/Program Files/nodejs", "/mnt/data/node/bin"]))
 
     with (

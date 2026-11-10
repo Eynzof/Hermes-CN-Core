@@ -10,6 +10,8 @@ import os
 import re
 import shutil
 import subprocess
+
+from hermes_cli._subprocess_compat import windows_hide_flags
 import sys
 import threading
 from pathlib import Path
@@ -540,7 +542,7 @@ def _packaged_npx_entry(command: str, args: list) -> Optional[tuple]:
         install = [node, npm_cli, "install", "--prefix", str(prefix), "--no-save", "--ignore-scripts",
                    "--no-audit", "--no-fund", "--loglevel=error", spec]
         try:
-            result = subprocess.run(install, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            result = subprocess.run(install, capture_output=True, creationflags=windows_hide_flags(), text=True, encoding="utf-8", errors="replace",
                                     stdin=subprocess.DEVNULL, timeout=600, check=False)
         except (subprocess.SubprocessError, OSError) as exc:  # hang, unwritable prefix, AV lock, node not startable
             result = subprocess.CompletedProcess(install, 1, "", str(exc))

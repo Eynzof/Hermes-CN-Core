@@ -20,7 +20,7 @@ import json
 import logging
 import mimetypes
 import os
-from agent.re_compat import re
+import re
 import shutil
 import uuid
 from collections import OrderedDict
@@ -51,7 +51,6 @@ from gateway.platforms.whatsapp_common import WhatsAppBehaviorMixin, _get_wsecre
 from gateway.platforms.access_policy_mixin import OPTIN_TRUTHY as _OPTIN_TRUTHY
 from gateway.platforms.media_cache import ext_for_mime
 from gateway import rich_sent_store
-from hermes_cli._subprocess_compat import IS_WINDOWS, windows_hide_flags
 from hermes_constants import get_hermes_dir
 
 logger = logging.getLogger(__name__)

@@ -1,5 +1,7 @@
 """Local execution environment — spawn-per-call with session snapshot."""
 
+from tools.environments.local_background import _quote_bash_path
+
 import base64
 import contextlib
 import gzip
@@ -196,10 +198,6 @@ def _bash_safe_path(path: str) -> str:
     return _windows_to_msys_path(path).replace("\\", "/") if _IS_WINDOWS and path else path
 
 
-def _quote_bash_path(path: str) -> str:
-    """Quote *path* for safe interpolation into a Git Bash script on Windows."""
-    import shlex
-    return shlex.quote(_bash_safe_path(path))
 
 
 def _cwd_usable(path: str) -> bool:
@@ -1562,7 +1560,7 @@ def _is_wsl_bash_launcher(bash_path: str) -> bool:
             # Git Bash / MSYS reports "MINGW64_NT-..." / "MSYS_NT-...".
             probe = subprocess.run(
                 [bash_path, "--noprofile", "--norc", "-c", "uname -sr"],
-                capture_output=True,
+                check=False, capture_output=True,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -1798,117 +1796,7 @@ def _resolve_shell() -> tuple[str, str]:
 
     raise RuntimeError("No usable shell found.")
 
-def _build_powershell_background_script(
-    command: str,
-    cwd: str,
-    shell_type: str,
-    cwd_file: str | None = None,
-) -> str:
-    """Build a PowerShell wrapper suitable for detached background processes.
 
-    Mirrors ``LocalEnvironment._wrap_command_powershell`` but omits the stdout
-    CWD marker (background output goes to the process-registry buffer) and only
-    persists the final CWD to *cwd_file* when one is provided.
-
-    Args:
-        command: Raw user command (will be down-levelled for PS5.1 unless
-            *shell_type* is ``pwsh``).
-        cwd: Working directory to switch to before running *command*.
-        shell_type: ``pwsh`` or ``powershell``.
-        cwd_file: Optional path to write the final working directory to.
-            When provided, the wrapper writes ``(Get-Location).Path`` to this
-            file so ``LocalEnvironment._update_cwd`` can pick it up.
-
-    Returns:
-        A multi-line PowerShell script ready for ``-Command``.
-    """
-    # Same PowerShell-aware quoting repair as the foreground wrapper, and like
-    # there it runs FIRST, before any PS7→5.1 transform: fix unclosed
-    # strings/here-strings/comments so the background script stays legal.
-    # (No warning channel here — background output goes to the
-    # process-registry buffer.)
-    if command.strip():
-        fix = fix_pwsh_command(command)
-        if fix is not None and fix.changed:
-            command = fix.command
-    if shell_type != "pwsh":
-        command, _ = pwsh_transform(command)
-
-    escaped = command.replace("'", "''")
-    quoted_cwd = cwd.replace("'", "''")
-
-    parts = [
-        # Force UTF-8 output encoding for stdout/stderr.
-        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8",
-        "$OutputEncoding=[System.Text.Encoding]::UTF8",
-        # Set native command argument passing to Windows (backward-compat) mode.
-        # PS 7.3+ defaults to 'Standard' which can break legacy tools.
-        "if (Get-Command -Name pwsh -ErrorAction SilentlyContinue) { $PSNativeCommandArgumentPassing = 'Windows' }",
-        "$ErrorActionPreference = 'Continue'",
-        f"Set-Location -LiteralPath '{quoted_cwd}' -ErrorAction SilentlyContinue",
-        f"if ($?) {{ Set-Location -LiteralPath '{quoted_cwd}' }} else {{ exit 126 }}",
-        # Run the command and flush PowerShell's formatting pipeline.
-        # ``-Stream`` emits each object's rendered text as it arrives instead
-        # of accumulating everything until the pipeline completes — without
-        # it, output produced before a timeout kill is lost entirely.
-        # ``try/catch`` protects against malformed user commands so the exit
-        # code and cwd file are always written.  Parity with spawn path.
-        f"try {{ Invoke-Expression '{escaped}' | Out-String -Width 4096 -Stream | Write-Output }} catch {{ $_ | Out-String -Width 4096 -Stream | Write-Output }}",
-        # ``$Error.Count`` catches non-terminating errors that don't set
-        # ``$LASTEXITCODE`` (e.g. ``Get-ChildItem`` on a missing path).
-        "$hermes_ec = $LASTEXITCODE; if ($null -eq $hermes_ec -and $Error.Count -gt 0) { $hermes_ec = 1 }",
-    ]
-
-    if cwd_file:
-        quoted_cwd_file = cwd_file.replace("'", "''")
-        parts.append(
-            f"(Get-Location).Path | Out-File -Encoding utf8 -FilePath '{quoted_cwd_file}'"
-        )
-
-    parts.append("exit $hermes_ec")
-    return "\n".join(parts)
-
-def _build_bash_background_script(
-    command: str,
-    cwd: str,
-    cwd_file: str | None = None,
-) -> str:
-    """Build a bash wrapper suitable for detached background processes.
-
-    Mirrors ``_build_powershell_background_script`` for the bash-on-Windows
-    background path (used by ``process_registry`` when the resolved shell is
-    git-bash). The wrapper cd's to *cwd* (guarded — exits 126 when the
-    directory can't be entered), runs *command*, persists the final working
-    directory to *cwd_file* when one is provided, and exits with the
-    command's exit code.
-
-    The persisted ``pwd`` is in MSYS form (``/c/Users/x``) on Windows; the
-    consumer (``LocalEnvironment._update_cwd``) translates it via
-    ``_msys_to_windows_path`` for bash sessions.
-
-    Args:
-        command: Raw user command (bash syntax).
-        cwd: Working directory to switch to before running *command*.
-        cwd_file: Optional path to write the final working directory to.
-
-    Returns:
-        A multi-line bash script ready for ``bash -lc``.
-    """
-    escaped = command.replace("'", "'\\''")
-    quoted_cwd = _quote_bash_path(cwd)
-
-    parts = [
-        f"builtin cd -- {quoted_cwd} || exit 126",
-        f"eval '{escaped}'",
-        "__hermes_ec=$?",
-    ]
-
-    if cwd_file:
-        quoted_cwd_file = _quote_bash_path(cwd_file)
-        parts.append(f"pwd > {quoted_cwd_file} 2>/dev/null || true")
-
-    parts.append("exit $__hermes_ec")
-    return "\n".join(parts)
 
 _bash_starts_cache: dict[str, bool] = {}
 
@@ -2396,7 +2284,7 @@ class LocalEnvironment(BaseEnvironment):
         try:
             proc = subprocess.run(
                 cmdline,
-                cwd=effective_cwd if os.path.isdir(effective_cwd) else None,
+                check=False, cwd=effective_cwd if os.path.isdir(effective_cwd) else None,
                 env=run_env,
                 capture_output=True,
                 timeout=effective_timeout,
@@ -2471,7 +2359,7 @@ class LocalEnvironment(BaseEnvironment):
                 logger.info(
                     "PowerShell session fast path declined (%s); using spawn.", exc
                 )
-            except Exception as exc:  # noqa: BLE001 - never let the fast path
+            except Exception as exc:
                 # wedge the tool; the spawn path is the safety net.
                 logger.warning(
                     "PowerShell session execute failed (%s); using spawn.",
@@ -2493,7 +2381,7 @@ class LocalEnvironment(BaseEnvironment):
                 return self._execute_via_cmd(command, cwd, timeout=timeout)
             except _SessionFallback as exc:
                 logger.info("cmd fast path declined (%s); using spawn.", exc)
-            except Exception as exc:  # noqa: BLE001 - safety net is the spawn path
+            except Exception as exc:
                 logger.warning(
                     "cmd fast path failed (%s); using spawn.", exc, exc_info=True
                 )

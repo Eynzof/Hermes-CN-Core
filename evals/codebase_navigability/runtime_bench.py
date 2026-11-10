@@ -22,7 +22,7 @@ def run(argv, code=None, timeout=300):
     return time.perf_counter() - t0, r
 
 def warm_pyc():
-    subprocess.run([PY, "-m", "compileall", "-q", "-j", "16", TREE], cwd=TREE, env=ENV, capture_output=True, check=False)
+    subprocess.run([PY, "-m", "compileall", "-q", "-j", "16", TREE], timeout=600, cwd=TREE, env=ENV, capture_output=True, check=False)
 
 def med(xs): return round(statistics.median(xs), 4)
 

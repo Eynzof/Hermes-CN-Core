@@ -497,7 +497,7 @@ def _run_child_turn(
     child,
     goal: str,
     abort_signal: Optional[threading.Event] = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Run a pre-built child agent for one turn.
 
     Thin wrapper around ``_run_single_child`` that provides the simpler

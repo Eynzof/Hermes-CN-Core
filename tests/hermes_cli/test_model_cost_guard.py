@@ -182,7 +182,7 @@ def test_allow_network_false_warns_from_model_info_without_probing(monkeypatch):
     )
 
     assert warning is not None
-    assert warning.input_cost_per_million == Decimal("50")
+    assert warning.input_cost_per_million == Decimal(50)
 
 
 def test_allow_network_false_skips_pricing_probe_and_fails_open(monkeypatch):

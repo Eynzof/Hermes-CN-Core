@@ -67,9 +67,10 @@ _IDP_KEYS = ("token_url", "client_id", "client_secret", "scope")
 def _load_cfg() -> dict:
     """The full gateway config, or ``{}`` — config absence/parse must never crash boot."""
     try:
-        from gateway.run import _load_gateway_config  # late import to avoid cycle
+        from hermes_cli.config_effective import load_user_config_effective
+        from hermes_constants import get_hermes_home
 
-        cfg = _load_gateway_config()
+        cfg = load_user_config_effective(get_hermes_home() / "config.yaml")
     except Exception:
         return {}
     return cfg if isinstance(cfg, dict) else {}

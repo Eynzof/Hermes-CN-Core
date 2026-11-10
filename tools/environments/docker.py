@@ -13,6 +13,8 @@ import orjson
 from agent.re_compat import re
 import shutil
 import subprocess
+
+from hermes_cli._subprocess_compat import windows_hide_flags
 import sys
 import tempfile
 import threading
@@ -1368,7 +1370,7 @@ class DockerEnvironment(BaseEnvironment):
 
         def _do_stop() -> None:
             try:
-                subprocess.run([docker_exe, "stop", "-t", "10", container_id], capture_output=True,
+                subprocess.run([docker_exe, "stop", "-t", "10", container_id], capture_output=True, creationflags=windows_hide_flags(),
                                timeout=30, stdin=subprocess.DEVNULL, check=False)
             except (subprocess.TimeoutExpired, OSError) as e:
                 logger.warning("docker stop %s (idle workspace) failed: %s", log_id, e)

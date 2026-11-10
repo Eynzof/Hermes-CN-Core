@@ -8,7 +8,7 @@ processes the user starts AFTER this wizard exits, so any in-wizard probe would 
 from __future__ import annotations
 from hermes_cli.cli_output import line_input
 
-from agent.re_compat import re
+import re
 import secrets
 import sys
 from typing import Optional

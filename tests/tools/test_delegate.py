@@ -324,7 +324,7 @@ class TestDelegateTask(unittest.TestCase):
             "summary": "Done", "api_calls": 1, "duration_seconds": 1.0
         }
         parent = _make_mock_parent()
-        result = orjson.loads(delegate_task(
+        _result = orjson.loads(delegate_task(
             goal="This should be ignored",
             tasks=[
                 {"goal": "Actual task A"},
@@ -658,7 +658,7 @@ class TestToolNamePreservation(unittest.TestCase):
 
     def test_build_child_agent_honors_acp_command_when_binary_present(self):
         """When the acp_command binary exists on PATH, behavior is unchanged:
-        provider is forced to copilot-acp and command/args propagate to the
+        the explicitly resolved provider and command/args propagate to the
         child agent. Guards against the missing-binary check accidentally
         breaking working ACP delegation setups.
         """
@@ -679,7 +679,7 @@ class TestToolNamePreservation(unittest.TestCase):
                 max_iterations=10,
                 parent_agent=parent,
                 task_count=1,
-                override_acp_command="copilot",
+                override_provider="copilot-acp", override_acp_command="copilot",
                 override_acp_args=["--foo"],
             )
 
@@ -1687,7 +1687,7 @@ class TestDelegationProviderIntegration(unittest.TestCase):
     def test_build_child_agent_inherits_active_client_endpoint(self):
         """Regression: stale parent.base_url AND stale parent.api_key must not
         reach subagents — the live client's endpoint + key win (the stale pair
-        ​401s against the live endpoint)."""
+        \u200b401s against the live endpoint)."""
         parent = _make_mock_parent(depth=0)
         parent.provider = "ollama"
         parent.base_url = "https://openrouter.ai/api/v1"

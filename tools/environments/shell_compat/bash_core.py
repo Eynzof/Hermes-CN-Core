@@ -888,7 +888,7 @@ _INT_RE = re.compile(r"^-?[0-9]+$")
 class _BashFixScanner:
     """Conservative scanner for Bash executable command positions."""
 
-    __slots__ = ("s", "n", "edits", "names", "path_notes", "shell_notes", "heredoc_events", "nest_depth", "nul_fixes", "unsupported", "cmd_conditional_notes")
+    __slots__ = ("cmd_conditional_notes", "edits", "heredoc_events", "n", "names", "nest_depth", "nul_fixes", "path_notes", "s", "shell_notes", "unsupported")
 
     def __init__(self, command: str) -> None:
         self.s = command
@@ -2063,7 +2063,7 @@ class _BashFixScanner:
             if redirect_expected:
                 if ch in _REDIRECTION_START and s[i + 1 : i + 2] == "(":
                     close = self._find_matching(i + 2, end, ")")
-                    self._scan_range(i + 2, close if close < end else end)
+                    self._scan_range(i + 2, min(end, close))
                     word_end = close + 1 if close < end else end
                     # A ``#`` glued after the process-substitution ``)`` is
                     # word-internal, not a comment (see the main-loop check).
@@ -2138,7 +2138,7 @@ class _BashFixScanner:
                 continue
             if ch == "$" and s[i + 1 : i + 2] == "(" and s[i + 2 : i + 3] != "(":
                 close = self._find_matching(i + 2, end, ")")
-                inner_end = close if close < end else end
+                inner_end = min(end, close)
                 self._scan_range(i + 2, inner_end)
                 i = close + 1 if close < end else end
                 # A ``#`` glued after the substitution's ``)`` continues the
@@ -2163,7 +2163,7 @@ class _BashFixScanner:
                 continue
             if ch in _REDIRECTION_START and s[i + 1 : i + 2] == "(":
                 close = self._find_matching(i + 2, end, ")")
-                self._scan_range(i + 2, close if close < end else end)
+                self._scan_range(i + 2, min(end, close))
                 i = close + 1 if close < end else end
                 # A ``#`` glued after the process-substitution's ``)`` is
                 # word-internal, not a comment (see the main-loop check).
@@ -2371,7 +2371,7 @@ class _BashFixScanner:
                         # words, scanned like the command-position form.
                         close = self._find_matching(i + 1, end, ")")
                         self._scan_array_words(
-                            i + 1, close if close < end else end
+                            i + 1, min(end, close)
                         )
                         i = close + 1 if close < end else end
                 continue
@@ -2440,7 +2440,7 @@ class _BashFixScanner:
             if "=" in raw and _ASSIGNMENT_RE.match(raw):
                 if i < end and s[i] == "(":
                     close = self._find_matching(i + 1, end, ")")
-                    self._scan_array_words(i + 1, close if close < end else end)
+                    self._scan_array_words(i + 1, min(end, close))
                     i = close + 1 if close < end else end
                 command_expected = True
                 assignment_prefix = True
@@ -2654,9 +2654,7 @@ class _BashFixScanner:
                     self.edits.append(
                         (word_start, word_end, _wrapper_runner(fallback_name))
                     )
-            elif self._record_cmd_jump(raw, literal, word_end, end):
-                pass
-            elif self._record_unsupported(raw, literal):
+            elif self._record_cmd_jump(raw, literal, word_end, end) or self._record_unsupported(raw, literal):
                 pass
             else:
                 # A command word can itself be a Windows executable path
@@ -2775,7 +2773,7 @@ class _BashFixScanner:
                     continue
                 close = self._find_matching(i + 2, end, ")")
                 if scan_substitutions:
-                    self._scan_range(i + 2, close if close < end else end)
+                    self._scan_range(i + 2, min(end, close))
                 i = close + 1 if close < end else end
                 continue
             if nxt == "{":
@@ -2829,7 +2827,7 @@ class _BashFixScanner:
                 i = close + 1 if close < end else end
             elif s.startswith("$(", i) and not s.startswith("$((", i):
                 close = self._find_matching(i + 2, end, ")")
-                self._scan_range(i + 2, close if close < end else end)
+                self._scan_range(i + 2, min(end, close))
                 i = close + 1 if close < end else end
             elif s.startswith("${", i):
                 i = self._skip_parameter(i + 2, end)
@@ -2895,7 +2893,7 @@ class _BashFixScanner:
                 i = close + 1 if close < end else end
             elif ch == "$" and s.startswith("$(", i) and not s.startswith("$((", i):
                 close = self._find_matching(i + 2, end, ")")
-                self._scan_range(i + 2, close if close < end else end)
+                self._scan_range(i + 2, min(end, close))
                 i = close + 1 if close < end else end
             elif ch == "$" and s.startswith("$((", i):
                 i = self._skip_arithmetic(i + 3, end)
@@ -2926,7 +2924,7 @@ class _BashFixScanner:
                 i = close + 1 if close < end else end
             elif ch == "$" and s.startswith("$(", i) and not s.startswith("$((", i):
                 close = self._find_matching(i + 2, end, ")")
-                self._scan_range(i + 2, close if close < end else end)
+                self._scan_range(i + 2, min(end, close))
                 i = close + 1 if close < end else end
             elif ch == "$" and s.startswith("$((", i):
                 i = self._skip_arithmetic(i + 3, end)
@@ -2961,7 +2959,7 @@ class _BashFixScanner:
                 i = close + 1 if close < end else end
             elif ch == "$" and s.startswith("$(", i) and not s.startswith("$((", i):
                 close = self._find_matching(i + 2, end, ")")
-                self._scan_range(i + 2, close if close < end else end)
+                self._scan_range(i + 2, min(end, close))
                 i = close + 1 if close < end else end
             elif ch == "$" and s.startswith("$((", i):
                 i = self._skip_arithmetic(i + 3, end)
@@ -3010,7 +3008,7 @@ class _BashFixScanner:
                 i += 2 if i + 1 < end else 1
             elif ch == "$" and s.startswith("$(", i) and not s.startswith("$((", i):
                 close = self._find_matching(i + 2, end, ")")
-                self._scan_range(i + 2, close if close < end else end)
+                self._scan_range(i + 2, min(end, close))
                 i = close + 1 if close < end else end
             elif ch == "'":
                 i = self._skip_single_quote(i + 1, end)
@@ -3040,7 +3038,7 @@ class _BashFixScanner:
             ch = s[i]
             if ch == "$" and s.startswith("$(", i) and not s.startswith("$((", i):
                 close = self._find_matching(i + 2, end, ")")
-                self._scan_range(i + 2, close if close < end else end)
+                self._scan_range(i + 2, min(end, close))
                 i = close + 1 if close < end else end
             elif ch == "(" and s.startswith("((", i):
                 depth += 1
@@ -3125,7 +3123,7 @@ class _BashFixScanner:
                 if heredoc is not None:
                     delimiter, expands = heredoc
                     pending_heredocs.append(_BashHereDoc(delimiter, strip_tabs, expands))
-                i = delimiter_end if delimiter_end > delimiter_start else delimiter_start
+                i = max(delimiter_start, delimiter_end)
             elif ch == "'":
                 i = self._skip_single_quote(i + 1, end)
             elif ch == '"':
@@ -3668,7 +3666,7 @@ def _read_shell_control_operator(s: str, i: int, n: int) -> tuple[str, int]:
 # for the no-events legacy rescan) LAZILY from ``bash_core`` inside its body,
 # so whichever module loads first, both sides resolve at call time — the
 # Phase-3/4/5/6 lazy-delegate cycle pattern.
-from .heredoc import (  # noqa: E402
+from .heredoc import (
     _HEREDOC_TRAILING_OPERATORS,
 )
 

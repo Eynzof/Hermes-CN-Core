@@ -309,7 +309,7 @@ def _fix_heredoc_trailing_operators(
 # ── IR-side heredoc event model (plan §3.2 HeredocNode / §3.5 slot 8) ─────────
 
 
-def heredoc_event_for(source: str, doc: "HeredocNode") -> Optional[Tuple[int, int]]:
+def heredoc_event_for(source: str, doc: HeredocNode) -> Optional[tuple[int, int]]:
     """The scanner event ``(redir_line_end, terminator_end)`` of one HeredocNode.
 
     Reproduces the legacy ``_BashFixScanner._skip_heredoc_bodies`` claim rule
@@ -345,8 +345,8 @@ def heredoc_event_for(source: str, doc: "HeredocNode") -> Optional[Tuple[int, in
 
 
 def _claim_events(
-    source: str, docs: "List[HeredocNode]"
-) -> List[Tuple[int, int]]:
+    source: str, docs: list[HeredocNode]
+) -> list[tuple[int, int]]:
     """Merge per-document events into the scanner's per-redirection-line list.
 
     The legacy scanner walks its ``pending_heredocs`` list for ONE delimiter
@@ -373,7 +373,7 @@ def _claim_events(
             groups[rle] = []
             order.append(rle)
         groups[rle].append(event[1])
-    out: List[Tuple[int, int]] = []
+    out: list[tuple[int, int]] = []
     for rle in order:
         ends = sorted(groups[rle])
         cursor = ends[0]
@@ -383,7 +383,7 @@ def _claim_events(
     return out
 
 
-def collect_heredoc_events(script: "ScriptNode") -> List[Tuple[int, int]]:
+def collect_heredoc_events(script: ScriptNode) -> list[tuple[int, int]]:
     """The scanner-order heredoc event list of a parsed (sub)context source.
 
     Visits the IR the same way ``models.walk_nodes`` does (DFS, the scanner's
@@ -444,7 +444,7 @@ def collect_heredoc_events(script: "ScriptNode") -> List[Tuple[int, int]]:
 
 
 def fix_heredoc_trailing_operators_ir(
-    source: str, script: "ScriptNode", events: Optional[List[Tuple[int, int]]]
+    source: str, script: ScriptNode, events: Optional[list[tuple[int, int]]]
 ) -> str:
     """The §3.5 slot-8 render step: repair with IR-derived events.
 

@@ -26,14 +26,14 @@ class Reminder:
         metadata: Optional provider-specific metadata.
     """
 
-    __slots__ = ("type", "content", "target", "metadata")
+    __slots__ = ("content", "metadata", "target", "type")
 
     def __init__(
         self,
         type: str,
         content: str,
         target: ReminderTarget = "user_message",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         self.type = type
         self.content = content
@@ -53,7 +53,7 @@ class ReminderProvider(ABC):
         self,
         agent: Any,
         api_call_count: int,
-    ) -> List[Reminder]:
+    ) -> list[Reminder]:
         """Return reminders to inject before this API call.
 
         Args:
@@ -71,12 +71,12 @@ class ReminderProvider(ABC):
         Override to reset throttling state so the reminder can fire again
         after compaction resets context usage. Default is a no-op.
         """
-        return None
+        return
 
     def on_turn_start(self, agent: Any) -> None:
         """Called at the start of a new user turn. Default no-op."""
-        return None
+        return
 
     def on_turn_end(self, agent: Any) -> None:
         """Called at the end of a user turn. Default no-op."""
-        return None
+        return

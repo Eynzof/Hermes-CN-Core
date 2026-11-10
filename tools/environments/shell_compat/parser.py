@@ -226,7 +226,7 @@ _BARE_KEYWORD_TOKENS = frozenset(
 )
 
 
-def _heredoc_delimiter_of(raw: str) -> Optional[Tuple[Optional[str], bool]]:
+def _heredoc_delimiter_of(raw: str) -> Optional[tuple[Optional[str], bool]]:
     """Decode a heredoc delimiter word with the LEGACY scanner method.
 
     Returns ``(delimiter | None, expands)``; ``None`` for a malformed
@@ -249,34 +249,34 @@ class _Part:
     """Mutable accumulation of one simple command (parser-internal)."""
 
     __slots__ = (
-        "start",
-        "end",
-        "assignments",
-        "command_word",
         "arguments",
-        "redirections",
-        "heredocs",
-        "embedded",
-        "expansions",
-        "wrapper",
-        "wrapper_hint",
+        "array_data",
+        "assignments",
         "command_value",
+        "command_word",
+        "embedded",
+        "end",
+        "expansions",
+        "heredocs",
+        "redirections",
         "reparse_remaining",
         "shell_c_pending",
         "shell_exec_operand",
-        "array_data",
+        "start",
+        "wrapper",
+        "wrapper_hint",
     )
 
     def __init__(self, start: int) -> None:
         self.start = start
         self.end = start
-        self.assignments: List[Node] = []
+        self.assignments: list[Node] = []
         self.command_word: Optional[Node] = None
-        self.arguments: List[Node] = []
-        self.redirections: List[RedirectionNode] = []
-        self.heredocs: List[HeredocNode] = []
-        self.embedded: List[EmbeddedScriptNode] = []
-        self.expansions: List[Node] = []
+        self.arguments: list[Node] = []
+        self.redirections: list[RedirectionNode] = []
+        self.heredocs: list[HeredocNode] = []
+        self.embedded: list[EmbeddedScriptNode] = []
+        self.expansions: list[Node] = []
         self.wrapper: Optional[str] = None
         self.wrapper_hint: Optional[str] = None
         self.command_value: Optional[str] = None
@@ -289,16 +289,16 @@ class _Part:
 class _Task:
     """Queued nested-context job (worklist: iterative, bounded descent)."""
 
-    __slots__ = ("slot", "region", "depth", "standalone", "source_text", "parent_ctx")
+    __slots__ = ("depth", "parent_ctx", "region", "slot", "source_text", "standalone")
 
     def __init__(
         self,
-        slot: "_Slot",
+        slot: _Slot,
         region: SourceSpan,
         depth: int,
         standalone: bool,
         source_text: str,
-        parent_ctx: "_Ctx",
+        parent_ctx: _Ctx,
     ) -> None:
         self.slot = slot
         self.region = region
@@ -334,42 +334,42 @@ class _Ctx:
     """Segmentation state for ONE command context (root, child, or inner)."""
 
     __slots__ = (
-        "source",
-        "region",
+        "case_state",
+        "command_expected",
+        "compound_state",
         "depth",
-        "tokens",
         "diagnostics",
-        "segments",
+        "doc_claim_until",
+        "index",
         "parts",
         "pending_docs",
-        "command_expected",
-        "case_state",
-        "compound_state",
+        "region",
+        "segments",
+        "source",
         "tasks",
-        "index",
-        "doc_claim_until",
+        "tokens",
     )
 
     def __init__(
         self,
         source: str,
         region: SourceSpan,
-        tokens: Tuple[Token, ...],
+        tokens: tuple[Token, ...],
         depth: int,
-        diagnostics: List[Diagnostic],
+        diagnostics: list[Diagnostic],
     ) -> None:
         self.source = source
         self.region = region
         self.depth = depth
         self.tokens = tokens
         self.diagnostics = diagnostics
-        self.segments: List[Node] = []
+        self.segments: list[Node] = []
         self.parts: Optional[_Part] = None
-        self.pending_docs: List[_Doc] = []
+        self.pending_docs: list[_Doc] = []
         self.command_expected = True
         self.case_state: Optional[str] = None
-        self.compound_state: List[str] = []
-        self.tasks: List[_Task] = []
+        self.compound_state: list[str] = []
+        self.tasks: list[_Task] = []
         self.index = 0
         self.doc_claim_until = -1
 
@@ -419,7 +419,7 @@ class _Ctx:
 
     # ── driver ──────────────────────────────────────────────────────────────
 
-    def run(self) -> List[Node]:
+    def run(self) -> list[Node]:
         tokens = self.tokens
         index = 0
         while index < len(tokens):
@@ -953,13 +953,13 @@ class _Doc:
     """Internal record for a pending heredoc document."""
 
     __slots__ = (
-        "op_span",
-        "op_text",
-        "delimiter_word",
         "delimiter",
-        "strip_tabs",
+        "delimiter_word",
         "expands",
         "node",
+        "op_span",
+        "op_text",
+        "strip_tabs",
     )
 
     def __init__(
@@ -1011,7 +1011,7 @@ def _looks_whole_quoted(word: WordNode) -> bool:
 
 
 def _make_embedded(
-    word: WordNode, depth: int, tasks: List[_Task], ctx: "_Ctx"
+    word: WordNode, depth: int, tasks: list[_Task], ctx: _Ctx
 ) -> EmbeddedScriptNode:
     kind, _span = word.parts[0]
     script = word.literal_value or ""
@@ -1048,7 +1048,7 @@ def _make_embedded(
 def _tiles(node: Node) -> bool:
     """True when a node's own children tile its span (render identity)."""
     if node.kind is NodeKind.COMMAND:
-        child_spans: List[SourceSpan] = []
+        child_spans: list[SourceSpan] = []
         child_spans.extend(word.span for word in node.assignments)
         if node.command_word is not None:
             child_spans.append(node.command_word.span)
@@ -1079,7 +1079,7 @@ def _tiles(node: Node) -> bool:
     return True  # words/raw/newlines/leaf nodes are self-tiling
 
 
-def _spans_tile(span: SourceSpan, children: List[SourceSpan]) -> bool:
+def _spans_tile(span: SourceSpan, children: list[SourceSpan]) -> bool:
     """True when ordered children fit inside ``span`` with no overlap."""
     cursor = span.start
     for child in sorted(children, key=lambda c: c.start):
@@ -1091,7 +1091,7 @@ def _spans_tile(span: SourceSpan, children: List[SourceSpan]) -> bool:
     return True
 
 
-def _fold_segments(segments: List[Node], source: str) -> Tuple[Node, ...]:
+def _fold_segments(segments: list[Node], source: str) -> tuple[Node, ...]:
     """Fold term/operator segment runs into pipeline/list nodes (lossless).
 
     A term run joined by single-operator data segments (``op:`` markers)
@@ -1101,9 +1101,9 @@ def _fold_segments(segments: List[Node], source: str) -> Tuple[Node, ...]:
     trivially.  Any other data segment (newline, comment, heredoc body,
     reserved word, case marker) flushes the run and stays its own child.
     """
-    folded: List[Node] = []
-    run: List[Node] = []
-    ops: List[Tuple[Node, str]] = []
+    folded: list[Node] = []
+    run: list[Node] = []
+    ops: list[tuple[Node, str]] = []
 
     def flush_run() -> None:
         nonlocal run, ops
@@ -1180,10 +1180,10 @@ def _fold_segments(segments: List[Node], source: str) -> Tuple[Node, ...]:
 def _build_context(
     source: str,
     region: SourceSpan,
-    tokens: Tuple[Token, ...],
+    tokens: tuple[Token, ...],
     depth: int,
-    diagnostics: List[Diagnostic],
-) -> Tuple[ScriptNode, List[_Task]]:
+    diagnostics: list[Diagnostic],
+) -> tuple[ScriptNode, list[_Task]]:
     ctx = _Ctx(source, region, tokens, depth, diagnostics)
     segments = ctx.run()
     children = _fold_segments(segments, source)
@@ -1193,7 +1193,7 @@ def _build_context(
     return script, ctx.tasks
 
 
-def _drain_tasks(root_source: str, tasks: List[_Task]) -> None:
+def _drain_tasks(root_source: str, tasks: list[_Task]) -> None:
     """Iteratively parse queued nested contexts (bounded; no recursion).
 
     Each task lexes+segments its region and fills its ``_Slot`` (expansion
@@ -1201,7 +1201,7 @@ def _drain_tasks(root_source: str, tasks: List[_Task]) -> None:
     onto the same list: the loop walks any nesting count while the Python
     call stack stays O(1).
     """
-    queue: List[_Task] = list(tasks)
+    queue: list[_Task] = list(tasks)
     while queue:
         task = queue.pop(0)
         region = task.region

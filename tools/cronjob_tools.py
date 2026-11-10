@@ -69,7 +69,7 @@ from tools.registry import registry, tool_error
 
 def _dumps(payload: dict[str, Any]) -> str:
     return json.dumps(payload, indent=2)
-def _dumps(payload: Dict[str, Any]) -> str:
+def _dumps(payload: dict[str, Any]) -> str:
     return orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode('utf-8')
 
 

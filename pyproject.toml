@@ -706,6 +706,7 @@ update-startup-files = [
   "hermes_cli/main.py", "hermes_cli/config.py", "hermes_cli/__init__.py",
   "hermes_cli/web_server.py", "cli.py", "run_agent.py", "model_tools.py", "toolsets.py",
   "hermes_constants.py",
+    "import_accelerator.py",
 ]
 
 # Per-extra platform gates (settled 2026-09-02): an extra listed here is

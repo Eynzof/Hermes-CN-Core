@@ -64,7 +64,7 @@ def test_skills_tool_load_env_strips_export_prefix(tmp_path, monkeypatch):
     from tools import skills_tool
     saved = sys.modules.pop("tools.skills_tool", None)
     try:
-        import tools.skills_tool as skills_tool
+        from tools import skills_tool
 
         with patch.object(skills_tool, "get_hermes_home", return_value=tmp_path):
             env = skills_tool.load_env()
@@ -130,7 +130,7 @@ def test_has_any_provider_configured_with_export_prefix(tmp_path):
     env["PYTHONPATH"] = str(repo_root) + os.pathsep + env.get("PYTHONPATH", "")
     result = subprocess.run(
         [sys.executable, str(probe)],
-        env=env,
+        check=False, env=env,
         cwd=str(repo_root),
         capture_output=True,
         text=True,

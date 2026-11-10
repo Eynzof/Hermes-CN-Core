@@ -39,7 +39,7 @@ def _run_pwsh(cmd: str, timeout: int = 30) -> tuple[int, str]:
     """Run *cmd* via real pwsh; return (exit_code, stdout+stderr)."""
     r = subprocess.run(
         [PWSH, "-NoP", "-NonI", "-C", cmd],
-        capture_output=True,
+        check=False, capture_output=True,
         text=True,
         timeout=timeout,
     )
@@ -471,7 +471,7 @@ class TestLocalPwshWrapperIntegration:
         assert env._pwsh_warnings
 
     def test_background_script_applies_fix(self) -> None:
-        from tools.environments.local import _build_powershell_background_script
+        from tools.environments.local_background import _build_powershell_background_script
 
         script = _build_powershell_background_script(
             command='Write-Output "hello',
@@ -560,7 +560,8 @@ class TestLocalPwshWrapperIntegration:
 
         with patch.object(local_mod, "fix_pwsh_command", side_effect=fake_fix), \
              patch.object(local_mod, "pwsh_transform", side_effect=fake_transform):
-            local_mod._build_powershell_background_script(
+            from tools.environments.local_background import _build_powershell_background_script
+            _build_powershell_background_script(
                 command="echo hi",
                 cwd=r"C:\tmp",
                 shell_type="powershell",

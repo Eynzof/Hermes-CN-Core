@@ -638,7 +638,7 @@ def _protect_windows_paths(line: str) -> tuple[str, dict[str, str]]:
     while prefix + "0_" in line:  # never collide with the command text itself
         prefix += "x"
 
-    def _swap(match: "re.Match[str]") -> str:
+    def _swap(match: re.Match[str]) -> str:
         value = next((group for group in match.groups() if group is not None), "")
         placeholder = f"{prefix}{len(mapping)}_"
         mapping[placeholder] = value

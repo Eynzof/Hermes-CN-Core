@@ -128,6 +128,7 @@ def _process_create_time(pid: Optional[int] = None) -> Optional[float]:
 
         return process_birth(psutil.Process(os.getpid() if pid is None else pid))
     except Exception:
+        logger.debug('_process_create_time failed', exc_info=True)
         return None
 
 

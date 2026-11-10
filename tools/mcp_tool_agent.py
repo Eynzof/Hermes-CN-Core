@@ -169,7 +169,7 @@ def refresh_agent_mcp_tools(
     prefix_registered: Optional[set] = None
     if preserve_prefix:
         try:
-            prefix_registered = {entry.name for entry in registry.get_all_entries()}
+            prefix_registered = set(registry.get_all_tool_names())
         except Exception:
             pass  # fail open to the plain rebuild
     else:

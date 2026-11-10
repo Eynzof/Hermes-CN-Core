@@ -696,7 +696,7 @@ def _inline_provider_env_candidates(requested_provider: str, configured_provider
     return names
 
 
-def _inline_model_base_url(model_cfg: Dict[str, Any]) -> str:
+def _inline_model_base_url(model_cfg: dict[str, Any]) -> str:
     for key in ("base_url", "url", "api"):
         raw = model_cfg.get(key)
         if isinstance(raw, str) and raw.strip():
@@ -704,7 +704,7 @@ def _inline_model_base_url(model_cfg: Dict[str, Any]) -> str:
     return ""
 
 
-def _inline_model_api_key_candidates(*, requested_provider: str, base_url: str) -> list[str]:
+def _inline_model_api_key_candidates(*, requested_provider: str, base_url: str, include_implicit_env: bool = True) -> list[str]:
     """Credentials the inline ``model`` block can supply for ``requested_provider`` (``[]`` otherwise)."""
     rp = _rp()
     model_cfg = rp._get_model_config()
@@ -718,8 +718,9 @@ def _inline_model_api_key_candidates(*, requested_provider: str, base_url: str) 
         str(model_cfg.get("api_key") or "").strip(),
         _key_env_secret(model_cfg, f"model provider '{cfg_provider or requested_provider}'"),
     ]
-    for env_name in _inline_provider_env_candidates(requested_provider, cfg_provider):
-        candidates.append(get_secret_str(env_name, "").strip())
+    if include_implicit_env:
+        for env_name in _inline_provider_env_candidates(requested_provider, cfg_provider):
+            candidates.append(get_secret_str(env_name, "").strip())
     return candidates
 
 
@@ -743,7 +744,7 @@ def _try_resolve_inline_model_custom_runtime(
     requested_provider: str,
     explicit_api_key: Optional[str] = None,
     explicit_base_url: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[dict[str, Any]]:
     """Resolve legacy Desktop configs that stored a named custom endpoint inline."""
     rp = _rp()
     requested_norm = (requested_provider or "").strip().lower()
@@ -795,6 +796,8 @@ def _try_resolve_inline_model_custom_runtime(
         rp._host_derived_api_key(base_url),
     ]
     api_key = next((candidate for candidate in api_key_candidates if rp.has_usable_secret(candidate)), "")
+    if not api_key and not any(model_cfg.get(k) for k in ("api_key", "key_env", "api_key_env")):
+        return None  # a restored route without an owning entry is not a legacy inline credential
     if not api_key and api_mode == "anthropic_messages" and not _custom_endpoint_allows_no_key(base_url):
         _raise_missing_named_custom_key(
             requested_provider=requested_provider,
@@ -929,7 +932,8 @@ def _resolve_named_custom_runtime(*, requested_provider: str, explicit_api_key: 
     # [CN-fork] Legacy Desktop configs kept the credential inline under ``model``; a configured but
     # secretless entry still owes the inline key, so it is the last named-candidate rung.
     inline_key = next((c for c in _inline_model_api_key_candidates(
-        requested_provider=requested_provider, base_url=base_url) if rp.has_usable_secret(c)), "")
+        requested_provider=requested_provider, base_url=base_url,
+        include_implicit_env=not entry_declares_credential(custom_provider)) if rp.has_usable_secret(c)), "")
     api_key: Any = explicit_key if rp.has_usable_secret(explicit_key) else (
         _entry_credential(rp, custom_provider, str(custom_provider.get("name", requested_provider) or "custom"))
         or inline_key

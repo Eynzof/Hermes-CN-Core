@@ -219,7 +219,7 @@ def _empty_tool_index() -> dict:
     }
 
 
-def _iter_tool_files(tools_path: Path) -> List[Path]:
+def _iter_tool_files(tools_path: Path) -> list[Path]:
     """Candidate tool modules: the same set ``discover_builtin_tools`` scans
     (flat ``tools/*.py`` plus package entry points ``tools/<pkg>/tool.py``), so
     a tool registered from a package can never fall out of the lazy index."""
@@ -229,11 +229,11 @@ def _iter_tool_files(tools_path: Path) -> List[Path]:
         return []
 
 
-def _module_string_constants(tree: ast.Module) -> Dict[str, str]:
+def _module_string_constants(tree: ast.Module) -> dict[str, str]:
     """Collect top-level ``NAME = "literal"`` string constants so a
     ``toolset=_CONST`` reference can be resolved without importing the module.
     """
-    consts: Dict[str, str] = {}
+    consts: dict[str, str] = {}
     for stmt in tree.body:
         if (
             isinstance(stmt, ast.Assign)
@@ -246,13 +246,13 @@ def _module_string_constants(tree: ast.Module) -> Dict[str, str]:
     return consts
 
 
-def _module_literal_tables(tree: ast.Module) -> Dict[str, ast.AST]:
+def _module_literal_tables(tree: ast.Module) -> dict[str, ast.AST]:
     """Top-level ``NAME = (...)``/``NAME = [...]`` literal collections.
 
     Lets a module-level ``for _name, … in _TOOLS:`` registration table be walked
     without executing the module (see :func:`_iter_static_loop_bindings`).
     """
-    tables: Dict[str, ast.AST] = {}
+    tables: dict[str, ast.AST] = {}
     for stmt in tree.body:
         if isinstance(stmt, ast.Assign) and isinstance(stmt.value, (ast.Tuple, ast.List)):
             for tgt in stmt.targets:
@@ -261,7 +261,7 @@ def _module_literal_tables(tree: ast.Module) -> Dict[str, ast.AST]:
     return tables
 
 
-def _iter_static_loop_bindings(loop: ast.For, tables: Dict[str, ast.AST]) -> List[Dict[str, ast.AST]]:
+def _iter_static_loop_bindings(loop: ast.For, tables: dict[str, ast.AST]) -> list[dict[str, ast.AST]]:
     """One ``{loop variable: element node}`` binding per statically-known iteration of a
     module-level ``for`` whose iterable is a literal collection (inline or a top-level
     ``NAME = (...)`` constant).
@@ -284,7 +284,7 @@ def _iter_static_loop_bindings(loop: ast.For, tables: Dict[str, ast.AST]) -> Lis
     # ``*_rest`` in the target makes the row length variable: bind only the fixed
     # positions BEFORE the star (notably the tool ``name``) and leave the rest alone.
     star = next((i for i, t in enumerate(elts) if isinstance(t, ast.Starred)), len(elts))
-    bindings: List[Dict[str, ast.AST]] = []
+    bindings: list[dict[str, ast.AST]] = []
     for element in iterable.elts:
         if not isinstance(element, (ast.Tuple, ast.List)):
             continue
@@ -296,7 +296,7 @@ def _iter_static_loop_bindings(loop: ast.For, tables: Dict[str, ast.AST]) -> Lis
     return bindings
 
 
-def _module_register_calls(tree: ast.Module, tables: Dict[str, ast.AST]) -> List[tuple]:
+def _module_register_calls(tree: ast.Module, tables: dict[str, ast.AST]) -> list[tuple]:
     """Every module-level ``registry.register(...)`` call plus its static loop bindings.
 
     Returns ``(call_node, {loop variable: element node})`` pairs: direct calls get an empty
@@ -305,7 +305,7 @@ def _module_register_calls(tree: ast.Module, tables: Dict[str, ast.AST]) -> List
     returned — those are handled by ``_module_registers_tools``' discovery path, and a
     module-body scan must never pick up a helper's own registration.
     """
-    found: List[tuple] = []
+    found: list[tuple] = []
     for stmt in tree.body:
         if _is_registry_register_call(stmt):
             found.append((stmt.value, {}))
@@ -317,7 +317,7 @@ def _module_register_calls(tree: ast.Module, tables: Dict[str, ast.AST]) -> List
     return found
 
 
-def _resolve_register_arg(node: ast.AST, consts: Dict[str, str], bound: Optional[Dict[str, ast.AST]] = None):
+def _resolve_register_arg(node: ast.AST, consts: dict[str, str], bound: Optional[dict[str, ast.AST]] = None):
     """Return the string value of a ``register()`` argument node, resolving a module-level
     string constant or a statically-bound ``for`` loop variable, or None when it is not
     statically known."""
@@ -408,7 +408,7 @@ def _tool_index_fingerprint(tools_path: Path) -> Optional[str]:
     """Cheap content fingerprint of the tool tree (name + mtime + size per
     file). Any add/remove/edit of a tool file changes it, so a cached index
     can never go stale."""
-    parts: List[str] = []
+    parts: list[str] = []
     for path in _iter_tool_files(tools_path):
         if path.name in _SKIP_TOOL_FILES:
             continue
@@ -502,7 +502,7 @@ def load_or_build_tool_index(tools_dir: Optional[Path] = None) -> dict:
     return index
 
 
-def _load_discovery_cache() -> Dict[str, list]:
+def _load_discovery_cache() -> dict[str, list]:
     """Read the discovery cache; any error → empty dict (full scan)."""
     path = _discovery_cache_path()
     if path is None:
@@ -553,6 +553,7 @@ class ToolEntry:
     # invalidates it for free.
     _schema_json: Optional[str] = None
     execution_timeout: float | None = None
+    registration_generation: int = 0
 
 
 class _PluginOverridePolicy:
@@ -837,7 +838,7 @@ class ToolRegistry:
         self._lazy_enabled: bool = False
         self._lazy_builtins_dir: Optional[Path] = None
         self._lazy_index: Optional[dict] = None
-        self._lazy_loaded_modules: Set[str] = set()
+        self._lazy_loaded_modules: set[str] = set()
         self._lazy_all_loaded: bool = False
         self._lazy_opaque_loaded: bool = False
         # Orchestrates lazy imports without holding self._lock across arbitrary
@@ -937,7 +938,7 @@ class ToolRegistry:
         self._load_opaque_modules()
         self._lazy_all_loaded = True
 
-    def _lazy_tool_names(self) -> Set[str]:
+    def _lazy_tool_names(self) -> set[str]:
         """All statically-known built-in tool names (no imports)."""
         if not self._lazy_enabled:
             return set()
@@ -1248,7 +1249,8 @@ class ToolRegistry:
                 requires_env=requires_env or [], is_async=is_async,
                 description=description or schema.get("description", ""), emoji=emoji,
                 max_result_size_chars=max_result_size_chars, execution_timeout=execution_timeout,
-                dynamic_schema_overrides=dynamic_schema_overrides)
+                dynamic_schema_overrides=dynamic_schema_overrides,
+                registration_generation=self._generation + 1)
             # Availability is derived per-tool (_toolset_has_exposable_tools), so this map no
             # longer gates a toolset; it still feeds get_toolset_requirements ->
             # TOOLSET_REQUIREMENTS["check_fn"], which banner.py reads (presence only,
@@ -1365,6 +1367,17 @@ class ToolRegistry:
 
     # ---- Schema retrieval --------------------------------------------
 
+    def get_selected_generation(self, tool_names: set[str]) -> tuple:
+        """Versions of selected registrations without importing unrelated lazy tools.
+
+        An unrelated tool's first import must not discard a warm conversation.
+        Replacement, removal and scoped overrides of a selected tool still change this key.
+        """
+        with self._lock:
+            merged = self._merged_tools()
+            return tuple((name, merged[name].registration_generation if name in merged else None)
+                         for name in sorted(tool_names))
+
     def get_definitions(self, tool_names: set[str], quiet: bool = False) -> list[dict]:
         """OpenAI-format schemas for the requested tools whose ``check_fn`` passes (or is
         absent). Probes use the ~30 s TTL cache so ``hermes tools enable`` lands quickly."""
@@ -1376,8 +1389,6 @@ class ToolRegistry:
                 self._ensure_tool_loaded(name)
         result = []
         check_results: dict[Callable, bool] = {}
-        entries_by_name = {entry.name: entry for entry in self._snapshot_entries()}
-        check_results: Dict[Callable, bool] = {}
         # Snapshot only the REQUESTED entries under a brief lock, instead of
         # materializing a {name: entry} map of the entire (~250-tool) registry
         # on every call. A toolset selection usually asks for a handful of
@@ -1392,7 +1403,8 @@ class ToolRegistry:
         # through the normal toolset path (validate_toolset/resolve_toolset
         # consult the same merged view).
         with self._lock:
-            entries_by_name = {entry.name: entry for entry in self._snapshot_entries()}
+            merged = self._merged_tools()
+            entries_by_name = {name: merged[name] for name in tool_names if name in merged}
         for name in sorted(tool_names):
             entry = entries_by_name.get(name)
             if not entry:
@@ -1483,7 +1495,7 @@ class ToolRegistry:
         return DEFAULT_RESULT_SIZE_CHARS
 
     def get_all_tool_names(self) -> list[str]:
-        return sorted(entry.name for entry in self._snapshot_entries())
+        return sorted({entry.name for entry in self._snapshot_entries()} | self._lazy_tool_names())
 
     def get_schema(self, name: str) -> Optional[dict]:
         """Raw schema dict, bypassing check_fn filtering (token estimates, introspection)."""

@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 import pytest
 
-import tools.environments.bash_fix as bash_fix
+from tools.environments import bash_fix
 
 from tools.environments.shell_compat import bash_core as _shell_compat
 

@@ -7,7 +7,7 @@ import logging
 import os
 from agent.re_compat import re
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -80,7 +80,7 @@ def _clamp_number(value: Any, default, lo, hi, cast):
 # config key -> (default, normalizer applied to the raw/merged value). Order = supermemory.json layout.
 # container_tag is kept raw here: {identity} templates are resolved in initialize(), and
 # _sanitize_tag runs AFTER that resolution. custom_containers, by contrast, are sanitized on load.
-_CONFIG_SPEC: Dict[str, tuple] = {
+_CONFIG_SPEC: dict[str, tuple] = {
     "container_tag": (_DEFAULT_CONTAINER_TAG, lambda v: str(v).strip() or _DEFAULT_CONTAINER_TAG),
     "auto_recall": (True, lambda v: _as_bool(v, True)),
     "auto_capture": (True, lambda v: _as_bool(v, True)),
@@ -127,7 +127,7 @@ def _detect_category(text: str) -> str:
 def _format_relative_time(iso_timestamp: str) -> str:
     """'just now' / '5m ago' / '3h ago' / '2d ago' / '%d %b[ %Y]'; '' when unparseable."""
     def _fmt():
-        dt, now = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00")), datetime.now(timezone.utc)
+        dt, now = datetime.fromisoformat(iso_timestamp), datetime.now(UTC)
         seconds = (now - dt).total_seconds()
         for limit, unit, label in ((1800, 0, "just now"), (3600, 60, "m ago"), (86400, 3600, "h ago"), (604800, 86400, "d ago")):
             if seconds < limit:
@@ -243,7 +243,7 @@ def _format_turn(user: str, assistant: str) -> str:
 
 def _capture_custom_id(session_id: str, now: Optional[datetime] = None) -> str:
     """<session>_<YYYY-MM-DD>_b<0..5>: same id within a 4h window, so the API appends turns to one document."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     return f"{_sanitize_tag(session_id)}_{now:%Y-%m-%d}_b{now.hour // _CAPTURE_BUCKET_HOURS}"
 
 
@@ -319,7 +319,7 @@ class SupermemoryMemoryProvider(MemoryProvider):
         self._container_tag, self._turn_count, self._write_enabled, self._active = _DEFAULT_CONTAINER_TAG, 0, True, False
         self._init_error: Optional[str] = None
         self._prefetch_thread = self._sync_thread = self._write_thread = None  # only _write_thread is ever started
-        self._pending_turns: List[Dict[str, str]] = []  # failed writes, each tagged with its session_id; retried on next write/end/switch/shutdown
+        self._pending_turns: list[dict[str, str]] = []  # failed writes, each tagged with its session_id; retried on next write/end/switch/shutdown
         self._capture_lock = threading.Lock()  # sync_turn (worker) vs on_session_switch/shutdown (caller thread) both touch _pending_turns
         self._apply_config(_load_supermemory_config())
         self._base_url, self._allowed_containers = _DEFAULT_BASE_URL, []  # env var is only consulted in initialize()
@@ -329,7 +329,7 @@ class SupermemoryMemoryProvider(MemoryProvider):
                     "search_mode", "entity_context", "api_timeout", "custom_containers", "custom_container_instructions"):
             setattr(self, f"_{key}", config[key])
         self._base_url, self._enable_custom_containers = _resolve_base_url(config["base_url"]), config["enable_custom_container_tags"]
-        self._allowed_containers: List[str] = [self._container_tag] + list(self._custom_containers)
+        self._allowed_containers: list[str] = [self._container_tag] + list(self._custom_containers)
 
     @property
     def name(self) -> str:
@@ -423,7 +423,7 @@ class SupermemoryMemoryProvider(MemoryProvider):
                                             profile["search_results"], self._max_recall_results)
         return _quietly(_recall, "Supermemory prefetch failed", default="")
 
-    def _write_turns(self, mode: str, new_turn: Optional[Dict[str, str]] = None) -> None:
+    def _write_turns(self, mode: str, new_turn: Optional[dict[str, str]] = None) -> None:
         """Write pending turns (+ ``new_turn``) as one documents.add per session id; custom_id = session + 4h bucket, so the
         API appends deltas. Failed batches stay pending under their own session id, so a switch never re-homes them.
         Retries are at-least-once: a write the API accepted but whose response was lost is re-sent and appended again.
@@ -432,10 +432,10 @@ class SupermemoryMemoryProvider(MemoryProvider):
             turns = self._pending_turns + ([new_turn] if new_turn else [])
             if not turns:
                 return
-            failed: List[Dict[str, str]] = []
+            failed: list[dict[str, str]] = []
             for sid in dict.fromkeys(t["session_id"] for t in turns):
                 batch = [t for t in turns if t["session_id"] == sid]
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 content = "\n\n".join(_format_turn(t["user"], t["assistant"]) for t in batch)
                 metadata = {"type": "conversation", "session_id": sid, "timestamp": now.isoformat()}  # no sm_capture_mode: Hermes policy
                 result = _quietly(lambda: self._client.add_memory(content, metadata=metadata, entity_context=self._entity_context,
@@ -471,7 +471,7 @@ class SupermemoryMemoryProvider(MemoryProvider):
             if len(self._pending_turns) <= _MAX_PENDING_TURNS and \
                     sum(len(t["user"]) + len(t["assistant"]) for t in self._pending_turns) <= _MAX_PENDING_BYTES:
                 return
-            kept: List[Dict[str, str]] = list(self._pending_turns)
+            kept: list[dict[str, str]] = list(self._pending_turns)
             total = sum(len(t["user"]) + len(t["assistant"]) for t in kept)
             while len(kept) > _MAX_PENDING_TURNS or total > _MAX_PENDING_BYTES:
                 if not kept:
@@ -483,7 +483,7 @@ class SupermemoryMemoryProvider(MemoryProvider):
                                len(self._pending_turns) - len(kept))
             self._pending_turns = kept
 
-    def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
+    def on_session_end(self, messages: list[dict[str, Any]]) -> None:
         # Turns were already written as they completed; only retry what failed.
         self._flush_pending("session_end")
 
@@ -511,7 +511,7 @@ class SupermemoryMemoryProvider(MemoryProvider):
             self._write_thread.join(timeout=5.0)
         self._prefetch_thread = self._sync_thread = self._write_thread = None
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         schemas = [orjson.loads(orjson.dumps(base).decode('utf-8')) for base in _BASE_SCHEMAS]  # deep copies
         for schema in schemas if self._enable_custom_containers else ():  # multi-container mode: every tool takes container_tag
             schema["parameters"]["properties"]["container_tag"] = {
@@ -564,7 +564,7 @@ class SupermemoryMemoryProvider(MemoryProvider):
         return _tagged({"profile": "\n\n".join(_profile_sections(profile["static"], profile["dynamic"])),
                        "static_count": len(profile["static"]), "dynamic_count": len(profile["dynamic"])}, tag)
 
-    def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
+    def handle_tool_call(self, tool_name: str, args: dict[str, Any], **kwargs) -> str:
         """Handlers return a tool_error() string for bad args or a dict to JSON-encode; client failures get ``fail_prefix``."""
         if not self._active or not self._client:
             if self._init_error and ("ModuleNotFoundError" in self._init_error

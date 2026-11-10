@@ -48,7 +48,7 @@ intentionally NOT the full historical surface.
 
 from __future__ import annotations
 
-from .bash_core import (  # noqa: F401
+from .bash_core import (
     BashFix,
     _apply_heredoc_operator_move,
     _BashFixScanner,
@@ -60,7 +60,7 @@ from .bash_core import (  # noqa: F401
     bash_compatibility_prelude,
     fix_bash_command,
 )
-from .fallback_data import (  # noqa: F401
+from .fallback_data import (
     _FALLBACK_BODIES,
     _FALLBACK_COMMAND_WRAPPERS,
     _FALLBACKS,

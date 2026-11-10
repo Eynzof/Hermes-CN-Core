@@ -17,7 +17,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from hermes_constants import get_hermes_home  # noqa: F401 — patched by tests
+from hermes_constants import get_hermes_home
 
 from ._oss_providers import EMBEDDER_PROVIDERS, KNOWN_DIMS, LLM_PROVIDERS, SECTION_REGISTRIES, VECTOR_PROVIDERS, validate_oss_config, vector_default_config
 from hermes_cli._subprocess_compat import windows_hide_flags
@@ -272,7 +272,7 @@ def _setup_oss(hermes_home: str, config: dict, flags: dict[str, str]) -> None:
 
 
 def _docker(*args: str, timeout: int, **kwargs) -> subprocess.CompletedProcess:
-    return subprocess.run(["docker", *args], capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL,  # windows-footgun: ok (creationflags on the continuation line)
+    return subprocess.run(["docker", *args], check=False, capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL,  # windows-footgun: ok (creationflags on the continuation line)
                           creationflags=windows_hide_flags(), **kwargs)
 
 
@@ -348,7 +348,7 @@ def _ensure_ollama(models: list[str]) -> bool:
             continue
         print(f"  Pulling '{model}'... (this may take a few minutes)")
         try:
-            subprocess.run([ollama_bin or "ollama", "pull", model], timeout=600, stdin=subprocess.DEVNULL)
+            subprocess.run([ollama_bin or "ollama", "pull", model], check=False, timeout=600, stdin=subprocess.DEVNULL)
             print(f"  ✓ Model '{model}' pulled")
         except Exception as e:
             print(f"  Warning: Could not pull '{model}': {e}\n  Run manually: ollama pull {model}")

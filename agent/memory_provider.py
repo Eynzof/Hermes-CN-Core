@@ -221,7 +221,7 @@ class MemoryProvider(ABC):
         ``env_var`` (explicit secret env var; default auto-generated)."""
         return []
 
-    def get_runtime_status(self) -> Optional[Dict[str, Any]]:
+    def get_runtime_status(self) -> Optional[dict[str, Any]]:
         """Return a read-only backend status snapshot for the dashboard.
 
         Providers that support monitoring return common connection fields plus
@@ -231,7 +231,7 @@ class MemoryProvider(ABC):
         """
         return None
 
-    def save_config(self, values: Dict[str, Any], hermes_home: str) -> None:
+    def save_config(self, values: dict[str, Any], hermes_home: str) -> None:
         """Write non-secret setup ``values`` to the provider's native config. Plugins MUST either
         override this or use only env vars (every schema field carrying ``env_var``)."""
 

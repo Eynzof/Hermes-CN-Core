@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -64,7 +64,7 @@ def _hindsight_get_json(api_url: str, path: str, api_key: str, timeout: float = 
     )
     if api_key:
         request.add_header("Authorization", f"Bearer {api_key}")
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         payload = response.read().decode("utf-8", errors="replace")
     return orjson.loads(payload) if payload else {}
 
@@ -156,7 +156,7 @@ def _maybe_upgrade_client() -> None:
 # per process so every provider on the same API+key shares one /version round trip. A failed probe
 # caches False, so the key must include the credential or one profile's 401 would silently downgrade
 # a sibling profile that shares the URL with a valid key.
-_append_capability_cache: Dict[tuple[str, str | None], bool] = {}
+_append_capability_cache: dict[tuple[str, str | None], bool] = {}
 _append_capability_lock = threading.Lock()
 
 
@@ -169,7 +169,7 @@ def _fetch_hindsight_api_version(api_url: str, api_key: str | None = None,
     url = api_url.rstrip("/") + "/version"
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_key}"} if api_key else {})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = orjson.loads(resp.read().decode("utf-8", errors="replace"))
     except Exception as exc:
         logger.debug("Hindsight /version probe failed for %s: %s", url, exc)
@@ -358,7 +358,7 @@ class HindsightMemoryProvider(MemoryProvider):
     # Each server-side op status poll is a round trip — coarser than the 0.05s queue poll.
     _RETAIN_OP_POLL_INTERVAL_S = 0.5
 
-    def backup_paths(self) -> List[str]:
+    def backup_paths(self) -> list[str]:
         """Legacy shared config + embedded-mode profile env files live under ~/.hindsight."""
         with contextlib.suppress(Exception):
             return [str(Path.home() / ".hindsight")]
@@ -385,7 +385,7 @@ class HindsightMemoryProvider(MemoryProvider):
         self._sync_thread = None  # legacy alias external callers may join; points at the writer
         self._shutting_down = threading.Event()
         self._atexit_registered = False
-        self._retain_tags: List[str] = []
+        self._retain_tags: list[str] = []
         self._tags: list[str] | None = None
         self._retain_source = _DEFAULT_RETAIN_SOURCE
         self._retain_user_prefix, self._retain_assistant_prefix = "User", "Assistant"
@@ -448,7 +448,7 @@ class HindsightMemoryProvider(MemoryProvider):
         return "" if available else _local_runtime_hint(reason).strip()
 
 
-    def get_runtime_status(self) -> Dict[str, Any]:
+    def get_runtime_status(self) -> dict[str, Any]:
         config = _load_config()
         mode = str(config.get("mode") or "cloud")
         api_key = str(
@@ -497,8 +497,8 @@ class HindsightMemoryProvider(MemoryProvider):
             "version": "/version",
             "banks": "/v1/default/banks",
         }
-        payloads: Dict[str, Any] = {}
-        errors: List[str] = []
+        payloads: dict[str, Any] = {}
+        errors: list[str] = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(initial_paths)) as executor:
             futures = {
                 executor.submit(_hindsight_get_json, api_url, path, api_key): label
@@ -527,8 +527,8 @@ class HindsightMemoryProvider(MemoryProvider):
         )
         selected_bank_id = bank_id
 
-        stats: Dict[str, Any] = {}
-        runtime_config: Optional[Dict[str, Any]] = None
+        stats: dict[str, Any] = {}
+        runtime_config: Optional[dict[str, Any]] = None
         if selected_bank_id:
             escaped_bank_id = urllib.parse.quote(selected_bank_id, safe="")
             detail_paths = {
@@ -792,7 +792,7 @@ class HindsightMemoryProvider(MemoryProvider):
         server-side async ops complete (async retain returns on acceptance, not
         durability). False on timeout/shutdown."""
         deadline = None if timeout <= 0 else time.monotonic() + timeout
-        expired = lambda: deadline is not None and time.monotonic() >= deadline  # noqa: E731
+        expired = lambda: deadline is not None and time.monotonic() >= deadline
         while self._retain_queue.unfinished_tasks > 0:
             if self._shutting_down.is_set():
                 return False
@@ -1170,15 +1170,15 @@ class HindsightMemoryProvider(MemoryProvider):
 
     # -- retain ------------------------------------------------------------------
 
-    def _build_turn_messages(self, user_content: str, assistant_content: str) -> List[Dict[str, str]]:
+    def _build_turn_messages(self, user_content: str, assistant_content: str) -> list[dict[str, str]]:
         now = _event_timestamp()  # one turn -> both messages share the event timestamp
         return [{"role": role, "content": f"{prefix}: {content}", "timestamp": now} for role, prefix, content in
                 (("user", self._retain_user_prefix, user_content), ("assistant", self._retain_assistant_prefix, assistant_content))]
 
-    def _build_metadata(self, *, message_count: int, turn_index: int) -> Dict[str, str]:
-        metadata: Dict[str, str] = {
+    def _build_metadata(self, *, message_count: int, turn_index: int) -> dict[str, str]:
+        metadata: dict[str, str] = {
             # UTC write/audit time (event time lives on the item timestamp).
-            "retained_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "retained_at": datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "message_count": str(message_count),
             "turn_index": str(turn_index),
         }
@@ -1188,12 +1188,12 @@ class HindsightMemoryProvider(MemoryProvider):
         return metadata
 
     def _build_retain_kwargs(self, content: str, *, context: str | None = None,
-                             metadata: Dict[str, str] | None = None, tags: List[str] | None = None,
-                             occurred_at: str | None = None, update_mode: str | None = None) -> Dict[str, Any]:
+                             metadata: dict[str, str] | None = None, tags: list[str] | None = None,
+                             occurred_at: str | None = None, update_mode: str | None = None) -> dict[str, Any]:
         """Build one aretain_batch item. The server resolves occurred_start/end (incl.
         relative phrases in content) from the item timestamp: explicit occurred_at
         wins, else the configured event clock."""
-        item: Dict[str, Any] = {
+        item: dict[str, Any] = {
             # See #93568.
             "content": content,
             "metadata": metadata or self._build_metadata(message_count=1, turn_index=self._turn_index),
@@ -1208,7 +1208,7 @@ class HindsightMemoryProvider(MemoryProvider):
                       retain_async: bool | None = None):
         """Dispatch one item via aretain_batch (bank_id/document_id/retain_async are
         call-level args, never item keys)."""
-        kwargs: Dict[str, Any] = {"bank_id": bank_id, "items": [item], "document_id": document_id, "retain_async": retain_async}
+        kwargs: dict[str, Any] = {"bank_id": bank_id, "items": [item], "document_id": document_id, "retain_async": retain_async}
         kwargs = {k: v for k, v in kwargs.items() if v is not None}
         return self._run_hindsight_operation(lambda client: client.aretain_batch(**kwargs))
 
@@ -1292,7 +1292,7 @@ class HindsightMemoryProvider(MemoryProvider):
 
     # -- tools -------------------------------------------------------------------
 
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         return [] if self._memory_mode == "context" else [RETAIN_SCHEMA, RECALL_SCHEMA, REFLECT_SCHEMA]
 
     def _tool_retain(self, args: dict) -> str:
@@ -1450,6 +1450,6 @@ def register(ctx) -> None:
 # Names external plugins imported from this module before the Sep 2026 decomposition.
 # Internal code MUST NOT use these (scripts/check_compat_pointers.py fails CI if it does).
 # The whole block is removed by reverting the commit that added it.
-from dataclasses import dataclass  # noqa: F401,E402
-import importlib  # noqa: F401,E402
+from dataclasses import dataclass
+import importlib
 # ---- END PLUGIN-COMPAT ----

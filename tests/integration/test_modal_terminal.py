@@ -42,8 +42,8 @@ except ImportError:
 parent_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(parent_dir))
 
-from tools.terminal_tool import terminal_tool, check_terminal_requirements, _get_env_config  # noqa: E402
-from tools.terminal_tool_lifecycle import cleanup_vm  # noqa: E402
+from tools.terminal_tool import terminal_tool, check_terminal_requirements, _get_env_config
+from tools.terminal_tool_lifecycle import cleanup_vm
 
 
 def test_modal_requirements():
@@ -207,7 +207,7 @@ def test_environment_isolation():
     
     # Create file in task1
     print("Step 1: Creating file in task1...")
-    result1 = terminal_tool("echo 'task1 data' > /tmp/isolated.txt", task_id=task1)
+    _result1 = terminal_tool("echo 'task1 data' > /tmp/isolated.txt", task_id=task1)
     
     # Try to read from task2 (should not exist)
     print("Step 2: Trying to read file from task2 (should not exist)...")

@@ -15,7 +15,6 @@ from __future__ import annotations
 import orjson
 import subprocess
 import time
-import time
 
 from tests.docker.conftest import docker_exec, docker_exec_sh, start_container, poll_container
 

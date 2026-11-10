@@ -66,7 +66,7 @@ class Offender:
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> str:
-    proc = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8",
+    proc = subprocess.run(["git", *args], cwd=repo, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), text=True, encoding="utf-8",
                           errors="surrogateescape", stdin=subprocess.DEVNULL, timeout=300, check=False)
     if check and proc.returncode != 0:
         raise GitError(f"git {' '.join(args)}: {proc.stderr.strip()}")

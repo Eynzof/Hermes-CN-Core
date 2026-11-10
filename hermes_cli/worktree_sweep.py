@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+
+from hermes_cli._subprocess_compat import windows_hide_flags
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -164,7 +166,7 @@ def _last_activity(path: str) -> float:
         return time.time()  # unverifiable: treat as active
     env["GIT_OPTIONAL_LOCKS"] = "0"
     try:
-        git_dir = subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=path, env=env, capture_output=True,
+        git_dir = subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=path, env=env, capture_output=True, creationflags=windows_hide_flags(),
                                  text=True, encoding="utf-8", errors="surrogateescape", timeout=10, stdin=subprocess.DEVNULL, check=False).stdout.strip()
         status = subprocess.run(["git", "status", "--porcelain", "-z", "-uall", "--no-renames"], cwd=path, env=env,
                                 capture_output=True, text=True, encoding="utf-8", errors="surrogateescape",

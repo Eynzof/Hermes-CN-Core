@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import json
 import orjson
 import logging
@@ -457,7 +458,11 @@ class WebSocketRelayTransport:
         # happy_eyeballs_delay reaches loop.create_connection (default None = serial
         # walk over AAAA then A): race IPv6/IPv4 so a blackholed IPv6 route costs
         # 250 ms, not the connect timeout (#114265).
-        kwargs: dict[str, Any] = {"ping_interval": 30, "ping_timeout": 60, "happy_eyeballs_delay": 0.25}
+        kwargs: dict[str, Any] = {"ping_interval": 30, "ping_timeout": 60}
+        # uvloop does not accept asyncio's Happy Eyeballs keyword. Passing it
+        # through websockets prevents every relay connection on that runtime.
+        if "happy_eyeballs_delay" in inspect.signature(asyncio.get_running_loop().create_connection).parameters:
+            kwargs["happy_eyeballs_delay"] = 0.25
         headers = self._upgrade_headers()
         if headers:
             kwargs["additional_headers"] = headers

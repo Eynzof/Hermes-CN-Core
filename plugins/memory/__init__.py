@@ -130,7 +130,7 @@ def _bundled_module_is_importable(module_name: str) -> bool:
     return _loader.module_is_importable(module_name)
 
 
-def _iter_provider_dirs() -> List[Tuple[str, Path]]:
+def _iter_provider_dirs() -> list[tuple[str, Path]]:
     """``(name, path)`` for bundled, then user-installed, then project-local; first-seen wins."""
     # PyInstaller split layout (P-057): ``--collect-data plugins`` stages each bundled
     # provider's manifest on disk while its code lives in the frozen module graph, so a

@@ -3362,3 +3362,39 @@ dashboard:
 - `ws_orphan_reap_grace_s` — how long a WS-detached session waits before the orphan reaper collects it. Raise alongside the keepalive values if clients reconnect slowly. Periodic session maintenance also completes cleanup for closed sockets and re-arms a missing orphan timer, so a detached chat cannot keep its ownership lease solely because its initial cleanup or timer was lost. Reconnecting cancels that timer; active delegated work and healthy running turns remain protected by the normal orphan-reaper checks. (`HERMES_TUI_WS_ORPHAN_REAP_GRACE_S` remains as an internal override.)
 - `ws_orphan_activity_stale_s` (default `600`) — how long a detached **running** turn's activity clock (the same clock the `agent.turn_liveness` watchdog samples: API waits, stream tokens, tool heartbeats) must be idle before the orphan reaper interrupts it. A client-absent turn that is still actively producing keeps running to completion detached — closing the laptop, backgrounding the mobile app, or a desktop update no longer cancels healthy long turns; only a genuinely wedged turn is interrupted. Set `0` to interrupt at the grace window regardless of activity (old behavior).
 - `startup_orphan_sweep` (default `true`) — the WS-orphan reap timer above is in-process, so a gateway restart (update, crash, systemd) before it fires leaves the session row open forever — phantom "active" work in `/resume` and dashboards. On every gateway boot — both the stdio TUI (`entry.main`) and the desktop/dashboard WebSocket sidecar (`handle_ws`) — rows with source `tui` / `desktop` / `subagent` / `unknown` (a row the token-accounting guard had to materialize itself) whose start time **and** newest message are both older than the session TTL (`HERMES_TUI_SESSION_TTL_S`, default 6 hours) are closed with `end_reason: startup_orphan_reap`. Messaging-platform sessions (Telegram, Discord, …) are never touched, live in-memory sessions (a client that already resumed) are excluded, and swept sessions remain resumable.
+
+
+### CN 分支的上下文、转向和并行任务设置
+
+这些可选项位于 `config.yaml`，以下示例列出默认值：
+
+```yaml
+compact_reminder:
+  enabled: true
+  threshold: 0.70
+  cooldown_steps: 5
+steer:
+  enabled: true
+  max_length: 4000
+swarm:
+  enabled: true
+  max_subagents: 128
+  initial_burst: 5
+  throttle_interval_ms: 700
+  max_concurrency: 3
+  retry_base_ms: 3000
+  recovery_ms: 180000
+  subagent_type: coder
+tts:
+  moss:
+    response_format: mp3
+```
+
+`compact_reminder.enabled` 控制上下文压缩提醒；`threshold` 是触发提醒的上下文占用比例，
+`cooldown_steps` 是两次提醒之间至少间隔的步骤数。`steer.enabled` 控制运行中转向消息，
+`steer.max_length` 限制单条消息的字符数。
+
+`swarm.enabled` 控制并行子任务；`max_subagents` 限制子任务总量，`initial_burst` 是初始放行数量，
+`throttle_interval_ms` 是后续放行间隔，`max_concurrency` 限制同时执行数量。
+`retry_base_ms` 是重试基础等待时间，`recovery_ms` 是恢复等待时间，以上时间单位均为毫秒。
+`subagent_type` 选择子任务类型。`tts.moss.response_format` 选择 Moss 音频格式：`mp3`、`wav` 或 `pcm`。

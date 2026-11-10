@@ -4,7 +4,7 @@
   "parameters": {
     "properties": {
       "char_limit": {
-        "description": "Optional per-page character budget sent back (default 15000). Pages larger than this are head+tail truncated with the full text stored to disk. Raise it when you need more of a long page inline.",
+        "description": "Per-page character budget (default 15000). Larger pages head+tail truncate with the full text stored to disk. Raise for more of a long page inline.",
         "minimum": 2000,
         "type": "integer"
       },

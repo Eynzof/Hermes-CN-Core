@@ -11,7 +11,7 @@ import math
 import re
 import shlex
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -621,7 +621,7 @@ async def get_memory_provider_runtime_status(name: str, profile: Optional[str] =
             "endpoint": "",
             "console_url": "",
             "version": "",
-            "checked_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "checked_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "error": "Runtime monitoring is not supported by this provider.",
             "details": None,
         }

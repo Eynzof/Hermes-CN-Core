@@ -726,7 +726,7 @@ def run_oauth_setup_token() -> Optional[str]:
         raise FileNotFoundError("The 'claude' CLI is not installed. Install it with: npm install -g @anthropic-ai/claude-code")
     # Interactive: stdio inherited so the user can complete the OAuth prompt.  noqa: subprocess-stdin
     try:
-        subprocess.run([claude_path, "setup-token"], check=False)
+        subprocess.run([claude_path, "setup-token"], check=False)  # health: allow HX006 -- interactive OAuth command waits for the user to finish browser sign-in
     except (KeyboardInterrupt, EOFError):
         return None
     creds = read_claude_code_credentials()

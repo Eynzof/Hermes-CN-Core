@@ -492,7 +492,7 @@ def check_web_api_key() -> bool:
     # Plugin path. Discovery must run first: check_fn fires at tool-registration time, before any dispatch.
     try:
         _ensure_web_plugins_loaded()
-        from agent.web_search_registry import get_active_search_provider, get_active_extract_provider
+        from agent.web_search_registry import get_active_search_provider, get_active_extract_provider, list_providers
         for provider in (get_active_search_provider(), get_active_extract_provider()):
             if provider is not None and getattr(provider, "name", None) in _WEB_CHECK_SKIP:
                 # The registry's single-eligible / legacy walk picked a built-in that _get_backend
@@ -503,35 +503,21 @@ def check_web_api_key() -> bool:
                 continue
             if _provider_is_ready(provider):
                 return True
-        return False
-    except Exception as exc:
-        from agent.web_search_registry import (
-            get_active_extract_provider,
-            get_active_search_provider,
-            list_providers,
-        )
-
-        # [CN-fork] The registry-selected provider first: it is the seam the
-        # provider plugins and ``hermes doctor`` patch, and the resolver that
-        # applies the keyless tier.
-        if any(_provider_is_ready(active) for active in (
-                get_active_search_provider(), get_active_extract_provider())):
-            return True
         # Then walk the registry directly. Legacy names are skipped: their keyed
         # availability was already probed above, and re-probing a bundled/free
         # provider (ddgs) through the registry's own ``is_available()`` bypasses
         # the test/setup-time availability shims. Their keyless tier (Exa/Parallel
         # free tier) is covered by the resolvers above.
         for provider in list_providers():
-            if provider.name in _LEGACY_WEB_BACKENDS:
+            if provider.name in _LEGACY_WEB_BACKENDS or provider.name in _WEB_CHECK_SKIP:
                 continue
             if not (provider.supports_search() or provider.supports_extract()):
                 continue
             if _provider_is_ready(provider):
                 return True
         return False
-    except Exception as exc:  # noqa: BLE001 — registry optional; never fatal
-        logger.debug("web provider registry availability check failed: %s", exc)
+    except Exception as exc:
+        logger.debug("web provider registry availability check failed: %s", exc, exc_info=True)
         return False
 
 

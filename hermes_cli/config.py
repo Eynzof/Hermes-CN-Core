@@ -187,7 +187,7 @@ _LOAD_CONFIG_CACHE: dict[str, tuple[Any, ...]] = {}
 # appears the computed signature differs and the entry is recomputed. Lets the
 # loader cache the defaults-only result instead of rebuilding it on every call
 # when config.yaml is absent (fresh install / many test envs / early init).
-_NO_FILE_CACHE_SIG: Tuple[int, int, int, int] = (-1, -1, -1, -1)
+_NO_FILE_CACHE_SIG: tuple[int, int, int, int] = (-1, -1, -1, -1)
 # path -> (mtime_ns, size, ino, ctime_ns, racy digest, raw yaml dict) for read_raw_config() (no defaults merged in).
 _RAW_CONFIG_CACHE: dict[str, tuple[Any, ...]] = {}
 
@@ -533,7 +533,7 @@ def _is_container() -> bool:
         with open("/proc/1/cgroup", "r", encoding="utf-8", errors="replace") as f:
             cgroup_content = f.read()
         return any(marker in cgroup_content for marker in ("docker", "lxc", "kubepods"))
-    except (OSError, IOError):
+    except OSError:
         return False
 
 
@@ -992,42 +992,6 @@ def _coerce_config_version(value: Any) -> int:
     return max(version, 0)
 
 
-def check_config_version(*, raise_on_parse_error: bool = False) -> Tuple[int, int]:
-    """Return ``(current_version, latest_version)`` from the raw on-disk config.
-    Reads the raw file rather than ``load_config()``: the deep-merge would make a file lacking
-    ``_config_version`` inherit the latest version, hiding that the schema was never migrated.
-    Invalid YAML gets a parse warning, not an automatic schema rewrite. Tolerant runtime status
-    callers keep the historical latest/latest fallback for malformed YAML; mutation and explicit
-    validation paths set ``raise_on_parse_error`` so a parse failure or a non-mapping root cannot
-    be mistaken for an up-to-date config."""
-    latest = _coerce_config_version(DEFAULT_CONFIG.get("_config_version", 1)) or 1
-    config_path = get_config_path()
-    if not config_path.exists():
-        return latest, latest
-
-    try:
-        with open(config_path, encoding="utf-8-sig", errors="replace") as f:
-            config = fast_safe_load(f)
-    except Exception as e:
-        _warn_config_parse_failure(config_path, e)
-        if raise_on_parse_error:
-            raise InvalidUserConfigError(
-                f"Cannot inspect {config_path}: config.yaml is not valid YAML ({e})"
-            ) from e
-        return latest, latest
-
-    if config is None:
-        config = {}  # empty file / bare document: valid first-run state
-    if not isinstance(config, dict):
-        # A list/scalar root parses fine but is just as unusable as broken YAML: save_config()
-        # would refuse it later, after .env was already rewritten. Strict callers see it up front.
-        if raise_on_parse_error:
-            raise InvalidUserConfigError(
-                f"Cannot inspect {config_path}: config.yaml top-level value must be "
-                f"a mapping, got {type(config).__name__}"
-            )
-        config = {}
-    return _coerce_config_version(config.get("_config_version")), latest
 
 
 # ---- Config structure validation ----
@@ -1493,7 +1457,7 @@ def _merge_partial_save(raw: dict, override: dict) -> dict:
     return result
 
 
-def _deep_merge(base: dict, override: dict, replace_keys: set = None) -> dict:
+def _deep_merge(base: dict, override: dict, replace_keys: set | None = None) -> dict:
     """Recursively merge *override* into *base*: dict-over-dict recurses (so overriding one leaf
     keeps sibling defaults), and ``None`` over a dict section is ignored.
 
@@ -3155,7 +3119,7 @@ def edit_config():
         return
 
     print(f"Opening {config_path} in {editor}...")
-    subprocess.run([editor, str(config_path)], check=False)
+    subprocess.run([editor, str(config_path)], check=False)  # health: allow HX006 -- foreground editor must wait for the user to save and exit
 
 
 def _default_value_for_key(dotted_key: str):
@@ -4195,10 +4159,10 @@ def ensure_starter_config_file() -> Optional[Path]:
         return None
 
     config_path = get_config_path()
-    if config_path.exists() or os.path.lexists(config_path):
+    if config_exists(config_path) or os.path.lexists(config_path):
         return None
     ensure_hermes_home()
-    if config_path.exists() or os.path.lexists(config_path):
+    if config_exists(config_path) or os.path.lexists(config_path):
         return None
 
     starter = {
@@ -4215,4 +4179,4 @@ def ensure_starter_config_file() -> Optional[Path]:
         extra_content_on_create=_SECURITY_COMMENT + _FALLBACK_COMMENT,
     )
     _secure_file(config_path)
-    return config_path if config_path.exists() else None
+    return config_path if config_exists(config_path) else None

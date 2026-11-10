@@ -207,11 +207,11 @@ class TestGitPullPluginDirAutostash:
         import io
 
         f = repo / "plugin.py"
-        with io.open(f, encoding="utf-8", newline="") as handle:
+        with open(f, encoding="utf-8", newline="") as handle:
             text = handle.read()
         eol = "\r\n" if "\r\n" in text else "\n"
         out = eol.join(new_line if ln.startswith(prefix) else ln for ln in text.splitlines()) + eol
-        with io.open(f, "w", encoding="utf-8", newline="") as handle:
+        with open(f, "w", encoding="utf-8", newline="") as handle:
             handle.write(out)
 
     def test_dirty_checkout_pulls_and_reapplies_local_edit(self, tmp_path):

@@ -86,13 +86,13 @@ _SKIP_DIRS: tuple[str, ...] = (
 )
 
 
-def _skip_regex() -> "re.Pattern[str]":
+def _skip_regex() -> re.Pattern[str]:
     """Regex matching any path segment we want ``compileall`` to skip."""
     joined = "|".join(re.escape(d) for d in _SKIP_DIRS)
     return re.compile(rf"(^|[\\/])(?:{joined})([\\/]|$)")
 
 
-def _pyproject_targets() -> "list[str] | None":
+def _pyproject_targets() -> list[str] | None:
     """Optional target override from ``[tool.hermes.precompile] targets`` in
     pyproject.toml.  Returns a list of dir/file strings, or None when the table
     is absent/malformed (fall back to the hardcoded defaults).  Never raises.
@@ -113,7 +113,7 @@ def _pyproject_targets() -> "list[str] | None":
     return None
 
 
-def _default_target_list() -> "list[str]":
+def _default_target_list() -> list[str]:
     """The effective default targets: the pyproject override if present, else
     the built-in dir targets + top-level single-file modules."""
     override = _pyproject_targets()
@@ -166,10 +166,10 @@ def precompile_all(paths=None, *, quiet: bool = True, workers: int = 0) -> bool:
     return ok
 
 
-def _iter_source_files(paths) -> "list[Path]":
+def _iter_source_files(paths) -> list[Path]:
     """All ``.py`` files under *paths* (dirs walked, skip-dirs pruned)."""
     rx = _skip_regex()
-    out: "list[Path]" = []
+    out: list[Path] = []
     for raw in paths:
         p = Path(raw)
         p = p if p.is_absolute() else (REPO_ROOT / p)
@@ -195,7 +195,7 @@ def source_fingerprint(paths=None) -> str:
     if paths is None:
         paths = _default_target_list()
     h = hashlib.sha1()
-    h.update(f"{sys.implementation.name}:{sys.version_info[:3]}:".encode("utf-8"))
+    h.update(f"{sys.implementation.name}:{sys.version_info[:3]}:".encode())
     parts = []
     for f in _iter_source_files(paths):
         try:
@@ -209,7 +209,7 @@ def source_fingerprint(paths=None) -> str:
     return h.hexdigest()
 
 
-def _default_stamp_path() -> "Path | None":
+def _default_stamp_path() -> Path | None:
     """Profile-aware stamp path under ``<HERMES_HOME>/cache`` (or None)."""
     try:
         from hermes_constants import get_hermes_home
@@ -264,7 +264,7 @@ def precompile_if_needed(
         return "unavailable"
 
 
-def precompile_in_background(paths=None, **kwargs) -> "threading.Thread":
+def precompile_in_background(paths=None, **kwargs) -> threading.Thread:
     """Run :func:`precompile_if_needed` in a daemon thread; return the thread.
 
     Off the hot path by design: the first agent start after an update warms the

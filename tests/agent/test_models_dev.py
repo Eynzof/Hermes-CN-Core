@@ -414,7 +414,7 @@ class TestModelsDevOfflineFirst:
         with patch.object(md, "_disk_cache_age_seconds", return_value=None), \
              patch.object(md, "_load_disk_cache", return_value={}), \
              patch.object(md, "_load_bundled_snapshot", return_value=SAMPLE_REGISTRY):
-            result = fetch_models_dev(force_refresh=True)
+            _result = fetch_models_dev(force_refresh=True)
         mock_get.assert_called_once()
 
     @patch("agent.models_dev.requests.get")

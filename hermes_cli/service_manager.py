@@ -397,37 +397,13 @@ def _seed_supervise_skeleton(svc_dir: Path) -> None:
     ``fix-attrs.d`` rely on.
     """
 
-    def _set_hermes_ownership_and_mode(path: Path, mode: int) -> None:
-        chown = getattr(os, "chown", None)
-        if chown is None:
-            path.chmod(mode)
-            return
-        try:
-            chown(path, _HERMES_UID, _HERMES_GID)
-        except PermissionError:
-            # An unprivileged hermes process cannot chown to the image UID/GID
-            # when this helper is exercised outside the container.  It can,
-            # however, move its own entry to its current primary group.  This
-            # matters on BSD/macOS, where a newly-created entry inherits its
-            # parent's group: chmod would otherwise silently drop setgid when
-            # the caller is not a member of that inherited group.
-            getgid = getattr(os, "getgid", None)
-            if getgid is not None:
-                try:
-                    chown(path, -1, getgid())
-                except PermissionError:
-                    pass
-
-        # chown may clear setuid/setgid bits, so the requested mode must always
-        # be the final metadata operation.
-        path.chmod(mode)
 
     def _mkdir_owned(path: Path, mode: int) -> None:
         if path.exists():
             return
         path.mkdir(parents=False, exist_ok=False)
-        path.chmod(mode)
         _chown_hermes(path)
+        path.chmod(mode)
 
     def _seed(root: Path) -> None:
         # Service-root event/ is the s6-svlisten1 subscription dir, distinct from supervise/event/.
@@ -441,8 +417,8 @@ def _seed_supervise_skeleton(svc_dir: Path) -> None:
         control = supervise / "control"
         if not control.exists():
             os.mkfifo(control, 0o660)
-            control.chmod(0o660)
             _chown_hermes(control)
+            control.chmod(0o660)
 
     _seed(svc_dir)
     log_dir = svc_dir / "log"

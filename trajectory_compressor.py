@@ -87,8 +87,7 @@ def _load_jsonl(path: Path, on_error: Optional[Callable[[int, json.JSONDecodeErr
 
 def _write_jsonl(path: Path, entries) -> None:
     with open(path, 'w', encoding='utf-8') as f:
-        for entry in entries:
-            f.write(orjson.dumps(entry).decode('utf-8') + '\n')
+        f.writelines(orjson.dumps(entry).decode('utf-8') + '\n' for entry in entries)
 
 
 # YAML section -> keys; "yaml_key:attr" when the config attribute name differs.

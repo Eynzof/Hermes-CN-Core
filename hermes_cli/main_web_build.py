@@ -61,14 +61,14 @@ def _prune_dropped_directories(root: Path, recorded_fingerprint: str) -> int:
         return 0
     git = ["git", "-C", str(root)]
     try:
-        known = subprocess.run([*git, "cat-file", "-e", f"{since}^{{commit}}"], capture_output=True,
-                               stdin=subprocess.DEVNULL, timeout=60, creationflags=windows_hide_flags(), check=False)
+        known = subprocess.run([*git, "cat-file", "-e", f"{since}^{{commit}}"], capture_output=True, creationflags=windows_hide_flags(),
+                               stdin=subprocess.DEVNULL, timeout=60, check=False)
         if known.returncode != 0:
             return 0  # the recorded commit is gone (gc, re-clone): nothing to diff against, ever
         listed = subprocess.run(
             [*git, "diff", "--name-only", "--no-renames", "--diff-filter=D", "-z", since, "HEAD"],
-            capture_output=True, stdin=subprocess.DEVNULL, timeout=60,
-            creationflags=windows_hide_flags(), check=False)
+            capture_output=True, creationflags=windows_hide_flags(), stdin=subprocess.DEVNULL, timeout=60,
+            check=False)
     except subprocess.SubprocessError as exc:
         raise OSError(f"could not list the files dropped since {since[:10]}: {exc}") from exc
     if listed.returncode != 0:

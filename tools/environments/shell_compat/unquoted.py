@@ -170,11 +170,7 @@ def _process_unquoted(cmd: str) -> str:
             result.append("`")
             i = bt_end
         elif char == "\\":
-            if i + 1 < length and cmd[i + 1] in _BASH_METACHARACTERS:
-                result.append("\\")
-                result.append(cmd[i + 1])
-                i += 2
-            elif nul and _in_nul(i, nul):
+            if i + 1 < length and cmd[i + 1] in _BASH_METACHARACTERS or nul and _in_nul(i, nul):
                 result.append("\\")
                 result.append(cmd[i + 1])
                 i += 2
@@ -215,8 +211,7 @@ def _dq_region(cmd: str, dq_start: int, dq_end: int, nul) -> str:
         m2 = _UNQUOTED_SPECIAL_RE.search(cmd, j, dq_end)
         if m2:
             nxt2 = m2.start()
-            if nxt2 > j:
-                j = nxt2
+            j = max(j, nxt2)
         else:
             j = dq_end
             break

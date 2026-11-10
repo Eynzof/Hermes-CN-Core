@@ -209,3 +209,25 @@ export function groupActivityTone(kind: GroupActivityKind) {
 
   return 'text-(--ui-text-tertiary)'
 }
+
+/** Prefer a member's unresolved failure after a run settles. */
+export function groupSummaryActivity(activityEvents: GroupActivityEntry[], running: boolean) {
+  const latestActivity = activityEvents.at(-1) ?? null
+  // A later "settled" event must not hide a member that failed to answer.
+  // Successful completion for that member clears its unresolved warning.
+  const unresolvedFailures = new Map<string, GroupActivityEntry>()
+
+  for (const event of activityEvents) {
+    const key = event.member || ''
+
+    if (event.kind === 'failed' || event.kind === 'timed-out') {
+      unresolvedFailures.delete(key)
+      unresolvedFailures.set(key, event)
+    } else if (event.kind === 'replied' || event.kind === 'passed' || event.kind === 'delivered') {
+      unresolvedFailures.delete(key)
+    }
+  }
+
+  return !running && unresolvedFailures.size ? [...unresolvedFailures.values()].at(-1)! : latestActivity
+
+}

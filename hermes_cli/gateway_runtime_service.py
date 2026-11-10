@@ -66,9 +66,9 @@ class ExistingService:
 
 
 def _run(argv: list[str] | tuple[str, ...], deadline: float, *, encoding: str | None = "utf-8"):
-    return subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True,
+    return subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, creationflags=windows_hide_flags(),
                           text=encoding is not None, encoding=encoding, errors="strict" if encoding else None,
-                          creationflags=windows_hide_flags(), timeout=remaining(deadline), check=False)
+                          timeout=remaining(deadline), check=False)
 
 
 def _verify_binding(verify, *args, **kwargs):

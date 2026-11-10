@@ -151,12 +151,12 @@ def classify_command(
     name: Optional[str],
     *,
     raw: Optional[str] = None,
-    fallbacks: Dict[str, str] = _FALLBACKS,
-    fallback_command_wrappers: Dict[str, str] = _FALLBACK_COMMAND_WRAPPERS,
-    command_wrappers: FrozenSet[str] = _COMMAND_WRAPPERS,
-    shell_wrappers: FrozenSet[str] = _SHELL_WRAPPERS,
-    reparse_builtins: Dict[str, int] = _REPARSE_BUILTINS,
-    unsupported: Dict[str, str] = _UNSUPPORTED_BODIES,
+    fallbacks: dict[str, str] = _FALLBACKS,
+    fallback_command_wrappers: dict[str, str] = _FALLBACK_COMMAND_WRAPPERS,
+    command_wrappers: frozenset[str] = _COMMAND_WRAPPERS,
+    shell_wrappers: frozenset[str] = _SHELL_WRAPPERS,
+    reparse_builtins: dict[str, int] = _REPARSE_BUILTINS,
+    unsupported: dict[str, str] = _UNSUPPORTED_BODIES,
 ) -> CommandClass:
     """Classify a decoded command word *name* (plan §3.4).
 
@@ -253,9 +253,9 @@ def gnu_alias_target(name: str) -> Optional[str]:
 def fallback_registration(
     name: Optional[str],
     *,
-    fallbacks: Dict[str, str] = _FALLBACKS,
-    bodies: Dict[str, str] = _FALLBACK_BODIES,
-    command_wrapper_kinds: Dict[str, str] = _FALLBACK_COMMAND_WRAPPERS,
+    fallbacks: dict[str, str] = _FALLBACKS,
+    bodies: dict[str, str] = _FALLBACK_BODIES,
+    command_wrapper_kinds: dict[str, str] = _FALLBACK_COMMAND_WRAPPERS,
 ) -> Optional[FallbackRecord]:
     """Return the guarded-definition record for the command-word name *name*.
 
@@ -278,7 +278,7 @@ def fallback_registration(
 def unsupported_record(
     name: Optional[str],
     *,
-    unsupported: Dict[str, str] = _UNSUPPORTED_BODIES,
+    unsupported: dict[str, str] = _UNSUPPORTED_BODIES,
 ) -> Optional[str]:
     """Return the refusal reason when the command-word name is unsupported.
 
@@ -329,8 +329,8 @@ ACTION_COMMAND = "command"
 def wrapper_kind_of(
     wrapper_key: str,
     *,
-    command_wrappers: FrozenSet[str] = _COMMAND_WRAPPERS,
-    fallback_wrapper_kinds: Dict[str, str] = _FALLBACK_COMMAND_WRAPPERS,
+    command_wrappers: frozenset[str] = _COMMAND_WRAPPERS,
+    fallback_wrapper_kinds: dict[str, str] = _FALLBACK_COMMAND_WRAPPERS,
 ) -> Optional[str]:
     """Return the wrapper state ``kind`` a command word opens, or ``None``.
 
@@ -349,7 +349,7 @@ def wrapper_kind_of(
 
 
 def wrapper_operands(
-    kind: str, operand_counts: Dict[str, int] = _WRAPPER_OPERAND_COUNTS
+    kind: str, operand_counts: dict[str, int] = _WRAPPER_OPERAND_COUNTS
 ) -> int:
     """Plain-operand count the wrapper consumes before its command word."""
     return operand_counts.get(kind, 0)
@@ -496,7 +496,7 @@ def classify_pattern_option(family: str, word: str) -> Optional[str]:
 
 def pattern_operand_path_ok(
     family: str, word: str, pending: Optional[str], bare: int
-) -> Tuple[bool, Optional[str], int]:
+) -> tuple[bool, Optional[str], int]:
     """One step of the pattern-consumer state machine.
 
     Returns ``(path_rewrite_allowed, new_pending, new_bare)`` for the argument
@@ -583,7 +583,7 @@ def eval_concat_fallback_name(operand_value: Optional[str]) -> Optional[str]:
 
 def shell_c_script_range(
     reader: Any, source: str, start: int, end: int
-) -> Optional[Tuple[int, int]]:
+) -> Optional[tuple[int, int]]:
     r"""Locate the inline ``-c`` script operand of a shell word.
 
     Byte-for-byte port of ``_BashFixScanner._fix_shell_c_script_in_place``'s
@@ -698,7 +698,7 @@ class UnwrapDecision:
 
     action: str
     keep_wrapper: bool = False
-    script_span: Optional[Tuple[int, int]] = None
+    script_span: Optional[tuple[int, int]] = None
     harvest: bool = False
     scan_index: Optional[int] = None
 
@@ -854,7 +854,7 @@ def unwrap_decision(  # health: allow CC -- faithful port of the upstream `shell
 # ── fallback prefix / export generation ───────────────────────────────────────
 
 
-def fallback_prefix(names: List[str]) -> str:
+def fallback_prefix(names: list[str]) -> str:
     """Generate the guarded-definition + conditional-export prefix.
 
     Byte-for-byte port of ``_BashFixScanner.fix``'s prefix construction:
@@ -876,7 +876,7 @@ def fallback_prefix(names: List[str]) -> str:
     return definitions + "\n" + exports + "\n"
 
 
-def export_lines(names: List[str]) -> Tuple[str, ...]:
+def export_lines(names: list[str]) -> tuple[str, ...]:
     """The conditional ``export -f`` lines for the registered fallback names."""
     return tuple(
         f"if declare -F {name} >/dev/null; then export -f {name}; fi"
@@ -887,7 +887,7 @@ def export_lines(names: List[str]) -> Tuple[str, ...]:
 # ── IR wrappers (pure functions of (node, source)) ───────────────────────────
 
 
-def classify_command_node(command: "CommandNode", source: str) -> CommandClass:
+def classify_command_node(command: CommandNode, source: str) -> CommandClass:
     """Classify a parsed command's command word (plan §3.4 over IR)."""
     cw = command.command_word
     if cw is None:
@@ -896,14 +896,14 @@ def classify_command_node(command: "CommandNode", source: str) -> CommandClass:
     return classify_command(cw.literal_value, raw=raw)
 
 
-def _command_value(command: "CommandNode") -> Optional[str]:
+def _command_value(command: CommandNode) -> Optional[str]:
     cw = command.command_word
     return cw.literal_value if cw is not None else None
 
 
 
 
-def _command_operands(command: "CommandNode", source: str) -> list:
+def _command_operands(command: CommandNode, source: str) -> list:
     """The command's operand words in the scanner's source-word order.
 
     The IR records a whole-quoted runtime-reparsed operand as an
@@ -924,7 +924,7 @@ def _command_operands(command: "CommandNode", source: str) -> list:
 
 
 def reparse_operand_index(
-    command: "CommandNode", source: str
+    command: CommandNode, source: str
 ) -> Optional[int]:
     """Index into the command's scanner word stream of the runtime script word.
 
@@ -1007,7 +1007,7 @@ def reparse_operand_index(
 
 
 def _shell_c_index_by_scan(
-    command: "CommandNode", source: str, words: list, after: int = -1
+    command: CommandNode, source: str, words: list, after: int = -1
 ) -> Optional[int]:
     """Run the LIVE in-place ``-c`` scan over the operand region and map the
     returned script span back onto the scanner word stream ``words``.
@@ -1040,7 +1040,7 @@ def _shell_c_index_by_scan(
 
 
 def _embedded_script_index(
-    command: "CommandNode", source: str, words: list
+    command: CommandNode, source: str, words: list
 ) -> Optional[int]:
     """Index of the command's first embedded script owner word in ``words``.
 
@@ -1067,7 +1067,7 @@ def _decode_word(raw: str) -> Optional[str]:
 
 
 def unwrap_decision_for_command(
-    command: "CommandNode", source: str
+    command: CommandNode, source: str
 ) -> UnwrapDecision:
     """IR wrapper of :func:`unwrap_decision` for a parsed shell command.
 
@@ -1093,7 +1093,7 @@ def unwrap_decision_for_command(
     )
 
 
-def wrapper_state_for_command(command: "CommandNode") -> Optional[WrapperState]:
+def wrapper_state_for_command(command: CommandNode) -> Optional[WrapperState]:
     """Initial wrapper state a parsed command opens, or ``None``.
 
     Uses the decoded command-word value against the fallback-wrapper table

@@ -84,18 +84,19 @@ export function Harness({
   activeSessionId?: null | string
   createBackendSessionForSend?: (preview?: null | string) => Promise<null | string>
 }) {
+  const defaultStoredSessionId = storedSessionId === undefined ? RUNTIME_SESSION_ID : storedSessionId
+  const defaultRuntimeSessionId = activeSessionId === undefined ? RUNTIME_SESSION_ID : activeSessionId
+
   const localActiveSessionIdRef = useRef<string | null>(
-    activeSessionId === undefined ? RUNTIME_SESSION_ID : activeSessionId
+    defaultRuntimeSessionId
   )
 
   const activeSessionIdRef = activeSessionIdRefProp ?? localActiveSessionIdRef
 
   const selectedStoredSessionIdRef: MutableRefObject<string | null> = selectedStoredSessionIdRefProp ?? {
-    current: storedSessionId === undefined ? RUNTIME_SESSION_ID : storedSessionId
+    current: defaultStoredSessionId
   }
 
-  const defaultStoredSessionId = storedSessionId === undefined ? RUNTIME_SESSION_ID : storedSessionId
-  const defaultRuntimeSessionId = activeSessionId === undefined ? RUNTIME_SESSION_ID : activeSessionId
 
   const runtimeIdByStoredSessionIdRef: MutableRefObject<Map<string, string>> = runtimeIdByStoredSessionIdRefProp ?? {
     current:
@@ -117,7 +118,7 @@ export function Harness({
   } as never)
 
   const actions = usePromptActions({
-    activeSessionId: activeSessionId === undefined ? RUNTIME_SESSION_ID : activeSessionId,
+    activeSessionId: defaultRuntimeSessionId,
     activeSessionIdRef,
     branchCurrentSession: async () => true,
     busyRef: localBusyRef,

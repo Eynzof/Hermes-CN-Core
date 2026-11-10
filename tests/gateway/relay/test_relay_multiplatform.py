@@ -33,7 +33,7 @@ def _clean_env(monkeypatch):
         "GATEWAY_RELAY_BOT_IDS",
     ):
         monkeypatch.delenv(k, raising=False)
-    monkeypatch.setattr("gateway.run._load_gateway_config", dict, raising=False)
+    monkeypatch.setattr("gateway.relay._load_cfg", dict, raising=False)
 
 
 # ─────────────────────────── identity parsing ───────────────────────────

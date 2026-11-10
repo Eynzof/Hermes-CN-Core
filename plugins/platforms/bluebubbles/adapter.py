@@ -5,11 +5,11 @@ import asyncio
 import json
 import logging
 import os
-from agent.re_compat import re
+import re
 import uuid
 from collections import OrderedDict
 from contextlib import suppress
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, quote
@@ -94,7 +94,7 @@ def _closed_ext(mime: str, overrides: dict[str, str], fallback: str) -> str:
 
 
 def _temp_guid() -> str:
-    return f"temp-{datetime.now(tz=timezone.utc).timestamp()}"
+    return f"temp-{datetime.now(tz=UTC).timestamp()}"
 
 
 def _ok():

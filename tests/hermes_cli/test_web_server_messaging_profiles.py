@@ -327,7 +327,7 @@ class TestMessagingDiskCredentials:
         self, client, monkeypatch
     ):
         from types import SimpleNamespace
-        import hermes_cli.web_server as web_server
+        from hermes_cli import web_server
 
         entry = {
             "id": "telegram", "name": "Test", "description": "",

@@ -187,7 +187,7 @@ def _preview_is_default_vault_target(agent, task_id: str) -> bool:
     names = getattr(agent, "valid_tool_names", ()) or ()
     preview = "drive_preview" in names
     if not preview and "tool_call" in names:
-        from agent.tool_executor import _tool_search_scoped_names
+        from agent.tool_executor_tool_search import _tool_search_scoped_names
 
         preview = "drive_preview" in _tool_search_scoped_names(agent)
     if not preview:

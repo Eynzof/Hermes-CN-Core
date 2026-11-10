@@ -6,7 +6,7 @@ Ported from WideLee's qqbot-agent-sdk v1.2.2 (authorship via Co-authored-by)."""
 
 from __future__ import annotations
 
-from agent.re_compat import re
+import re
 from dataclasses import dataclass, field, fields, is_dataclass
 from typing import Any, Dict, List, Optional
 

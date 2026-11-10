@@ -25,6 +25,7 @@ def isolated_home(tmp_path, monkeypatch):
     import importlib
     from hermes_cli import model_catalog
     importlib.reload(model_catalog)
+    monkeypatch.setattr(model_catalog, "_bundled_catalog_candidates", list)
     yield home
     model_catalog.reset_cache()
 
@@ -207,17 +208,43 @@ class TestFetchFailure:
                 reset_hermes_home_override(token)
         assert "http://override" in calls, "profile beta skipped the override after alpha's failure"
 
-    def test_dead_override_on_the_manifest_url_keeps_the_fallback_chain(self, isolated_home):
-        """An override pointing at the (dead) main URL must not put the manifest's working
-        fallback URL into the override's backoff."""
+    def test_dead_override_on_the_manifest_url_does_not_skip_the_manifest(self, isolated_home):
+        """An override failure must not suppress the main manifest request to the same URL."""
         from hermes_cli import model_catalog
         cfg = {"enabled": True, "url": "http://master", "ttl_hours": 24.0,
                "providers": {"openrouter": {"url": "http://master"}}}
         with patch.object(model_catalog, "_load_catalog_config", return_value=cfg), \
                 patch.object(model_catalog, "_fetch_manifest",
-                             side_effect=lambda url, timeout: None if url == "http://master" else _valid_manifest()):
+                             side_effect=[None, _valid_manifest()]) as fetch:
             models = model_catalog.get_curated_openrouter_models()
         assert models == [(m["id"], m["description"]) for m in _valid_manifest()["providers"]["openrouter"]["models"]]
+        assert [call.args[0] for call in fetch.call_args_list] == ["http://master", "http://master"]
+
+    def test_bundled_fallback_preserves_failed_override_backoff(self, isolated_home, tmp_path, monkeypatch):
+        from hermes_cli import model_catalog
+        manifest = _valid_manifest()
+        bundled = tmp_path / "catalog.json"
+        bundled.write_bytes(orjson.dumps(manifest))
+        monkeypatch.setattr(model_catalog, "_bundled_catalog_candidates", lambda: [bundled])
+        cfg = {"enabled": True, "url": "http://master", "ttl_hours": 24.0,
+               "providers": {"openrouter": {"url": "http://override"}}}
+        with patch.object(model_catalog, "_load_catalog_config", return_value=cfg), \
+                patch.object(model_catalog, "_fetch_manifest", return_value=None) as fetch:
+            first = model_catalog.get_curated_openrouter_models()
+            second = model_catalog.get_curated_openrouter_models()
+        assert first == second == [(m["id"], m["description"]) for m in manifest["providers"]["openrouter"]["models"]]
+        assert [call.args[0] for call in fetch.call_args_list] == ["http://override", "http://master"]
+
+    def test_corrupt_disk_cache_uses_bundled_fallback(self, isolated_home, tmp_path, monkeypatch):
+        from hermes_cli import model_catalog
+        cache = model_catalog._cache_path()
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text("{broken", encoding="utf-8")
+        bundled = tmp_path / "catalog.json"
+        bundled.write_bytes(orjson.dumps(_valid_manifest()))
+        monkeypatch.setattr(model_catalog, "_bundled_catalog_candidates", lambda: [bundled])
+        with patch.object(model_catalog, "_fetch_manifest", return_value=None):
+            assert model_catalog.get_catalog() == _valid_manifest()
 
     def test_unreachable_provider_override_is_not_refetched_on_every_call(self, isolated_home):
         from hermes_cli import model_catalog

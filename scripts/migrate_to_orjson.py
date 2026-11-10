@@ -129,7 +129,7 @@ def _find_json_import_name(source: str) -> str | None:
 def _transform_dumps_args(match: re.Match) -> str:
     """Transform keyword arguments inside a json.dumps() call to orjson equivalents."""
     full = match.group(0)
-    prefix = match.group(1) if match.lastgroup else ''
+    _prefix = match.group(1) if match.lastgroup else ''
     
     # We'll use a multi-step approach:
     # 1. Extract the arguments inside dumps()
@@ -617,7 +617,7 @@ def main():
             continue
         
         try:
-            was_changed, new_content = migrate_file(filepath, dry_run=dry_run)
+            was_changed, _new_content = migrate_file(filepath, dry_run=dry_run)
         except Exception as e:
             print(f"  ERROR processing {filepath}: {e}")
             continue

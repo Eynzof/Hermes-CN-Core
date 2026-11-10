@@ -28,17 +28,8 @@ _IS_WINDOWS = is_windows()
 _IS_LINUX = is_linux()
 # [CN-fork] P-058: the Windows background spawn follows the resolved shell
 # (git-bash → pwsh → powershell), so the shell-aware wrapper builders are imported here.
-from tools.environments.local import (
-    _append_dropped_path_entries,
-    _build_bash_background_script,
-    _build_powershell_background_script,
-    _find_shell,
-    _resolve_safe_cwd,
-    _resolve_shell,
-    _sanitize_subprocess_env,
-    _terminal_env,
-    _windows_to_msys_path,
-)
+from tools.environments.local import _append_dropped_path_entries, _find_shell, _resolve_safe_cwd, _resolve_shell, _sanitize_subprocess_env, _terminal_env, _windows_to_msys_path
+from tools.environments.local_background import _build_bash_background_script, _build_powershell_background_script
 from hermes_cli._subprocess_compat import windows_hide_flags
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, NamedTuple, Optional
@@ -2135,7 +2126,7 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
     def _status_head(session: ProcessSession) -> dict:
         return {"session_id": session.id, "command": session.command, "status": "exited" if session.exited else "running"}
 
-    def poll(self, session_id: str, offset: int = None) -> dict:
+    def poll(self, session_id: str, offset: int | None = None) -> dict:
         """Check status and get new output for a background process.
 
         [CN-fork] P-061: ``offset`` (optional line number) turns poll into a
@@ -2239,7 +2230,7 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
         return result
 
     def wait(
-        self, session_id: str, timeout: int = None, *,
+        self, session_id: str, timeout: int | None = None, *,
         pattern: str | None = None, inactivity_timeout: int | None = None, since_chars: int = 0,
     ) -> dict:
         """Block until the process exits, the timeout elapses, the user interrupts, or a

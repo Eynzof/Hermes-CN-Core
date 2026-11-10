@@ -41,7 +41,7 @@ def test_idle_memory_footprint(timing_context):
     # at call time (run_agent's PLUGIN-COMPAT forwarder was retired upstream, #126164).
     with patch("agent.process_bootstrap.OpenAI") as mock_cls:
         mock_cls.return_value = MagicMock()
-        agent = AIAgent(
+        _agent = AIAgent(
             base_url="http://localhost:9999/v1", api_key="sk-test-mock-key",
             model="test/mock-model", max_iterations=5, quiet_mode=True,
             skip_context_files=True, skip_memory=True,
@@ -114,7 +114,7 @@ def test_memory_baseline(timing_context):
 
     with patch("agent.process_bootstrap.OpenAI") as mock_cls:
         mock_cls.return_value = MagicMock()
-        agent = AIAgent(
+        _agent = AIAgent(
             base_url="http://localhost:9999/v1", api_key="sk-test-mock-key",
             model="test/mock-model", max_iterations=5, quiet_mode=True,
             skip_context_files=True, skip_memory=True,

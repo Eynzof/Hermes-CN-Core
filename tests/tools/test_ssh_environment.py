@@ -432,8 +432,8 @@ class TestRealSSHBackend:
         home = _run("pwd")["output"].strip()
         path = f"{home}/notes/remote.txt"
         content = "alpha\nbeta: ünïcödé ✓\n"
-        wrote = json.loads(write_file_tool(path, content, task_id="ssh_test"))
+        wrote = orjson.loads(write_file_tool(path, content, task_id="ssh_test"))
         assert "error" not in wrote, wrote
         assert _run(f"wc -c < {shlex.quote(path)}")["output"].strip() == str(len(content.encode()))
-        read = json.loads(read_file_tool(path, task_id="ssh_test"))
+        read = orjson.loads(read_file_tool(path, task_id="ssh_test"))
         assert "beta: ünïcödé ✓" in read["content"], read

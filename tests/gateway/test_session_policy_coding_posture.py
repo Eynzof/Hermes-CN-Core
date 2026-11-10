@@ -4,6 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _isolate_plugin_toolsets(monkeypatch):
+    """This suite exercises core toolset policy, independently of installed plugins."""
+    monkeypatch.setattr("hermes_cli.tools_config._get_plugin_toolset_keys", lambda: set())
+
 FOCUS = {'agent': {'coding_context': 'focus'}, 'platform_toolsets': {'cli': ['terminal'], 'acp': ['terminal']}}
 
 

@@ -65,7 +65,7 @@ class TestHashPerformance:
             for chunk in [MEDIUM_DATA[i:i+8192] for i in range(0, len(MEDIUM_DATA), 8192)]:
                 h.update(chunk)
             return h.hexdigest()
-        result = benchmark(inc_hash)
+        _result = benchmark(inc_hash)
 
     def test_hashlib_sha256_incremental_file(self, benchmark):
         """Benchmark incremental hashlib.sha256 (simulating file checksum)."""
@@ -74,4 +74,4 @@ class TestHashPerformance:
             for chunk in [MEDIUM_DATA[i:i+8192] for i in range(0, len(MEDIUM_DATA), 8192)]:
                 h.update(chunk)
             return h.hexdigest()
-        result = benchmark(inc_hash)
+        _result = benchmark(inc_hash)

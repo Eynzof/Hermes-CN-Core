@@ -15,7 +15,8 @@ from tools.environments.windows_env import refresh_env_from_registry
 
 from tools.rtk_provision import _find_rtk
 
-from hermes_constants import agent_browser_runnable, find_node_executable, get_managed_tools_dir
+from hermes_constants import find_node_executable, get_managed_tools_dir
+from hermes_cli.browser_runtime import chromium_executable
 
 from tools.environments.local import hermes_subprocess_env
 
@@ -25,8 +26,7 @@ _DEP_CHECKS = {
     # find_node_executable() rather than a bare which(): $HERMES_HOME/node is not on PATH, so
     # which() would report Node missing on a managed install and trigger a redundant re-install.
     "node": lambda: find_node_executable("node") is not None,
-    "browser": lambda: (agent_browser_runnable(shutil.which("agent-browser")) or _has_system_browser()
-                        or _has_hermes_agent_browser() or _has_npx_agent_browser()),
+    "browser": lambda: chromium_executable() is not None,
     "ripgrep": lambda: _find_rg() is not None and _has_ripgrepy(),
     "rtk": lambda: _find_rtk() is not None,
     "ffmpeg": lambda: shutil.which("ffmpeg") is not None,
@@ -39,29 +39,8 @@ _DEP_DESCRIPTIONS = {"node": "Node.js (required for browser tools and TUI)",
                      "rtk": "rtk reasoning toolkit (token reduction for terminal output)", "ffmpeg": "ffmpeg (TTS voice messages)", "coreutils": "Microsoft Coreutils (POSIX CLI tools on Windows)"}
 
 
-def _has_system_browser() -> bool:
-    names = ("chrome", "msedge", "chromium") if _IS_WINDOWS else (
-        "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome")
-    return any(shutil.which(name) for name in names)
 
 
-def _has_npx_agent_browser() -> bool:
-    """agent-browser can live outside the PATH/managed-dir probes above: PM installs it into its
-    private prefix and may acquire it lazily at execution time, invisible to ``shutil.which``.
-    Mirror tools.browser_tool_install.check_browser_requirements by asking the SAME readiness probe
-    (``_find_agent_browser(validate=False)``) so this check can't diverge from what browser tools
-    actually find. That probe never executes or installs anything and never treats a bare ``npx``
-    as a browser install, and on Termux it deliberately ignores PM (upstream dropped the npx
-    fallback; Termux still installs agent-browser explicitly).
-
-    See #43564.
-    """
-    try:
-        from tools.browser_tool_install import _find_agent_browser
-        _find_agent_browser(validate=False)
-    except Exception:
-        return False
-    return True
 
 
 def _has_ripgrepy() -> bool:
@@ -127,17 +106,6 @@ def _find_rg() -> str | None:
     return None
 
 
-def _has_hermes_agent_browser() -> bool:
-    from hermes_constants import get_hermes_home  # late import: tests patch hermes_constants.get_hermes_home
-    home = get_hermes_home()
-    if _IS_WINDOWS:  # npm -g --prefix puts .cmd shims directly in the prefix dir
-        return (home / "node" / "agent-browser.cmd").is_file()
-    # install.sh installs globally into $HERMES_HOME/node/bin/ via npm -g --prefix
-    # Also check legacy node_modules/.bin/ path for git-clone installs.
-    return (
-        (home / "node" / "bin" / "agent-browser").is_file()
-        or (home / "node_modules" / ".bin" / "agent-browser").is_file()
-    )
 
 
 def _check_coreutils() -> bool:
@@ -209,4 +177,4 @@ def ensure_dependency(dep: str, interactive: bool = True) -> bool:
     else:
         cmd = ["bash", str(script), "--ensure", dep]
     run_env = {**hermes_subprocess_env(inherit_credentials=False), "IS_INTERACTIVE": "false"}
-    return subprocess.run(cmd, env=run_env).returncode == 0 and check()
+    return subprocess.run(cmd, check=False, env=run_env, timeout=1800).returncode == 0 and check()

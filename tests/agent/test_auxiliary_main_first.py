@@ -529,7 +529,7 @@ class TestResolveVisionMainFirst:
 
             from agent.auxiliary_client import resolve_vision_provider_client
 
-            provider, client, model = resolve_vision_provider_client()
+            provider, _client, _model = resolve_vision_provider_client()
 
         # Explicit "nous" override → uses strict backend, NOT main model path
         assert provider == "nous"
@@ -551,7 +551,7 @@ class TestResolveVisionCustomProvider:
     ``set_runtime_main()`` recorded for the turn.
     """
 
-    def test_custom_main_forwards_runtime_endpoint(self):
+    def test_custom_main_forwards_runtime_endpoint(self, monkeypatch):
         """custom main with recorded runtime endpoint → Step 1 builds a client."""
         import agent.auxiliary_client as aux
 
@@ -589,7 +589,7 @@ class TestResolveVisionCustomProvider:
         assert kwargs.get("explicit_api_key") == "sk-runtime-key"
         assert kwargs.get("is_vision") is True
 
-    def test_custom_prefixed_main_forwards_runtime_endpoint(self):
+    def test_custom_prefixed_main_forwards_runtime_endpoint(self, monkeypatch):
         """A ``custom:<name>`` provider id also forwards the runtime endpoint."""
         import agent.auxiliary_client as aux
 

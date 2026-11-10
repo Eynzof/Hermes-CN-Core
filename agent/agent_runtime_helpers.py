@@ -2846,7 +2846,7 @@ def _drop_invalid_roles(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [m for m in messages if m.get("role") in valid]
 
 
-def _drop_empty_content_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _drop_empty_content_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """[CN-fork] P-024: drop empty-content ``assistant``/``user``/``function`` turns that carry no
     payload at all.
 
@@ -2867,7 +2867,7 @@ def _drop_empty_content_messages(messages: List[Dict[str, Any]]) -> List[Dict[st
     return [m for m in messages if id(m) not in dropped_ids]
 
 
-def _drop_empty_tool_calls_arrays(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _drop_empty_tool_calls_arrays(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Strict providers 400 on ``tool_calls: []``; normalize on shallow copies so history stays byte-stable."""
     # --- Drop empty / malformed tool_calls arrays on assistant messages --- An assistant message carrying
     # ``tool_calls: []`` (an empty array) — or a non-list value under the key — is semantically identical to

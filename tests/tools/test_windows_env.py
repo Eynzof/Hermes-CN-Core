@@ -90,7 +90,7 @@ class TestReadRegistryValue:
         with patch(
             "tools.environments.windows_env.winreg.OpenKey",
             return_value=mock_key,
-        ) as mock_open:
+        ) as _mock_open:
             with patch(
                 "tools.environments.windows_env.winreg.QueryValueEx",
                 return_value=(r"C:\Windows;C:\System32", 1),

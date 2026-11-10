@@ -395,8 +395,8 @@ def _safe_upload_filename(filename: str) -> str:
     return name[:180]
 
 
-def _parse_content_disposition(value: str) -> Dict[str, str]:
-    result: Dict[str, str] = {}
+def _parse_content_disposition(value: str) -> dict[str, str]:
+    result: dict[str, str] = {}
     for index, part in enumerate(value.split(";")):
         part = part.strip()
         if not part:
@@ -414,22 +414,22 @@ def _parse_content_disposition(value: str) -> Dict[str, str]:
     return result
 
 
-def _parse_multipart_form(content_type: str, body: bytes) -> tuple[Dict[str, str], Dict[str, dict]]:
+def _parse_multipart_form(content_type: str, body: bytes) -> tuple[dict[str, str], dict[str, dict]]:
     """Small multipart/form-data parser for dashboard uploads.
 
     FastAPI's UploadFile route requires python-multipart at import time. Hermes's
     dashboard keeps that dependency optional, so this parser handles the single
     upload form used by the UI without adding a new runtime requirement.
     """
-    match = re.search(r'boundary=(?:"([^"]+)"|([^;]+))', content_type, re.I)
+    match = re.search(r'boundary=(?:"([^"]+)"|([^;]+))', content_type, re.IGNORECASE)
     if not match:
         raise ValueError("multipart boundary missing")
     boundary = (match.group(1) or match.group(2) or "").encode("utf-8")
     if not boundary:
         raise ValueError("multipart boundary missing")
 
-    fields: Dict[str, str] = {}
-    files: Dict[str, dict] = {}
+    fields: dict[str, str] = {}
+    files: dict[str, dict] = {}
     delimiter = b"--" + boundary
 
     for raw_part in body.split(delimiter):
@@ -447,7 +447,7 @@ def _parse_multipart_form(content_type: str, body: bytes) -> tuple[Dict[str, str
         except ValueError:
             continue
 
-        headers: Dict[str, str] = {}
+        headers: dict[str, str] = {}
         for line in header_blob.decode("utf-8", "replace").split("\r\n"):
             key, sep, value = line.partition(":")
             if sep:
@@ -757,31 +757,31 @@ async def _dashboard_selftest_loop() -> None:
 
 # Action registries/spawner are owned by web_server_gateway; routers and tests reach them
 # there, so this module reads them through the module too (one patch seam).
-from hermes_cli import web_server_gateway as _gateway_mod  # noqa: E402
-from hermes_cli.web_server_gateway import _ACTION_LOG_FILES, _terminate_desktop_managed_gateway  # noqa: E402
-from hermes_cli.web_server_sessions import _auto_archive_ticker_loop  # noqa: E402
+from hermes_cli import web_server_gateway as _gateway_mod
+from hermes_cli.web_server_gateway import _ACTION_LOG_FILES, _terminate_desktop_managed_gateway
+from hermes_cli.web_server_sessions import _auto_archive_ticker_loop
 # [CN-fork] P-040 — the messaging catalog and the gateway-config resolver the Channels page
 # reads stay on the ``web_server_messaging`` sibling; re-imported here so
 # ``web_server._messaging_platform_catalog`` / ``web_server._gateway_platform_config`` remain
 # the single seam the fork's Channels tests monkeypatch, and
 # ``web_routers.messaging`` reaches both via ``web_deps.late``.
-from hermes_cli.web_server_messaging import (  # noqa: E402,F401
+from hermes_cli.web_server_messaging import (
     _gateway_platform_config,
     _messaging_platform_catalog,
 )
 # [CN-fork] P-055 — memory-provider loader stays on the ``web_server_memory``
 # sibling; re-imported here so ``web_server._load_memory_provider`` is the seam
 # tests monkeypatch and ``web_routers.memory_providers`` reaches via ``web_deps.late``.
-from hermes_cli.web_server_memory import _load_memory_provider  # noqa: E402,F401
-from hermes_cli.web_server_chat import PTY_REGISTRY  # noqa: E402
-from hermes_cli.web_server_dashboard import (  # noqa: E402
+from hermes_cli.web_server_memory import _load_memory_provider
+from hermes_cli.web_server_chat import PTY_REGISTRY
+from hermes_cli.web_server_dashboard import (
     _discover_dashboard_plugins, _mount_plugin_api_routes, mount_spa,
 )
 # [CN-fork] P-059 — media policy/streaming helpers stay on the split-off
 # ``web_server_files`` sibling; re-imported here so ``web_server.<name>`` is the
 # single seam tests monkeypatch (``_open_media_file`` / ``_parse_media_range`` /
 # the type-specific size caps) and the router reaches them via ``web_deps.late``.
-from hermes_cli.web_server_files import (  # noqa: E402,F401
+from hermes_cli.web_server_files import (
     _ClosingStreamingResponse,
     _IMAGE_MEDIA_CONTENT_TYPES,
     _IMAGE_MEDIA_MAX_BYTES,
@@ -1039,12 +1039,12 @@ app.include_router(_gateway_connections_reach_routes.router, dependencies=[_Depe
 # ``/api/media`` handlers; re-imported here because ``web_server`` is the seam the fork's
 # static-MIME tests read (and ``_fs_mime_type`` consults the ``mimetypes.add_type``
 # registration above for ``.js``/``.mjs``).
-from hermes_cli.web_routers.files import (  # noqa: E402,F401
+from hermes_cli.web_routers.files import (
     _FS_MIME_TYPES, _fs_mime_type, get_media, stream_media_file,
 )
 # [CN-fork] P-025 — the OAuth per-provider status resolver stays a ``web_server``
 # seam (the fork's tests resolve it there); ``web_routers.oauth`` owns it now.
-from hermes_cli.web_routers.oauth import _resolve_provider_status  # noqa: E402,F401
+from hermes_cli.web_routers.oauth import _resolve_provider_status
 
 # Plugin API routes and the dashboard auth routes (/login, /auth/*, /api/auth/*)
 # mount before the SPA catch-all so /{full_path:path} doesn't swallow them. Auth
@@ -1724,32 +1724,32 @@ def start_server(
 # Names external plugins imported from this module before the Sep 2026 decomposition.
 # Internal code MUST NOT use these (scripts/check_compat_pointers.py fails CI if it does).
 # The whole block is removed by reverting the commit that added it.
-from typing import List  # noqa: F401,E402
-from typing import Literal  # noqa: F401,E402
-import atexit  # noqa: F401,E402
-import base64  # noqa: F401,E402
-import binascii  # noqa: F401,E402
-import concurrent.futures  # noqa: F401,E402
-import contextlib  # noqa: F401,E402
-from contextlib import contextmanager  # noqa: F401,E402
-from dataclasses import dataclass  # noqa: F401,E402
-from datetime import datetime  # noqa: F401,E402
-import functools  # noqa: F401,E402
-import hashlib  # noqa: F401,E402
-import importlib.util  # noqa: F401,E402
-import inspect  # noqa: F401,E402
-import ipaddress  # noqa: F401,E402
-import json  # noqa: F401,E402
-import math  # noqa: F401,E402
-import mimetypes  # noqa: F401,E402
-import queue  # noqa: F401,E402
-import shlex  # noqa: F401,E402
-import shutil  # noqa: F401,E402
-import stat  # noqa: F401,E402
-import tempfile  # noqa: F401,E402
-from datetime import timezone  # noqa: F401,E402
-import hermes_yaml as yaml  # noqa: F401,E402
-import zipfile  # noqa: F401,E402
+from typing import List
+from typing import Literal
+import atexit
+import base64
+import binascii
+import concurrent.futures
+import contextlib
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime
+import functools
+import hashlib
+import importlib.util
+import inspect
+import ipaddress
+import json
+import math
+import mimetypes
+import queue
+import shlex
+import shutil
+import stat
+import tempfile
+from datetime import timezone
+import hermes_yaml as yaml
+import zipfile
 
 
 # ---------------------------------------------------------------------------
@@ -1763,7 +1763,7 @@ import zipfile  # noqa: F401,E402
 # concurrently, off the loop). Busted on any connect/disconnect.
 # ---------------------------------------------------------------------------
 _OAUTH_STATUS_TTL_SECONDS = 20.0
-_OAUTH_STATUS_CACHE: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+_OAUTH_STATUS_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _OAUTH_STATUS_CACHE_LOCK = threading.Lock()
 
 
@@ -1772,7 +1772,7 @@ def _oauth_cache_key(profile: Optional[str]) -> str:
     return requested or "current"
 
 
-def _oauth_status_cache_get(key: str) -> Optional[List[Dict[str, Any]]]:
+def _oauth_status_cache_get(key: str) -> Optional[list[dict[str, Any]]]:
     with _OAUTH_STATUS_CACHE_LOCK:
         hit = _OAUTH_STATUS_CACHE.get(key)
         if hit is not None and (time.monotonic() - hit[0]) < _OAUTH_STATUS_TTL_SECONDS:
@@ -1780,7 +1780,7 @@ def _oauth_status_cache_get(key: str) -> Optional[List[Dict[str, Any]]]:
     return None
 
 
-def _oauth_status_cache_put(key: str, providers: List[Dict[str, Any]]) -> None:
+def _oauth_status_cache_put(key: str, providers: list[dict[str, Any]]) -> None:
     with _OAUTH_STATUS_CACHE_LOCK:
         _OAUTH_STATUS_CACHE[key] = (time.monotonic(), providers)
 

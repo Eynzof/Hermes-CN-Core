@@ -394,7 +394,7 @@ def _migrate_to_23(results: dict[str, Any], quiet: bool) -> None:
 
 
 
-def _migrate_to_28(results: Dict[str, Any], quiet: bool) -> None:
+def _migrate_to_28(results: dict[str, Any], quiet: bool) -> None:
     # ── Version 27 → 28: point the model catalog at the CN Desktop mirror ──
     # [CN-fork] Only rewrite the historical upstream defaults; a user-specified
     # custom catalog URL remains authoritative.
@@ -416,7 +416,7 @@ def _migrate_to_28(results: Dict[str, Any], quiet: bool) -> None:
             print("  ✓ Updated model_catalog.url to the CN Desktop mirror")
 
 
-def _migrate_to_29(results: Dict[str, Any], quiet: bool) -> None:
+def _migrate_to_29(results: dict[str, Any], quiet: bool) -> None:
     # 28 → 29: memory/skills tri-state write_mode (on|off|approve) → boolean write_approval.
     # Only "approve" carried gating intent → true; the old "off = block writes" mode is dropped
     # (memory_enabled: false disables memory). Only a persisted key is rewritten.
@@ -527,7 +527,7 @@ def _inline_model_provider_should_recover(provider_value: str) -> bool:
     return True
 
 
-def _inline_model_base_url(model_cfg: Dict[str, Any]) -> str:
+def _inline_model_base_url(model_cfg: dict[str, Any]) -> str:
     for key in ("base_url", "url", "api"):
         raw = model_cfg.get(key)
         if isinstance(raw, str) and raw.strip():
@@ -544,7 +544,7 @@ def _has_usable_secret(value: Any) -> bool:
         return isinstance(value, str) and bool(value.strip())
 
 
-def _provider_entry_has_secret(entry: Dict[str, Any]) -> bool:
+def _provider_entry_has_secret(entry: dict[str, Any]) -> bool:
     api_key = entry.get("api_key")
     if _has_usable_secret(api_key):
         return True
@@ -565,8 +565,8 @@ def _provider_env_name(value: str) -> str:
     return f"{name}_API_KEY"
 
 
-def _inline_provider_env_candidates(raw_provider: str, provider_key: str) -> List[str]:
-    names: List[str] = []
+def _inline_provider_env_candidates(raw_provider: str, provider_key: str) -> list[str]:
+    names: list[str] = []
     for value in (raw_provider, provider_key):
         env_name = _provider_env_name(value)
         if env_name and env_name not in names:
@@ -575,11 +575,11 @@ def _inline_provider_env_candidates(raw_provider: str, provider_key: str) -> Lis
 
 
 def _inline_model_provider_secret_patch(
-    model_cfg: Dict[str, Any],
+    model_cfg: dict[str, Any],
     *,
     raw_provider: str,
     provider_key: str,
-) -> Tuple[Dict[str, str], str]:
+) -> tuple[dict[str, str], str]:
     api_key = model_cfg.get("api_key")
     if _has_usable_secret(api_key):
         return {"api_key": str(api_key).strip()}, "api_key"
@@ -601,7 +601,7 @@ def _inline_model_provider_secret_patch(
 
 
 def _matching_inline_provider_key(
-    providers: Dict[str, Any],
+    providers: dict[str, Any],
     provider_value: str,
     provider_key: str,
 ) -> Optional[str]:
@@ -620,7 +620,7 @@ def _matching_inline_provider_key(
 
 
 def _legacy_inline_provider_already_configured(
-    config: Dict[str, Any],
+    config: dict[str, Any],
     provider_value: str,
     provider_key: str,
 ) -> bool:
@@ -644,13 +644,13 @@ def _legacy_inline_provider_already_configured(
 
 
 def _build_inline_model_provider_entry(
-    model_cfg: Dict[str, Any],
+    model_cfg: dict[str, Any],
     *,
     raw_provider: str,
     provider_key: str,
     base_url: str,
-) -> Optional[Dict[str, Any]]:
-    entry: Dict[str, Any] = {
+) -> Optional[dict[str, Any]]:
+    entry: dict[str, Any] = {
         "name": provider_key,
         "base_url": base_url,
     }
@@ -696,8 +696,8 @@ def _build_inline_model_provider_entry(
 
 
 def _repair_inline_model_provider_config(
-    config: Dict[str, Any],
-) -> Optional[Tuple[str, str]]:
+    config: dict[str, Any],
+) -> Optional[tuple[str, str]]:
     model_cfg = config.get("model")
     if not isinstance(model_cfg, dict):
         return None
@@ -752,7 +752,7 @@ def _repair_inline_model_provider_config(
     return provider_key, "entry from model.provider"
 
 
-def _migrate_to_34(results: Dict[str, Any], quiet: bool) -> None:
+def _migrate_to_34(results: dict[str, Any], quiet: bool) -> None:
     # 33 → 34 (inline-provider arm): recover Desktop inline named-custom model providers. Desktop
     # model selection could persist model.provider=packycode together with
     # model.base_url/model.api_mode/model.api_key. Runtime resolution prefers

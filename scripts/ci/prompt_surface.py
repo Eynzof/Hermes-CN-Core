@@ -79,6 +79,10 @@ def _pin_environment() -> None:
     socket.socket.connect = refuse  # type: ignore[method-assign]
     socket.create_connection = refuse  # type: ignore[assignment]
     socket.getaddrinfo = refuse  # type: ignore[assignment]
+    # Initialize the host ABI before pinning the skills index platform.
+    import sysconfig
+    import psutil  # load the native host extension before the deterministic platform pin
+    sysconfig.get_config_vars()
     sys.platform = "linux"  # skills index ``platforms:`` gate
 
     import hermes_time
@@ -198,7 +202,9 @@ def render(out: Path) -> int:
     """Render into *out* from a fresh child process and home, so nothing from the caller's
     environment, config or imported modules reaches the bytes."""
     with tempfile.TemporaryDirectory(prefix="prompt-surface-") as tmp:
-        home = Path(tmp) / "home"
+        # macOS aliases /var to /private/var; pass one canonical spelling to
+        # both the runtime and scrubber so temporary paths never enter snapshots.
+        home = (Path(tmp) / "home").resolve()
         home.mkdir()
         staging = Path(tmp) / "out"
         env = {

@@ -173,12 +173,6 @@
   },
   {
     "path": "hermes_cli/dep_ensure.py",
-    "symbol": "_has_system_browser",
-    "kind": "bare_which",
-    "reason": "Asks whether a SYSTEM Chrome/Chromium exists for the local browser mode; a system copy is exactly what is wanted here"
-  },
-  {
-    "path": "hermes_cli/dep_ensure.py",
     "symbol": "ensure_dependency",
     "kind": "bare_which",
     "reason": "The installer path needs the user's powershell/pwsh to run install.ps1; PATH is the question"
@@ -619,11 +613,6 @@
     "symbol": "_cmd_is_executable",
     "kind": "bare_which",
     "reason": "Asks whether the command the model typed exists on the PATH its shell will use"
-  },
-  {
-    "path": "tools/terminal_tool_backends.py",
-    "symbol": "<module>",
-    "kind": "bare_which"
   },
   {
     "path": "tools/tirith_security.py",

@@ -88,7 +88,7 @@ class WordPartKind(str, Enum):
 
 
 #: ``(kind, span)`` pair; parts appear in source order inside a word.
-WordPart = Tuple[WordPartKind, SourceSpan]
+WordPart = tuple[WordPartKind, SourceSpan]
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -110,13 +110,13 @@ class WordNode(Node):
     values are never guessed at parse time.
     """
 
-    parts: Tuple[WordPart, ...] = ()
+    parts: tuple[WordPart, ...] = ()
     literal_value: Optional[str] = None
 
     def __init__(
         self,
         span: SourceSpan,
-        parts: Tuple[WordPart, ...] = (),
+        parts: tuple[WordPart, ...] = (),
         literal_value: Optional[str] = None,
     ) -> None:
         Node.__init__(self, NodeKind.WORD, span)
@@ -135,7 +135,7 @@ class RedirectionNode(Node):
     """
 
     operator_text: str = ""
-    operator_span: SourceSpan = SourceSpan(0, 0)
+    operator_span: SourceSpan = dataclasses.field(default_factory=lambda: SourceSpan(0, 0))
     fd: Optional[int] = None
     target: Optional[WordNode] = None
     can_truncate: bool = False
@@ -181,7 +181,7 @@ class HeredocNode(Node):
     """
 
     operator_text: str = ""
-    operator_span: SourceSpan = SourceSpan(0, 0)
+    operator_span: SourceSpan = dataclasses.field(default_factory=lambda: SourceSpan(0, 0))
     delimiter_word: Optional[WordNode] = None
     delimiter_value: Optional[str] = None
     strip_tabs: bool = False
@@ -283,28 +283,28 @@ class CommandNode(Node):
     hints ONLY in Phase 2 — recognition never rewrites anything.
     """
 
-    assignments: Tuple[WordNode, ...] = ()
+    assignments: tuple[WordNode, ...] = ()
     command_word: Optional[WordNode] = None
-    arguments: Tuple[WordNode, ...] = ()
-    redirections: Tuple[RedirectionNode, ...] = ()
-    heredocs: Tuple[HeredocNode, ...] = ()
-    embedded: Tuple[EmbeddedScriptNode, ...] = ()
-    expansions: Tuple[Node, ...] = ()
+    arguments: tuple[WordNode, ...] = ()
+    redirections: tuple[RedirectionNode, ...] = ()
+    heredocs: tuple[HeredocNode, ...] = ()
+    embedded: tuple[EmbeddedScriptNode, ...] = ()
+    expansions: tuple[Node, ...] = ()
     wrapper: Optional[str] = None
     wrapper_hint: Optional[str] = None
 
     def __init__(
         self,
         span: SourceSpan,
-        assignments: Tuple[WordNode, ...] = (),
+        assignments: tuple[WordNode, ...] = (),
         command_word: Optional[WordNode] = None,
-        arguments: Tuple[WordNode, ...] = (),
-        redirections: Tuple[RedirectionNode, ...] = (),
-        heredocs: Tuple[HeredocNode, ...] = (),
-        embedded: Tuple[EmbeddedScriptNode, ...] = (),
+        arguments: tuple[WordNode, ...] = (),
+        redirections: tuple[RedirectionNode, ...] = (),
+        heredocs: tuple[HeredocNode, ...] = (),
+        embedded: tuple[EmbeddedScriptNode, ...] = (),
         wrapper: Optional[str] = None,
         wrapper_hint: Optional[str] = None,
-        expansions: Tuple[Node, ...] = (),
+        expansions: tuple[Node, ...] = (),
     ) -> None:
         Node.__init__(self, NodeKind.COMMAND, span)
         object.__setattr__(self, "assignments", tuple(assignments))
@@ -325,14 +325,14 @@ class PipelineNode(Node):
     ``operators[i]`` joins ``commands[i]`` and ``commands[i + 1]``.
     """
 
-    commands: Tuple[Node, ...] = ()
-    operators: Tuple[str, ...] = ()
+    commands: tuple[Node, ...] = ()
+    operators: tuple[str, ...] = ()
 
     def __init__(
         self,
         span: SourceSpan,
-        commands: Tuple[Node, ...] = (),
-        operators: Tuple[str, ...] = (),
+        commands: tuple[Node, ...] = (),
+        operators: tuple[str, ...] = (),
     ) -> None:
         Node.__init__(self, NodeKind.PIPELINE, span)
         object.__setattr__(self, "commands", tuple(commands))
@@ -350,14 +350,14 @@ class CommandListNode(Node):
     node and the top-level tiling lossless.
     """
 
-    children: Tuple[Node, ...] = ()
-    operators: Tuple[str, ...] = ()
+    children: tuple[Node, ...] = ()
+    operators: tuple[str, ...] = ()
 
     def __init__(
         self,
         span: SourceSpan,
-        children: Tuple[Node, ...] = (),
-        operators: Tuple[str, ...] = (),
+        children: tuple[Node, ...] = (),
+        operators: tuple[str, ...] = (),
     ) -> None:
         Node.__init__(self, NodeKind.COMMAND_LIST, span)
         object.__setattr__(self, "children", tuple(children))
@@ -390,13 +390,13 @@ class CompoundNode(Node):
     """
 
     compound_kind: str = ""
-    parts: Tuple[Tuple[str, Node], ...] = ()
+    parts: tuple[tuple[str, Node], ...] = ()
 
     def __init__(
         self,
         span: SourceSpan,
         compound_kind: str,
-        parts: Tuple[Tuple[str, Node], ...] = (),
+        parts: tuple[tuple[str, Node], ...] = (),
     ) -> None:
         Node.__init__(self, NodeKind.COMPOUND, span)
         object.__setattr__(self, "compound_kind", compound_kind)
@@ -460,19 +460,19 @@ class ScriptNode(Node):
     """
 
     source: str = ""
-    region: SourceSpan = SourceSpan(0, 0)
-    children: Tuple[Node, ...] = ()
-    pending_heredocs: Tuple[HeredocNode, ...] = ()
-    diagnostics: Tuple[Diagnostic, ...] = ()
+    region: SourceSpan = dataclasses.field(default_factory=lambda: SourceSpan(0, 0))
+    children: tuple[Node, ...] = ()
+    pending_heredocs: tuple[HeredocNode, ...] = ()
+    diagnostics: tuple[Diagnostic, ...] = ()
 
     def __init__(
         self,
         span: SourceSpan,
         source: str,
         region: Optional[SourceSpan] = None,
-        children: Tuple[Node, ...] = (),
-        pending_heredocs: Tuple[HeredocNode, ...] = (),
-        diagnostics: Tuple[Diagnostic, ...] = (),
+        children: tuple[Node, ...] = (),
+        pending_heredocs: tuple[HeredocNode, ...] = (),
+        diagnostics: tuple[Diagnostic, ...] = (),
     ) -> None:
         Node.__init__(self, NodeKind.SCRIPT, span)
         object.__setattr__(self, "source", source)
@@ -765,7 +765,6 @@ def _find_quote_run_end(raw: str, i: int, quote: str) -> int:
 
 __all__ = [
     "COMPOUND_KINDS",
-    "OperatorNode",
     "CommandListNode",
     "CommandNode",
     "CompoundNode",
@@ -775,6 +774,7 @@ __all__ = [
     "NewlineNode",
     "Node",
     "NodeKind",
+    "OperatorNode",
     "PipelineNode",
     "RawNode",
     "RedirectionNode",

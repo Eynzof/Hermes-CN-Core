@@ -280,7 +280,7 @@ class TestGitBashExternalProgramProbe:
         monkeypatch.setenv("HERMES_GIT_BASH_PATH", "")
         monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
         monkeypatch.setattr("pm.shell.bash", lambda: None)
-        monkeypatch.setattr(local_mod, "_where_git_executables", lambda: [])
+        monkeypatch.setattr(local_mod, "_where_git_executables", list)
         monkeypatch.setenv("ProgramFiles", str(tmp_path / "empty-program-files"))
         monkeypatch.delenv("ProgramFiles(x86)", raising=False)
         monkeypatch.setattr(local_mod.shutil, "which", lambda _name: None)

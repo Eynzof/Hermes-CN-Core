@@ -36,7 +36,8 @@ def _launchctl(*args: str, timeout: float) -> subprocess.CompletedProcess[str] |
     if timeout <= 0:
         return None
     try:
-        return subprocess.run(["launchctl", *args], capture_output=True, text=True, encoding="utf-8",
+        return subprocess.run(["launchctl", *args], capture_output=True,  # windows-footgun: ok — launchd runs only on macOS
+                              text=True, encoding="utf-8",
                               errors="replace", timeout=timeout, check=False, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired):
         return None

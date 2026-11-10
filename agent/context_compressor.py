@@ -723,14 +723,14 @@ class _SummaryFailureKind:
         return next((reason for flagged, reason in reasons if flagged), "failed")
 
 
-def _classify_summary_failure(e: Exception, verdict: ClassifiedError) -> _SummaryFailureKind:
+def _classify_summary_failure(e: Exception, verdict: ClassifiedError) -> _SummaryFailureKind:  # health: allow HX014 -- only local summary protocol markers are parsed here; API errors use the shared verdict
     """Classify a summary-call exception by status code / message shape.
 
     A "refusal content" RuntimeError (prose or provider ``refusal`` field) deliberately rides the
     ``empty_content`` class — cooldown + main-model fallback + abort — so the "returned empty content"
     fallback log line is expected for refusals.
     """
-    status = _exc_status_code(e)
+    status = verdict.status_code
     err = str(e).lower()
     # #124077: only the Codex aux stream guard's mid-stream stall is a retry-ladder timeout; real
     # transport timeouts and the guard's no-progress/hard-ceiling timeouts stay terminal
@@ -738,13 +738,13 @@ def _classify_summary_failure(e: Exception, verdict: ClassifiedError) -> _Summar
     stall = isinstance(e, TimeoutError) and CODEX_STREAM_STALL_MARKER in str(e)
     return _SummaryFailureKind(
         # Permanent-looking error on a distinct summary model: fall back to main instead of cooldown.
-        model_not_found=status in {404, 503}
-        or any(m in err for m in ("model_not_found", "does not exist", "no available channel")),
-        timeout=stall or status in {408, 429, 502, 504} or "timeout" in err or "timed out" in err,
+        model_not_found=verdict.reason is FailoverReason.model_not_found or status == 503,
+        timeout=stall or status in {408, 429, 502, 504} or (
+            verdict.reason is FailoverReason.timeout and verdict.error_context.get("transport") != "connection"),
         # Malformed/non-JSON bodies (HTML 502 as application/json) surface as JSONDecodeError or
         # APIResponseValidationError "expecting value"; treat as transient. Both decoders' error
         # types count: the summary path parses with orjson, validation text with stdlib json.
-        json_decode=isinstance(e, (orjson.JSONDecodeError, json.JSONDecodeError)) or "expecting value" in err,
+        json_decode=bool(verdict.error_context.get("invalid_json")),
         # Premature-close / dead-network errors (a TLS certificate failure too): short cooldown, then abort.
         streaming_closed=(verdict.reason is FailoverReason.ssl_cert_verification or bool(verdict.error_context.get("transport"))) and not stall,
         # HTTP 200 with empty body from a degraded provider, the sibling "no usable response" shapes from
@@ -756,8 +756,7 @@ def _classify_summary_failure(e: Exception, verdict: ClassifiedError) -> _Summar
         )),
         # Truncated summary: one main-model retry, then ABORT preserving the session.
         truncated=isinstance(e, RuntimeError) and _TRUNCATED_SUMMARY_MARKER in err,
-        overloaded=verdict.reason is FailoverReason.overloaded
-        or any(marker in err for marker in ("overloaded", "at capacity", "over capacity")),
+        overloaded=verdict.reason is FailoverReason.overloaded,
     )
 
 
@@ -4189,7 +4188,7 @@ Target ~{summary_budget + (_LEAN_SESSION_LOG_BUDGET_TOKENS if _session_log_secti
 Write only the summary body. Do not include any preamble or prefix."""
 
     def _on_summary_failure(
-        self, e: Exception, turns_to_summarize: List[Dict[str, Any]], focus_topic: Optional[str], memory_context: str,
+        self, e: Exception, turns_to_summarize: list[dict[str, Any]], focus_topic: Optional[str], memory_context: str,
         mode: Optional[str] = None,
     ) -> Optional[str]:
         """Classify a summary-call failure; retry once on the main model (returning its result) or arm a cooldown (None)."""
@@ -5700,7 +5699,7 @@ Write only the summary body. Do not include any preamble or prefix."""
     # ------------------------------------------------------------------
     # Context engine tools (context_usage, compact) — fork P-039 additions
     # ------------------------------------------------------------------
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+    def get_tool_schemas(self) -> list[dict[str, Any]]:
         """Return schemas for ``context_usage`` and ``compact`` tools."""
         from agent.context_tools import get_compact_schema, get_context_usage_schema
         return [get_context_usage_schema(), get_compact_schema()]

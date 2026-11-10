@@ -102,7 +102,7 @@ class SwarmBatchScheduler:
 
     def __init__(
         self,
-        specs: list["AgentSwarmSpec"],  # noqa: F821
+        specs: list["AgentSwarmSpec"],
         spawn_runner: Callable,
         resume_runner: Callable,
         on_result: Optional[Callable[[int, dict], None]] = None,

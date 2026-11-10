@@ -130,11 +130,11 @@ def patch_startup_side_effects(monkeypatch, tmp_path):
     # neutralize those unrelated integrations before wait_for() starts so this
     # race test's bounded deadline measures startup/teardown coordination,
     # not cold module discovery (which varies significantly by platform).
-    monkeypatch.setattr("tools.process_registry.process_registry.kill_all", lambda: [])
+    monkeypatch.setattr("tools.process_registry.process_registry.kill_all", list)
     monkeypatch.setattr("cron.scheduler.mark_running_jobs_interrupted", lambda *_a, **_kw: [])
     monkeypatch.setattr("tools.async_delegation.interrupt_all", lambda **_kw: 0)
     monkeypatch.setattr("tools.terminal_tool.cleanup_all_environments", lambda: None)
-    monkeypatch.setattr("tools.browser_tool_lifecycle.cleanup_all_browsers", lambda: None)
+    monkeypatch.setattr("tools.browser_session_lifecycle.cleanup_all_browsers", lambda: None)
     monkeypatch.setattr("agent.auxiliary_client.shutdown_cached_clients", lambda: None)
 
 
@@ -275,6 +275,9 @@ async def test_start_gateway_starts_and_stops_cron_on_relaunch(
         async def start(self):
             return True
 
+        async def stop(self):
+            self._running = False
+
         async def wait_for_shutdown(self):
             if cron_allowed:
                 assert await asyncio.to_thread(started.wait, 5)
@@ -297,8 +300,17 @@ async def test_start_gateway_starts_and_stops_cron_on_relaunch(
     monkeypatch.setattr("tools.mcp_tool_lifecycle.shutdown_mcp_servers", lambda: None)
     monkeypatch.setattr("hermes_cli.nous_auth_keepalive.start_nous_auth_keepalive", lambda: None)
     monkeypatch.setattr("hermes_cli.nous_auth_keepalive.stop_nous_auth_keepalive", lambda: None)
+    # This test owns cron relaunch, while session API ownership is covered by
+    # the runtime integration tests. Its fake runner has no database or listener.
+    import gateway.run_runtime as runtime
+    for name in ("initialize_gateway_runtime", "start_gateway_runtime_api", "drain_gateway_runtime"):
+        monkeypatch.setattr(runtime, name, AsyncMock())
+    monkeypatch.setattr(runtime, "publish_gateway_runtime_ready", lambda runner: None)
+    monkeypatch.setattr(runtime, "wait_gateway_runtime", lambda runner: runner.wait_for_shutdown())
+    monkeypatch.setattr("gateway.run_bootstrap._start_gateway_start_control_socket", AsyncMock(
+        return_value=MagicMock(stop=AsyncMock())))
     monkeypatch.setattr(gateway_run, "GatewayRunner", RunningGateway)
-    monkeypatch.setattr(gateway_run, "_validate_cron_startup", lambda: cron_allowed)
+    monkeypatch.setattr("gateway.run_bootstrap._validate_cron_startup", lambda: cron_allowed)
     monkeypatch.setattr(
         gateway_run, "_start_gateway_housekeeping",
         lambda stop, **kwargs: stop.wait(5),

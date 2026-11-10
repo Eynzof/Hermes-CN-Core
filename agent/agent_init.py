@@ -233,7 +233,7 @@ def _merge_custom_provider_extra_body(agent, custom_providers: list[dict[str, An
     agent.request_overrides = overrides
 
 
-def _merge_model_extra_body(agent, model_cfg: Dict[str, Any]) -> None:
+def _merge_model_extra_body(agent, model_cfg: dict[str, Any]) -> None:
     """Forward the main ``model.extra_body`` config block into request overrides.
 
     First-class providers (DeepSeek, etc.) build their own ``extra_body`` in the

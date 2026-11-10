@@ -166,7 +166,7 @@ def restore_cygwin_symlinks(root: Path) -> int:
             try:
                 if os.lstat(path).st_reparse_tag != _LX_SYMLINK:
                     continue
-                target = subprocess.run([readlink, path], env=env, capture_output=True,
+                target = subprocess.run([readlink, path], env=env, capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                                         text=True, check=True, timeout=30).stdout.rstrip("\n")
                 os.remove(path)
                 subprocess.run([ln, "-s", target, path], env=env, check=True, timeout=30)

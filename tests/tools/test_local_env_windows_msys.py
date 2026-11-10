@@ -38,18 +38,8 @@ import pytest
 
 from tools.environments.base import BaseEnvironment
 from tools.environments import local as local_mod
-from tools.environments.local import (
-    LocalEnvironment,
-    _bash_safe_path,
-    _git_bash_bin_dirs,
-    _make_run_env,
-    _msys_to_windows_path,
-    _quote_bash_path,
-    _resolve_safe_cwd,
-    _sanitize_subprocess_env,
-    _windows_to_msys_path,
-    hermes_subprocess_env,
-)
+from tools.environments.local import LocalEnvironment, _bash_safe_path, _git_bash_bin_dirs, _make_run_env, _msys_to_windows_path, _resolve_safe_cwd, _sanitize_subprocess_env, _windows_to_msys_path, hermes_subprocess_env
+from tools.environments.local_background import _quote_bash_path
 
 
 # ---------------------------------------------------------------------------

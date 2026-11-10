@@ -93,7 +93,7 @@ def _stop_kinds() -> tuple:
     )
 
 
-def _commands_in(node: Any) -> List[Any]:
+def _commands_in(node: Any) -> list[Any]:
     """The command nodes of a script/compound subtree in source order, stopping
     at embedded / substitution / heredoc / redirection edges (those contexts are
     recursed separately through the per-command pass)."""
@@ -101,7 +101,7 @@ def _commands_in(node: Any) -> List[Any]:
 
     top = _container_kinds()
     stop = _stop_kinds()
-    out: List[Any] = []
+    out: list[Any] = []
 
     def rec(current: Any) -> None:
         if current.kind in stop:
@@ -110,7 +110,7 @@ def _commands_in(node: Any) -> List[Any]:
             out.append(current)
             return
         if current.kind in top:
-            kids: List[Any] = []
+            kids: list[Any] = []
             for attr in ("children", "commands", "parts"):
                 value = getattr(current, attr, None)
                 if not value:
@@ -126,7 +126,7 @@ def _commands_in(node: Any) -> List[Any]:
     return out
 
 
-def outer_commands(source: str) -> List["CommandNode"]:
+def outer_commands(source: str) -> list[CommandNode]:
     """The scanner-view top-level command nodes of source, in source order."""
     from .parser import parse
 
@@ -169,47 +169,47 @@ class CommandDecision:
     event order and global order byte-for-byte."""
 
     __slots__ = (
-        "names4",
-        "unsupported4",
-        "names5",
-        "paths5",
-        "shells5",
-        "nuls5",
-        "unsupported5",
+        "cmd_consumed5",
+        "cmd_edits5",
         "cmd_notes5",
         "cmd_paths5",
-        "paths6",
+        "consumed_end",
+        "heredoc_events",
+        "is_cmd_owned",
+        "names4",
+        "names5",
+        "nuls5",
         "nuls7",
+        "paths5",
+        "paths6",
+        "shells5",
         "slot4_edits",
         "slot5_edits",
         "slot6_edits",
         "slot7_edits",
-        "cmd_edits5",
-        "cmd_consumed5",
-        "heredoc_events",
-        "consumed_end",
-        "is_cmd_owned",
+        "unsupported4",
+        "unsupported5",
     )
 
     def __init__(self) -> None:
-        self.names4: List[str] = []
-        self.unsupported4: List[str] = []
-        self.names5: List[str] = []
-        self.paths5: List[str] = []
-        self.shells5: List[str] = []
-        self.nuls5: List[str] = []
-        self.unsupported5: List[str] = []
-        self.cmd_notes5: List[str] = []
-        self.cmd_paths5: List[str] = []
-        self.paths6: List[str] = []
-        self.nuls7: List[str] = []
-        self.slot4_edits: List[Tuple[int, int, str]] = []
-        self.slot5_edits: List[Tuple[int, int, str]] = []
-        self.slot6_edits: List[Tuple[int, int, str]] = []
-        self.slot7_edits: List[Tuple[int, int, str]] = []
-        self.cmd_edits5: List[Tuple[int, int, str]] = []
+        self.names4: list[str] = []
+        self.unsupported4: list[str] = []
+        self.names5: list[str] = []
+        self.paths5: list[str] = []
+        self.shells5: list[str] = []
+        self.nuls5: list[str] = []
+        self.unsupported5: list[str] = []
+        self.cmd_notes5: list[str] = []
+        self.cmd_paths5: list[str] = []
+        self.paths6: list[str] = []
+        self.nuls7: list[str] = []
+        self.slot4_edits: list[tuple[int, int, str]] = []
+        self.slot5_edits: list[tuple[int, int, str]] = []
+        self.slot6_edits: list[tuple[int, int, str]] = []
+        self.slot7_edits: list[tuple[int, int, str]] = []
+        self.cmd_edits5: list[tuple[int, int, str]] = []
         self.cmd_consumed5: Optional[int] = None
-        self.heredoc_events: List[Tuple[int, int]] = []
+        self.heredoc_events: list[tuple[int, int]] = []
         self.consumed_end: int = 0
         self.is_cmd_owned: bool = False
 
@@ -285,7 +285,7 @@ def _harvest_span(d: CommandDecision, source: str, ss: int, se: int) -> None:
 # ── slot 6: path rules ────────────────────────────────────────────────────────
 
 
-def _cmd_word_path(d: CommandDecision, source: str, command: "CommandNode") -> None:
+def _cmd_word_path(d: CommandDecision, source: str, command: CommandNode) -> None:
     """slot 6: a command word can itself be a Windows / virtual path."""
     from . import paths as P, wrappers as W
     from .bash_core import _COMMAND_WRAPPERS, _SHELL_WRAPPERS
@@ -317,7 +317,7 @@ def _add_arg_path(d: CommandDecision, source: str, word: Any, slot: int) -> None
 
 
 def _walk_arguments(
-    d: CommandDecision, source: str, command: "CommandNode", *, start_after: int = 0,
+    d: CommandDecision, source: str, command: CommandNode, *, start_after: int = 0,
     pattern_word: Optional[str] = None,
 ) -> None:
     """slot 6: the argument-word path rule with the pattern-consumer suppression
@@ -369,7 +369,7 @@ def _walk_arguments(
             _add_arg_path(d, source, a, 6)
 
 
-def _walk_arguments_after(d: CommandDecision, source: str, command: "CommandNode", consumed_to: int) -> None:
+def _walk_arguments_after(d: CommandDecision, source: str, command: CommandNode, consumed_to: int) -> None:
     """slot 6: the words after the wrapped command keep the path rule."""
     for a in command.arguments:
         if a.span.start < consumed_to:
@@ -377,7 +377,7 @@ def _walk_arguments_after(d: CommandDecision, source: str, command: "CommandNode
         _add_arg_path(d, source, a, 6)
 
 
-def _walk_redirections(d: CommandDecision, source: str, command: "CommandNode") -> None:
+def _walk_redirections(d: CommandDecision, source: str, command: CommandNode) -> None:
     """slots 6/7: redirection-target decisions (nul -> /dev/null is slot 7; else
     the slot-6 path rule)."""
     from . import paths as P
@@ -399,7 +399,7 @@ def _walk_redirections(d: CommandDecision, source: str, command: "CommandNode") 
 # ── slot 5: wrapper / unwrap / reparse ────────────────────────────────────────
 
 
-def _consume_wrapper(d: CommandDecision, source: str, command: "CommandNode", *, wrapper_key: str) -> None:
+def _consume_wrapper(d: CommandDecision, source: str, command: CommandNode, *, wrapper_key: str) -> None:
     """slot 5: drive the wrapper operand state machine over the IR argument
     words; the wrapped command word is registered (slot5 name) and runner-swapped
     when the wrapping executable cannot invoke shell functions."""
@@ -484,7 +484,7 @@ def _consume_wrapper(d: CommandDecision, source: str, command: "CommandNode", *,
         _walk_arguments_after(d, source, command, consumed_to)
 
 
-def _shell_operand(d: CommandDecision, source: str, command: "CommandNode", shell_word: Any) -> bool:
+def _shell_operand(d: CommandDecision, source: str, command: CommandNode, shell_word: Any) -> bool:
     """slot 5: a shell invoked as a wrapper operand (env bash -c) or by an
     exec-operand command (find -exec sh -c): in-place -c repair."""
     from . import wrappers as W
@@ -497,7 +497,7 @@ def _shell_operand(d: CommandDecision, source: str, command: "CommandNode", shel
     return True
 
 
-def _reparse_operand_words(d: CommandDecision, source: str, command: "CommandNode", *, count: int) -> None:
+def _reparse_operand_words(d: CommandDecision, source: str, command: CommandNode, *, count: int) -> None:
     """slot 5: eval (count=-1, every operand) / trap (count=1, first operand)
     inline-script operands - re-scan + re-emit the quoted operand, and register
     the unquoted LEADING word's fallback (mirrors the scanner reparse branch)."""
@@ -530,7 +530,7 @@ def _reparse_operand_words(d: CommandDecision, source: str, command: "CommandNod
             remaining -= 1
 
 
-def _handle_shell_command_word(d: CommandDecision, source: str, command: "CommandNode", cw: Any, val: str) -> None:
+def _handle_shell_command_word(d: CommandDecision, source: str, command: CommandNode, cw: Any, val: str) -> None:
     """slot 5: a command-position redundant shell - unwrap (drop the shell word)
     or repair the -c inline script in place, dispatching to the SAME
     unwrap_decision / shell_c_script_range ported functions the scanner calls."""
@@ -591,7 +591,7 @@ def _handle_shell_command_word(d: CommandDecision, source: str, command: "Comman
 
 
 def _classify_command_word(
-    d: CommandDecision, command: "CommandNode", source: str, cw: Any, val: Optional[str]
+    d: CommandDecision, command: CommandNode, source: str, cw: Any, val: Optional[str]
 ) -> None:
     """Run the scanner's per-command word machine for one command word (slot 4-8
     buckets).  Shared by the plain command word and the leading-@ strip's
@@ -650,7 +650,7 @@ def _classify_command_word(
     _recurse_expansions(d, source, command)
 
 
-def decide_at_continuation(d: CommandDecision, command: "CommandNode", source: str) -> bool:
+def decide_at_continuation(d: CommandDecision, command: CommandNode, source: str) -> bool:
     """Classify the remainder after a leading-@ command word (the 3.5 slot-1 strip
     re-dispatch).  The strip edit itself is slot 1's job (cmd_translator
     rule_cmd_at); this folds the STRIPPED word's command-position decisions into
@@ -686,7 +686,7 @@ def decide_at_continuation(d: CommandDecision, command: "CommandNode", source: s
     return True
 
 
-def _at_cmd_control(d: CommandDecision, command: "CommandNode", source: str,
+def _at_cmd_control(d: CommandDecision, command: CommandNode, source: str,
                     keyword: str, kw_start: int) -> bool:
     """Fold a stripped cmd if/for's structural edits + note (+ the exist
     operand's path) into the slot-5 buckets - the slot-2 rule re-dispatched at
@@ -731,7 +731,7 @@ def _at_cmd_control(d: CommandDecision, command: "CommandNode", source: str,
     return True
 
 
-def decide_command(command: "CommandNode", source: str) -> CommandDecision:
+def decide_command(command: CommandNode, source: str) -> CommandDecision:
     """Compute command's IR decisions (the scanner's per-command word machine)
     bucketed across 3.5 slots 4-8.  Pure and deterministic: the five slot
     handlers each call this and commit only their bucket, so the dispatcher
@@ -771,7 +771,7 @@ def decide_command(command: "CommandNode", source: str) -> CommandDecision:
     return d
 
 
-def _emit_embedded(d: CommandDecision, source: str, command: "CommandNode") -> None:
+def _emit_embedded(d: CommandDecision, source: str, command: CommandNode) -> None:
     """slot 5: re-emit the runtime-reparsed operand owner words the shell/wrapper
     /arg walks did NOT already claim (dedup by span)."""
     claimed = {(e[0], e[1]) for e in d.slot5_edits}
@@ -784,7 +784,7 @@ def _emit_embedded(d: CommandDecision, source: str, command: "CommandNode") -> N
         _inplace_fix_span(d, source, ow.span.start, ow.span.end)
 
 
-def _walk_expansions(d: CommandDecision, source: str, command: "CommandNode") -> None:
+def _walk_expansions(d: CommandDecision, source: str, command: CommandNode) -> None:
     """slot 8: collect the command's own IR heredocs' events."""
     from .heredoc import heredoc_event_for
 
@@ -794,7 +794,7 @@ def _walk_expansions(d: CommandDecision, source: str, command: "CommandNode") ->
             d.heredoc_events.append(event)
 
 
-def _recurse_expansions(d: CommandDecision, source: str, command: "CommandNode") -> None:
+def _recurse_expansions(d: CommandDecision, source: str, command: CommandNode) -> None:
     """slot 4-8 recursion into command/process-substitution child contexts
     (echo $(tree C:\\a > nul)): the child shares the OUTER coordinate string and
     is scanned inline by the scanner, so its fixes fold into the same buckets."""
@@ -829,7 +829,7 @@ def _fold(d: CommandDecision, child: CommandDecision) -> None:
 # ── 3.5 slot 4-8 handlers (genuine IR handlers over a CommandNode) ────────────
 
 
-def rule_fallback(command: "CommandNode", source: str, context: "TranslationContext") -> Optional["RuleResult"]:
+def rule_fallback(command: CommandNode, source: str, context: TranslationContext) -> Optional[RuleResult]:
     """3.5 priority-4 handler: command-word fallback registration / unsupported
     refusal (slot 4; no edit)."""
     from .translator import RuleResult
@@ -837,13 +837,13 @@ def rule_fallback(command: "CommandNode", source: str, context: "TranslationCont
     d = decide_command(command, source)
     if d.is_cmd_owned or (not d.names4 and not d.unsupported4):
         return None
-    events: List[Tuple[str, str]] = []
+    events: list[tuple[str, str]] = []
     events.extend(("record_name", name) for name in d.names4)
     events.extend(("record_unsupported", name) for name in d.unsupported4)
     return RuleResult(events=tuple(events))
 
 
-def rule_wrapper(command: "CommandNode", source: str, context: "TranslationContext") -> Optional["RuleResult"]:
+def rule_wrapper(command: CommandNode, source: str, context: TranslationContext) -> Optional[RuleResult]:
     """3.5 priority-5 handler: wrapper / unwrap / runtime-reparse / embedded
     script re-emit (slot 5), incl. the @-strip cmd if/for continuation folded into
     the cmd buckets."""
@@ -852,7 +852,7 @@ def rule_wrapper(command: "CommandNode", source: str, context: "TranslationConte
     d = decide_command(command, source)
     if d.is_cmd_owned:
         return None
-    events: List[Tuple[str, str]] = []
+    events: list[tuple[str, str]] = []
     events.extend(("record_name", name) for name in d.names5)
     events.extend(("record_path", name) for name in d.paths5)
     events.extend(("record_shell", name) for name in d.shells5)
@@ -871,7 +871,7 @@ def rule_wrapper(command: "CommandNode", source: str, context: "TranslationConte
     )
 
 
-def rule_path(command: "CommandNode", source: str, context: "TranslationContext") -> Optional["RuleResult"]:
+def rule_path(command: CommandNode, source: str, context: TranslationContext) -> Optional[RuleResult]:
     """3.5 priority-6 handler: Windows / virtual-absolute path rewrites + the
     cmd cd /d flag deletion (slot 6)."""
     from .translator import RuleResult
@@ -885,7 +885,7 @@ def rule_path(command: "CommandNode", source: str, context: "TranslationContext"
     )
 
 
-def rule_nul(command: "CommandNode", source: str, context: "TranslationContext") -> Optional["RuleResult"]:
+def rule_nul(command: CommandNode, source: str, context: TranslationContext) -> Optional[RuleResult]:
     """3.5 priority-7 handler: null-device redirections (slot 7)."""
     from .translator import RuleResult
 
@@ -898,7 +898,7 @@ def rule_nul(command: "CommandNode", source: str, context: "TranslationContext")
     )
 
 
-def rule_heredoc(command: "CommandNode", source: str, context: "TranslationContext") -> Optional["RuleResult"]:
+def rule_heredoc(command: CommandNode, source: str, context: TranslationContext) -> Optional[RuleResult]:
     """3.5 priority-8 handler: heredoc event collection (slot 8)."""
     from .translator import RuleResult
 
@@ -908,7 +908,7 @@ def rule_heredoc(command: "CommandNode", source: str, context: "TranslationConte
     return RuleResult(heredoc_events=tuple(d.heredoc_events))
 
 
-def register_default_rules(dispatcher: "Any") -> "Any":
+def register_default_rules(dispatcher: Any) -> Any:
     """Fill the 3.5 priority slots 4-8 with the Phase-7 IR handlers.  Slots 1-3
     are filled by translator.register_cmd_rules (the cmd @ / if/for / jump
     handlers); call both to fill the whole 3.5 table.  Returns the dispatcher."""

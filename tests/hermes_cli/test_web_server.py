@@ -1729,7 +1729,7 @@ CONFIG_SCHEMA = ProviderConfigSchema(
         row = next(s for s in self.client.get("/api/sessions").json()["sessions"] if s["id"] == "bool-arch")
         assert row["archived"] is False
 
-    def test_rename_response_omits_archived_when_not_set(self):
+    def test_rename_response_omits_archived_when_not_set(self, mutation_owner):
         """Title-only PATCH keeps its legacy {ok, title} response shape."""
         from hermes_state import SessionDB
 
@@ -1739,12 +1739,21 @@ CONFIG_SCHEMA = ProviderConfigSchema(
         finally:
             db.close()
 
-        resp = self.client.patch("/api/sessions/title-only", json={"title": "Hi"})
+        from gateway.session_authority import LiveSession
+        from uuid import uuid4
+
+        mutation_owner.sessions["title-only"] = LiveSession(None, "route")
+        row = mutation_owner.db.get_session("title-only")
+        resp = self.client.patch("/api/sessions/title-only", json={
+            "title": "Hi", "request_id": uuid4().hex,
+            "expected_revision": row["runtime_revision"],
+            "expected_generation": row["runtime_generation"],
+        })
         assert resp.status_code == 200
         assert "archived" not in resp.json()
 
     def test_audio_transcription_endpoint(self, monkeypatch):
-        import tools.transcription_tools as transcription_tools
+        from tools import transcription_tools
 
         captured = {}
 
@@ -1803,9 +1812,9 @@ CONFIG_SCHEMA = ProviderConfigSchema(
         assert "/api/audio/elevenlabs/voices" in paths
 
     def test_elevenlabs_voices_unavailable_without_key(self, monkeypatch):
-        import hermes_cli.web_server as web_server
+        from hermes_cli import web_server
 
-        monkeypatch.setattr(web_server, "load_env", lambda: {})
+        monkeypatch.setattr(web_server, "load_env", dict)
         monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
 
         resp = self.client.get("/api/audio/elevenlabs/voices")
@@ -1813,7 +1822,7 @@ CONFIG_SCHEMA = ProviderConfigSchema(
         assert resp.json() == {"available": False, "voices": []}
 
     def test_speak_text_returns_base64_data_url(self, monkeypatch, tmp_path):
-        import tools.tts_tool as tts_tool
+        from tools import tts_tool
 
         audio_file = tmp_path / "speech.mp3"
         audio_file.write_bytes(b"ID3fake-audio-bytes")
@@ -5655,8 +5664,7 @@ class TestDashboardPluginManifestExtensions:
 # ---------------------------------------------------------------------------
 
 from hermes_cli import main as _main_mod, main_tui_launch
-from hermes_cli.config import ( reload_env, redact_key, OPTIONAL_ENV_VARS, DEFAULT_CONFIG, )
-from types import SimpleNamespace
+from hermes_cli.config import ( DEFAULT_CONFIG, )
 
 
 skip_on_windows = pytest.mark.skipif(

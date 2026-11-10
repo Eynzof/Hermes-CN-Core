@@ -116,7 +116,8 @@ def test_an_auth_failure_offers_the_agents_key_action_when_the_result_names_no_p
 
 def test_a_managed_worker_auth_failure_offers_the_agents_key_action(tmp_path, monkeypatch):
     from agent.managed_worker import accept_result
-    from tests.gateway.test_managed_worker_route_key import _execute, _minimax_frame
+    from tests.gateway.test_managed_worker_route_key import KEY_ENV, _execute, _minimax_frame
+    monkeypatch.setenv(KEY_ENV, "fixture-minimax-key")
 
     class Identity:
         def __init__(self, **kwargs):

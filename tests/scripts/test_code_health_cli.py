@@ -260,7 +260,7 @@ def test_pre_push_judges_a_checker_branch_pushed_from_an_older_checkout(tmp_path
     # controls: a clean checker branch passes, a branch predating the checker is not judged,
     # a deletion is not judged
     push = _sh(repo, "git", "push", "origin", "clean")
-    assert push.returncode == 0 and _remote_ref(remote, "clean") == good, push.stderr
+    assert push.returncode == 0 and _remote_ref(remote, "clean") == good, push.stdout + push.stderr
     _git(repo, "checkout", "-q", "-b", "old", "main")
     old = _commit(repo, {"pkg/c.py": _SWALLOW})
     assert _sh(repo, "git", "push", "origin", "old").returncode == 0

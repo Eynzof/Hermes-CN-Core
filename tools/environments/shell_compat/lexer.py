@@ -111,10 +111,10 @@ __all__ = [
     "EXECUTABLE_REGIONS",
     "HEREDOC_OPERATORS",
     "INPUT_ONLY_REDIRECT_OPERATORS",
+    "TRUNCATING_REDIRECT_OPERATORS",
     "LexResult",
     "Token",
     "TokenKind",
-    "TRUNCATING_REDIRECT_OPERATORS",
     "find_ansi_c_end",
     "find_backtick_end",
     "find_dq_end",
@@ -145,7 +145,7 @@ class TokenKind(str, Enum):
 #: is the ``(content_start, content_end)`` range of the region's content
 #: (opener/closer stripped) for closed regions; ``None`` when the region is
 #: unterminated or its content is not addressable.
-WordPart = Tuple[WordPartKind, SourceSpan, Optional[Tuple[int, int]]]
+WordPart = tuple[WordPartKind, SourceSpan, Optional[tuple[int, int]]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +162,7 @@ class Token:
 
     kind: TokenKind
     span: SourceSpan
-    parts: Tuple[WordPart, ...] = ()
+    parts: tuple[WordPart, ...] = ()
     #: operator text for OPERATOR/REDIRECTION tokens (``&&``, ``2>``, ``>&`` …)
     text: str = ""
     #: fd number for redirection tokens with an explicit fd prefix (``2>file``)
@@ -173,8 +173,8 @@ class Token:
 class LexResult:
     """The tokens of one range plus the lexer's internal diagnostics."""
 
-    tokens: Tuple[Token, ...] = ()
-    diagnostics: Tuple[Diagnostic, ...] = ()
+    tokens: tuple[Token, ...] = ()
+    diagnostics: tuple[Diagnostic, ...] = ()
 
 
 # ── ported / re-exported boundary oracles (byte-compatible with bash_core) ──
@@ -260,7 +260,7 @@ def match_arithmetic_span(text: str, i: int) -> Optional[int]:
 # ── operator helpers ─────────────────────────────────────────────────────────
 
 
-def read_control_operator(source: str, i: int, end: int) -> Tuple[str, int]:
+def read_control_operator(source: str, i: int, end: int) -> tuple[str, int]:
     """Return the control operator at ``i`` and the index after it.
 
     Same table and longest-first order as the legacy
@@ -294,7 +294,7 @@ def read_control_operator(source: str, i: int, end: int) -> Tuple[str, int]:
     return "", i
 
 
-def read_redirection_operator(source: str, i: int, end: int) -> Tuple[str, int]:
+def read_redirection_operator(source: str, i: int, end: int) -> tuple[str, int]:
     """Return the redirection operator at ``i`` (longest match) and index after."""
     m = _REDIRECTION_RE.match(source, i, end)
     if m is None:
@@ -321,7 +321,7 @@ def _comment_starts(source: str, i: int, range_start: int) -> bool:
 
 def _scan_double_quote(
     source: str, start: int, end: int, diagnostics: list
-) -> Tuple[int, Tuple[WordPart, ...]]:
+) -> tuple[int, tuple[WordPart, ...]]:
     """Close the ``"`` region opened at ``start``; collect nested regions.
 
     The walk is the legacy ``_find_dq_end`` decision sequence (the token end
@@ -431,7 +431,7 @@ def _scan_double_quote(
 
 def _scan_word(  # health: allow CC -- faithful port of the upstream `shell_compat` package (the old single-file bash_fix.py already exceeded this cap); splitting it here would re-implement vendored scanner logic
     source: str, start: int, end: int, diagnostics: list
-) -> Tuple[int, Tuple[WordPart, ...]]:
+) -> tuple[int, tuple[WordPart, ...]]:
     """Scan a WORD at ``start``; returns ``(word_end, parts)``.
 
     Parts tile ``[start, word_end)`` with no gaps, in source order

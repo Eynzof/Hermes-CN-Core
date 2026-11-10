@@ -599,7 +599,9 @@ install_never_free_environ()
 # Every entry point imports this module before its dependency graph.
 from pathlib import Path
 
-_root = Path(__file__).resolve().parent
+from hermes_cli._startup_fast import project_root_str
+
+_root = Path(project_root_str())
 try:
     os.getcwd()
 except FileNotFoundError:

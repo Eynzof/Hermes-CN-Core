@@ -74,7 +74,7 @@ def check_context_engine_requirements() -> bool:
 # Schemas (imported from agent/context_tools for single-source-of-truth)
 # ---------------------------------------------------------------------------
 
-def _get_schemas() -> Dict[str, Dict[str, Any]]:
+def _get_schemas() -> dict[str, dict[str, Any]]:
     """Return schema dicts from the canonical source."""
     from agent.context_tools import get_compact_schema, get_context_usage_schema
     return {

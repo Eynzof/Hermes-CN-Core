@@ -93,7 +93,7 @@ def test_pid_is_running_consistency_matrix():
 def test_pid_is_running_system_pid_does_not_crash():
     """SYSTEM PID (4 on Windows) should not crash, regardless of return value."""
     try:
-        result = _pid_is_running(4)
+        _result = _pid_is_running(4)
         # Accept either True or False — just don't crash
     except Exception as exc:
         pytest.fail(f"_pid_is_running(4) raised {exc}")

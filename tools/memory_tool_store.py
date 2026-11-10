@@ -190,8 +190,8 @@ class MemoryStore:
         self.memory_entries: list[str] = []
         self.user_entries: list[str] = []
         self.memory_char_limit, self.user_char_limit = memory_char_limit, user_char_limit
-        self.memory_entries: List[str] = []
-        self.user_entries: List[str] = []
+        self.memory_entries: list[str] = []
+        self.user_entries: list[str] = []
         # [CN-fork] P-055: clamp through the one shared normalizer (1..8000, default
         # 2200) so a config/env value outside the documented bounds can't make the
         # budget meaningless (e.g. a 0-char limit refusing every add).

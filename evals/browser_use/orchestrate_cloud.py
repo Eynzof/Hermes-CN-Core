@@ -137,7 +137,7 @@ for task, model, rep in cells:
             f.write(json.dumps(rec) + "\n")
         continue
     env = {**ENV_BASE, **extra_env, "BUBENCH_TASKS": args.tasks}
-    subprocess.run(["pkill", "-f", "browser_harness"], capture_output=True, check=False)
+    subprocess.run(["pkill", "-f", "browser_harness"], timeout=300, capture_output=True, check=False)
     try:
         proc = subprocess.run(
             [PY, os.path.join(ROOT, "single_run.py"), "pr", task, model, str(rep)],

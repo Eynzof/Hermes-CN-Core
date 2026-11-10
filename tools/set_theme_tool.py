@@ -12,7 +12,7 @@ from typing import Callable, Optional
 
 from tools.registry import registry, tool_error
 
-ACCENT_SWATCHES = ("mono", "green", "cyan", "nous", "violet", "pink", "red", "orange")
+from tools.theme_palette import ACCENT_SWATCHES
 # The theme's own accent; the renderer stores it as "no accent pick".
 THEME_ACCENT = "theme"
 MODES = ("light", "dark", "system")

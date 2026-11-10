@@ -26,6 +26,7 @@ from xml.etree import ElementTree
 from xml.sax.saxutils import escape
 
 from agent.deadline import poll_until
+from tools.runtime_compat import is_frozen_runtime
 from hermes_cli._subprocess_compat import (
     _WINDOWS_GATEWAY_BREAKAWAY_ENV,
     windows_detach_flags,
@@ -359,8 +360,6 @@ def _gateway_run_argv(python_exe: str, profile_arg: str) -> list[str]:
     # binary (no pythonw sibling) — ``[exe, "-m", "hermes_cli.main"]`` would
     # run `hermes -m hermes_cli.main` and fail with argparse's "invalid choice".
     # The frozen binary takes the gateway subcommand directly.
-    from tools.runtime_compat import is_frozen_runtime
-
     if is_frozen_runtime():
         argv = [sys.executable]
     else:

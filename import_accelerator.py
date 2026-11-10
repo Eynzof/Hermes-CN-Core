@@ -68,7 +68,7 @@ from typing import Dict, List, Optional, Tuple
 # ``import_accelerator`` itself is intentionally absent — by the time anything
 # could import it, it is already in ``sys.modules``.
 # ---------------------------------------------------------------------------
-_FIRST_PARTY_MODULES: Tuple[str, ...] = (
+_FIRST_PARTY_MODULES: tuple[str, ...] = (
     "run_agent",
     "model_tools",
     "toolsets",
@@ -85,7 +85,7 @@ _FIRST_PARTY_MODULES: Tuple[str, ...] = (
     "platform_utils",
 )
 
-_FIRST_PARTY_PACKAGES: Tuple[str, ...] = (
+_FIRST_PARTY_PACKAGES: tuple[str, ...] = (
     "agent",
     "tools",
     "hermes_cli",
@@ -101,7 +101,7 @@ _ENV_DISABLE = "HERMES_DISABLE_IMPORT_ACCELERATOR"
 
 # The single installed finder instance (or None). Module-global so install() is
 # idempotent and uninstall()/is_installed() can find it.
-_installed_finder: "Optional[_FirstPartyFinder]" = None
+_installed_finder: Optional[_FirstPartyFinder] = None
 
 
 class _FirstPartyFinder:
@@ -113,13 +113,13 @@ class _FirstPartyFinder:
 
     # ``sys.meta_path`` finders are duck-typed — only ``find_spec`` is required.
     # ``__slots__`` keeps the singleton lean (it lives for the whole process).
-    __slots__ = ("root", "_modules", "_packages")
+    __slots__ = ("_modules", "_packages", "root")
 
     def __init__(
         self,
         root: str,
-        modules: Dict[str, str],
-        packages: Dict[str, Tuple[str, List[str]]],
+        modules: dict[str, str],
+        packages: dict[str, tuple[str, list[str]]],
     ) -> None:
         self.root = root
         # name -> absolute path of ``name.py``
@@ -133,10 +133,10 @@ class _FirstPartyFinder:
         return fullname in self._packages or fullname in self._modules
 
     @property
-    def handled_names(self) -> Tuple[str, ...]:
+    def handled_names(self) -> tuple[str, ...]:
         return tuple(sorted({*self._packages, *self._modules}))
 
-    def find_spec(self, fullname, path=None, target=None):  # noqa: D401
+    def find_spec(self, fullname, path=None, target=None):
         # Submodule imports (``pkg.sub``) arrive with a non-None ``path`` (the
         # parent's ``__path__``). Let the standard one-directory FileFinder
         # handle those — cheap already, and correct for namespace semantics.
@@ -173,12 +173,13 @@ def _repo_root() -> str:
     ``hermes_constants.py``, so its own directory is the resolution root for
     every shipped entry point.
     """
-    return os.path.dirname(os.path.abspath(__file__))
+    from hermes_cli._startup_fast import project_root_str
+    return project_root_str()
 
 
 def build_first_party_map(
     root: Optional[str] = None,
-) -> Tuple[Dict[str, str], Dict[str, Tuple[str, List[str]]]]:
+) -> tuple[dict[str, str], dict[str, tuple[str, list[str]]]]:
     """Resolve the curated first-party names under *root* to concrete paths.
 
     Returns ``(modules, packages)`` where ``modules`` maps ``name -> name.py``
@@ -189,14 +190,14 @@ def build_first_party_map(
     ``.py`` module registers only as the package (CPython's own order).
     """
     base = root if root is not None else _repo_root()
-    packages: Dict[str, Tuple[str, List[str]]] = {}
+    packages: dict[str, tuple[str, list[str]]] = {}
     for name in _FIRST_PARTY_PACKAGES:
         pkg_dir = os.path.join(base, name)
         init_py = os.path.join(pkg_dir, "__init__.py")
         if os.path.isfile(init_py):
             packages[name] = (init_py, [pkg_dir])
 
-    modules: Dict[str, str] = {}
+    modules: dict[str, str] = {}
     for name in _FIRST_PARTY_MODULES:
         if name in packages:
             # A same-named package already claims this name — package wins.
@@ -267,7 +268,7 @@ def is_installed() -> bool:
     return any(isinstance(f, _FirstPartyFinder) for f in sys.meta_path)
 
 
-def active_finder() -> "Optional[_FirstPartyFinder]":
+def active_finder() -> Optional[_FirstPartyFinder]:
     """Return the installed finder instance, or None. Test/diagnostic helper."""
     for f in sys.meta_path:
         if isinstance(f, _FirstPartyFinder):

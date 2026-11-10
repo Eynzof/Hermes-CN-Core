@@ -28,21 +28,21 @@ def _force_pwsh_shell(monkeypatch):
 
 class TestSessionReuseFlag:
     def test_disabled_off_windows(self):
-        import tools.environments.local as local
+        from tools.environments import local
 
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(local, "_IS_WINDOWS", False)
             assert local._resolve_pwsh_session_reuse("powershell") is False
 
     def test_disabled_for_bash_shell(self):
-        import tools.environments.local as local
+        from tools.environments import local
 
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(local, "_IS_WINDOWS", True)
             assert local._resolve_pwsh_session_reuse("bash") is False
 
     def test_env_var_enables(self):
-        import tools.environments.local as local
+        from tools.environments import local
 
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(local, "_IS_WINDOWS", True)
@@ -51,7 +51,7 @@ class TestSessionReuseFlag:
             assert local._resolve_pwsh_session_reuse("pwsh") is True
 
     def test_env_var_disables_over_config(self):
-        import tools.environments.local as local
+        from tools.environments import local
         import hermes_cli.config as cfg
 
         with pytest.MonkeyPatch.context() as mp:
@@ -67,7 +67,7 @@ class TestSessionReuseFlag:
             assert local._resolve_pwsh_session_reuse("powershell") is False
 
     def test_config_enables(self):
-        import tools.environments.local as local
+        from tools.environments import local
         import hermes_cli.config as cfg
 
         with pytest.MonkeyPatch.context() as mp:
@@ -81,7 +81,7 @@ class TestSessionReuseFlag:
             assert local._resolve_pwsh_session_reuse("powershell") is True
 
     def test_default_off(self):
-        import tools.environments.local as local
+        from tools.environments import local
         import hermes_cli.config as cfg
 
         with pytest.MonkeyPatch.context() as mp:

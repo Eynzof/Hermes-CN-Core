@@ -129,7 +129,7 @@ def relaunch(
     if sys.platform == "win32":
         import subprocess
         try:
-            result = subprocess.run(new_argv, check=False)
+            result = subprocess.run(new_argv, check=False)  # health: allow HX006 -- Windows relaunch proxies the interactive Hermes process for its entire lifetime
             sys.exit(result.returncode)
         except KeyboardInterrupt:
             sys.exit(130)

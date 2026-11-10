@@ -433,7 +433,7 @@ class ACPClient:
         def _decode(line: str) -> dict[str, Any]:
             try:
                 return json.loads(line)
-            except Exception:
+            except json.JSONDecodeError:
                 return {"raw": line.rstrip("\n")}
 
         def _pump(stream, sink) -> None:
@@ -554,6 +554,7 @@ class ACPClient:
                 try:
                     response = _jsonrpc_result(message_id, _FS_HANDLERS[method](msg.get("params") or {}, cwd))
                 except Exception as exc:
+                    logger.debug('ACPClient._handle_server_message failed', exc_info=True)
                     response = _jsonrpc_error(message_id, -32602, str(exc))
         else:
             response = _jsonrpc_error(message_id, -32601, f"ACP client method '{method}' is not supported by Hermes yet.")

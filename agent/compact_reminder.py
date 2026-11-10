@@ -32,14 +32,14 @@ class CompactReminderProvider(SystemReminderProvider):
         self,
         agent: Any,
         api_call_count: int,
-    ) -> List[SystemReminder]:
+    ) -> list[SystemReminder]:
         # 1. Skip if context compressor not available
         cc = getattr(agent, "context_compressor", None)
         if cc is None:
             return []
 
         # 2. Get current usage status
-        status: Dict[str, Any] = cc.get_usage_status()
+        status: dict[str, Any] = cc.get_usage_status()
         usage_percent: float = status.get("usage_percent", 0.0)  # 0-100
         context_usage: float = usage_percent / 100.0  # convert to 0-1 ratio
         used_tokens: int = status.get("used_tokens", 0)

@@ -34,6 +34,7 @@ class _Trickle(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def trickling_registry(monkeypatch):
+    monkeypatch.setattr(md, "_load_bundled_snapshot", dict)
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Trickle)
     server.gets, server.stop = 0, threading.Event()
     threading.Thread(target=server.serve_forever, daemon=True).start()

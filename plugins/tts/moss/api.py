@@ -113,12 +113,12 @@ def validate_public_url(url: str) -> None:
         )
 
 
-def _http_kwargs() -> Dict[str, Any]:
+def _http_kwargs() -> dict[str, Any]:
     """Resolve key/base_url/timeout/headers once per call."""
     return build_http_kwargs()
 
 
-def _require_key(kwargs: Dict[str, Any]) -> None:
+def _require_key(kwargs: dict[str, Any]) -> None:
     if not kwargs.get("api_key"):
         raise MossApiError(
             "Moss API key is not configured — set MOSS_API_KEY, "
@@ -141,7 +141,7 @@ def _raise_for(resp: requests.Response) -> None:
                 detail = str(data.get("message") or data.get("error") or data)
         else:
             detail = str(data)
-    except Exception:  # noqa: BLE001 — best-effort body parsing
+    except Exception:
         detail = (resp.text or "")[:500]
     if not detail:
         detail = resp.reason or ""
@@ -166,7 +166,7 @@ def _short_path(url: str) -> str:
 def _parse_json(resp: requests.Response) -> dict:
     try:
         data = resp.json()
-    except Exception as exc:  # noqa: BLE001 — non-JSON body
+    except Exception as exc:
         raise MossApiError(
             f"Moss API returned non-JSON: {(resp.text or '')[:200]!r}"
         ) from exc
@@ -226,7 +226,7 @@ def _looks_like_url(value: str) -> bool:
 
 
 def _transcribe_json(
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     *,
     diarize: bool,
     response_format: str,
@@ -234,7 +234,7 @@ def _transcribe_json(
     async_mode: bool,
 ) -> dict:
     """POST /v1/audio/transcriptions as JSON (``file_id`` / ``url`` input)."""
-    body: Dict[str, Any] = dict(payload)
+    body: dict[str, Any] = dict(payload)
     if response_format:
         body["response_format"] = response_format
     if diarize:
@@ -314,7 +314,7 @@ def transcribe_audio(
     )
 
 
-def _keyterms_form(keyterms: Optional[Sequence[str]]) -> List[tuple[str, str]]:
+def _keyterms_form(keyterms: Optional[Sequence[str]]) -> list[tuple[str, str]]:
     """Normalize + validate keyterms into multipart form pairs.
 
     Moss accepts at most 20 keyterms of at most 30 chars each; non-empty
@@ -324,7 +324,7 @@ def _keyterms_form(keyterms: Optional[Sequence[str]]) -> List[tuple[str, str]]:
     """
     if not keyterms:
         return []
-    pairs: List[tuple[str, str]] = []
+    pairs: list[tuple[str, str]] = []
     seen: set[str] = set()
     for i, kt in enumerate(keyterms):
         text = str(kt or "").strip()
@@ -363,7 +363,7 @@ def transcribe(
     kwargs = _http_kwargs()
     _require_key(kwargs)
 
-    form: List[tuple[str, str]] = [("model", str(model).strip())]
+    form: list[tuple[str, str]] = [("model", str(model).strip())]
     if response_format:
         form.append(("response_format", str(response_format).strip()))
     if diarize:
@@ -401,13 +401,13 @@ def _media_content(
     image_file_ids: Sequence[str],
     video_url: Optional[str],
     video_file_id: Optional[str],
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Build the ``content[]`` items for a MOSS-VL ``input`` block.
 
     Enforces the doc contract: 1–5 images OR 1 video (never mixed); per
     item either a URL or a ``file_id`` (never both).
     """
-    items: List[Dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
     n_images = len(image_urls) + len(image_file_ids)
     n_videos = int(bool(video_url)) + int(bool(video_file_id))
 
@@ -457,7 +457,7 @@ def understand(
     if not isinstance(input_text, str) or not input_text.strip():
         raise MossApiError("instruction is required for Moss vision")
     content = _media_content(image_urls, image_file_ids, video_url, video_file_id)
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "model": str(model).strip() or "moss-vl-1.0",
         "input": [
             {
@@ -501,7 +501,7 @@ def extract_vision_text(data: dict) -> str:
     MOSS-VL returns ``output[].content[].text``; this helper walks that
     shape defensively so tool/providers share one parser.
     """
-    parts: List[str] = []
+    parts: list[str] = []
     for out in data.get("output") or []:
         if not isinstance(out, dict):
             continue

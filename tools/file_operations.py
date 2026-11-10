@@ -7,6 +7,8 @@ implementation serves every environment (local, docker, ssh, modal, ...). Compan
 (LintMixin), ``file_operations_search`` (SearchMixin).
 """
 
+from tools.file_operations_json import _refuse_introduced_json_constant
+
 import base64
 import binascii
 import os
@@ -113,7 +115,7 @@ def _get_file_lock(path: str) -> "threading.Lock":
     """
     try:
         key = os.path.normcase(os.path.abspath(path))
-    except Exception:  # noqa: BLE001 - never let path canonicalization break a write
+    except Exception:
         key = path
     return _file_lock_stripes[hash(key) % _FILE_LOCK_STRIPES]
 
@@ -379,38 +381,8 @@ def _split_segments(output: str, sentinel: str) -> list[str]:
     return output.split(sentinel + "\n")
 
 
-def _json_nonstandard_constant(text: str) -> Optional[str]:
-    """First NaN/Infinity/-Infinity in ``text`` when it is otherwise valid JSON,
-    else None. ``json.loads`` accepts these JavaScript extensions by default."""
-    if "NaN" not in text and "Infinity" not in text:
-        return None
-    found: list[str] = []
-
-    def note_constant(value: str) -> float:
-        found.append(value)
-        return float("nan")
-
-    try:
-        json.loads(_strip_bom(text)[0], parse_constant=note_constant)
-    except (ValueError, RecursionError):  # unparseable text has no constant to report
-        return None
-    return found[0] if found else None
 
 
-def _refuse_introduced_json_constant(path: str, content: str,
-                                     pre_content: Optional[str]) -> Optional[WriteResult]:
-    """Refuse a JSON write that INTRODUCES a nonstandard constant (strict JSON
-    consumers reject them). A file that already holds one keeps accepting
-    unrelated edits, which is why the lenient syntax gate can't do this check."""
-    constant = _json_nonstandard_constant(content)
-    if constant is None:
-        return None
-    if pre_content is not None and _json_nonstandard_constant(pre_content) is not None:
-        return None
-    return WriteResult(error=(
-        f"Refusing to write '{path}': candidate content uses {constant}, which is "
-        "not valid JSON. The file was NOT created or modified. Use null or a "
-        "string instead and retry."))
 
 
 class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
@@ -1062,17 +1034,11 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         return True
 
     def _is_local_env(self) -> bool:
-        """[CN-fork] P-033: True iff this FileOperations is wired to a local backend."""
-        env = getattr(self, "env", None)
-        if env is None:
-            # Defensive: some tests build ShellFileOperations via ``__new__``
-            # without going through ``__init__``, so ``self.env`` may be missing.
-            return False
-        try:
-            from tools.environments.local import LocalEnvironment
-        except Exception:  # noqa: BLE001
-            return False
-        return isinstance(env, LocalEnvironment)
+        """Whether file probes may use the host filesystem, including on Windows."""
+        from tools.environments.base import env_uses_host_filesystem
+
+        return env_uses_host_filesystem(getattr(self, "env", None))
+
     def _escape_native_tool_arg(self, arg: str) -> str:
         """Quote a path for a NATIVE Windows binary (rg, node, git ...): those don't
         understand the MSYS ``/c/...`` form and Hermes disables MSYS argument

@@ -36,7 +36,7 @@ _MODELS_DEV_FALLBACK_GRACE = 300  # 5 minutes
 # Offline-first snapshot shipped inside the package (see _load_bundled_snapshot).
 # Parsed once and memoised.
 _BUNDLED_SNAPSHOT_FILENAME = "models_dev_snapshot.json"
-_bundled_snapshot_cache: Optional[Dict[str, Any]] = None
+_bundled_snapshot_cache: Optional[dict[str, Any]] = None
 _bundled_snapshot_loaded = False
 _MODELS_DEV_CACHE_TTL = 4 * 3600  # 4 hours — ETag conditional GET makes refresh cheap
 _MODELS_DEV_RETRY_DELAY = 300  # 5 minutes after a failed refresh
@@ -360,14 +360,14 @@ class _NotModified(Exception):
     """Server returned 304 Not Modified — existing cache is still valid."""
 
 
-def _bundled_snapshot_candidates() -> List[Path]:
+def _bundled_snapshot_candidates() -> list[Path]:
     """Candidate paths for the bundled snapshot across run modes.
 
     Covers editable/source checkouts and wheel installs (the file sits next to
     this module) and PyInstaller frozen runtimes (``sys._MEIPASS``).
     ``importlib.resources`` is tried first so zip/namespace installs resolve.
     """
-    candidates: List[Path] = []
+    candidates: list[Path] = []
     try:
         import importlib.resources as _res
 
@@ -383,7 +383,7 @@ def _bundled_snapshot_candidates() -> List[Path]:
     return candidates
 
 
-def _load_bundled_snapshot() -> Dict[str, Any]:
+def _load_bundled_snapshot() -> dict[str, Any]:
     """Load the package-bundled models.dev snapshot (offline-first fallback).
 
     Parsed once and memoised. Returns the registry dict, or ``{}`` when the
@@ -413,7 +413,7 @@ def _load_bundled_snapshot() -> Dict[str, Any]:
     return _bundled_snapshot_cache
 
 
-def _serve_offline_fallback() -> Dict[str, Any]:
+def _serve_offline_fallback() -> dict[str, Any]:
     """Return the best available registry WITHOUT touching the network.
 
     Order: live in-mem cache (even if stale) → disk cache (even if stale) →
@@ -448,7 +448,7 @@ def _serve_offline_fallback() -> Dict[str, Any]:
     return _models_dev_cache
 
 
-def _fetch_models_dev_from_network(*, conditional: bool = False) -> Tuple[Dict[str, Any], str]:
+def _fetch_models_dev_from_network(*, conditional: bool = False) -> tuple[dict[str, Any], str]:
     """Fetch the live registry; returns ``(registry, etag)`` (etag "" if none). Raises on network
     errors and on an empty/invalid payload. ``conditional`` sends ``If-None-Match`` with the sidecar's
     ETag and raises ``_NotModified`` on 304 — pass True ONLY while holding ``_models_dev_fetch_lock``

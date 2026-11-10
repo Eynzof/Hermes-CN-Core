@@ -1,5 +1,5 @@
 {
-  "description": "Run shell commands on the OS/shell/backend named in your environment section. The working directory, files and exported variables persist between calls: activate a virtualenv or export once, not before every command.\n\nUse read_file, search_files, patch and write_file instead of cat/head/tail, grep/find/ls, sed/awk and echo/heredoc. Output is auto-truncated with the full text saved to a file; never pipe through head/tail to shorten it.\n\nForeground (default) returns as soon as the command finishes. To wait a fixed time, run the wait in the foreground; never background a sleep or polling loop. Background is only for commands that must keep running after this call returns; health-check a server in a separate call and manage jobs with process_manage. When a command changes directory, trust the result's \"cwd\" instead of prefixing later commands with cd.\n",
+  "description": "Execute shell commands on a Linux environment. The host OS, shell, and terminal backend are stated in your environment section — write commands for THAT platform. The working directory, files and exported variables persist between calls: activate a virtualenv or export once, not before every command.\n\nDo NOT use cat/head/tail (use read_file), grep/rg/find/ls (use search_files), sed/awk (use patch), or echo/heredoc file creation (use write_file). Reserve terminal for: builds, installs, git, processes, scripts, network, package managers — anything that needs a shell. Output is auto-truncated with the full text saved to a file — never pipe through tail/head to shorten it.\nForeground (default): returns INSTANTLY when the command finishes, even with a high timeout — set timeout generously for long builds and fixed waits.\nBackground: set background=true (returns a session_id) only for commands that must keep running independently after this tool call returns; add notify=true for bounded tasks, leave silent only for servers/daemons that never exit. Do not start sleep, timers, cooldowns, delays, or polling loops with background=true — to wait a fixed time, run the wait as a normal foreground command with a high enough timeout. After starting a server, verify readiness with a health check in a separate call (no blind sleep loops); manage with process_manage(action=\"poll\"/\"wait\").\nWorking directory: use 'workdir' for per-command cwd; when a command changes the session cwd (cd, pushd), trust the result's \"cwd\" field instead of prefixing every command with 'cd'.\nPTY: pty=true + background=true for interactive CLIs (they hang without a terminal); drive them with process_manage write/submit. Local backend only. Pipe git output to cat if it might page.\nPersist: background=true, persist_on_release=true keeps the job alive across agent lifecycle cleanup (session end, /new, compression, error recovery, stop-on-max-iterations). Use ONLY for long-running jobs the user explicitly wants to outlive the conversation; the user can still stop it on purpose.\n",
   "name": "terminal",
   "parameters": {
     "properties": {
@@ -9,7 +9,7 @@
         "type": "boolean"
       },
       "command": {
-        "description": "The shell command to execute",
+        "description": "The shell command to execute. Optional when mode='interactive' (defaults to a persistent shell session).",
         "type": "string"
       },
       "heartbeat": {
@@ -17,6 +17,27 @@
         "description": "With background=true: also notify every N seconds (min 60) with new output; quiet ticks are skipped. For bounded jobs you must react to mid-run, never servers. Implies notify=true; 0 = off.",
         "minimum": 0,
         "type": "integer"
+      },
+      "inactivity_timeout": {
+        "description": "Seconds of output silence before a wait returns early with partial output (process_id continuation waits; default 120 when wait_for_pattern is set).",
+        "minimum": 1,
+        "type": "integer"
+      },
+      "interactive": {
+        "default": false,
+        "description": "Start a persistent interactive shell/REPL (local backend, PTY). Equivalent to mode='interactive'. Continue it later with terminal(command=..., process_id=<session_id>).",
+        "type": "boolean"
+      },
+      "mode": {
+        "description": "Execution mode: 'run'/'execute'/'foreground' (default, blocks until done), 'background' (== background=true, returns a session_id), 'interactive' (start a persistent shell/REPL session you continue later via process_id). Overrides `background` when set.",
+        "enum": [
+          "run",
+          "execute",
+          "foreground",
+          "background",
+          "interactive"
+        ],
+        "type": "string"
       },
       "notify": {
         "anyOf": [
@@ -37,6 +58,15 @@
         "description": "With background=true: survive session end, /new, compression and other cleanup (not host exit). Only for jobs the user explicitly wants to outlive the conversation.",
         "type": "boolean"
       },
+      "process_id": {
+        "description": "Continue an existing background process (session_id from terminal background or process(action='list')): send `command` to its stdin and wait for its NEW output (kimi-style session continuation). Requires the process to accept stdin (PTY/pipe).",
+        "type": "string"
+      },
+      "promote_on_timeout": {
+        "default": false,
+        "description": "Foreground only (local backend): if the command exceeds `timeout`, DON'T kill it — keep it running and return a background session_id you can poll/wait/log/kill. Long work is never lost. Also enables wait_for_pattern early-return.",
+        "type": "boolean"
+      },
       "pty": {
         "default": false,
         "description": "With background=true: pseudo-terminal for interactive CLIs (REPLs, coding agents); drive it with process_manage write/submit. Local backend only.",
@@ -46,6 +76,10 @@
         "description": "Max seconds (default 180, foreground max 600). Finishing early returns at once, so set it generously. Above 600s the command runs as a tracked background process with notify_on_complete=true (the result says so; do not re-run it).",
         "minimum": 1,
         "type": "integer"
+      },
+      "wait_for_pattern": {
+        "description": "Regex. With promote_on_timeout=true (foreground): return as soon as it appears in output; the process keeps running as a background session. With process_id (continuation): wait for new output matching this regex. Use for server-readiness signals instead of polling.",
+        "type": "string"
       },
       "workdir": {
         "description": "Absolute working directory for this command only.",

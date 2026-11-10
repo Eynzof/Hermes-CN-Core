@@ -28,7 +28,7 @@ def test_published_convenience_dispatches_to_its_entrypoint(tmp_path, monkeypatc
     assert result["ok"], result
     launcher = tmp_path / ".local" / "bin" / name
     assert os.access(launcher, os.X_OK)
-    run = subprocess.run([str(launcher), "spaces and café", ""], cwd=tmp_path,
+    run = subprocess.run([str(launcher), "spaces and café", ""], check=False, cwd=tmp_path,
                          capture_output=True, text=True, timeout=30)
     assert run.returncode == 0, run.stdout + run.stderr
     assert json.loads(run.stdout) == {"entry": module, "argv": ["spaces and café", ""]}

@@ -342,7 +342,7 @@ def test_hash_not_a_comment_in_those_positions(source: str, glued: bool) -> None
 def test_comment_stops_at_newline_only() -> None:
     source = "x # c\ny"
     result = lex(source)
-    comment = [t for t in result.tokens if t.kind is TokenKind.COMMENT][0]
+    comment = next(t for t in result.tokens if t.kind is TokenKind.COMMENT)
     assert comment.text == "# c"
 
 
@@ -525,9 +525,7 @@ def test_lexer_region_ends_match_legacy_oracles(source: str) -> None:
                 expected = eof if value == -1 else value
             elif kind is WordPartKind.COMMAND_SUBSTITUTION:
                 expected = eof if value == -1 else value + 1
-            elif kind is WordPartKind.BACKQUOTE_SUBSTITUTION:
-                expected = eof if value == -1 else value
-            elif kind is WordPartKind.ANSI_C_QUOTE:
+            elif kind is WordPartKind.BACKQUOTE_SUBSTITUTION or kind is WordPartKind.ANSI_C_QUOTE:
                 expected = eof if value == -1 else value
             elif kind is WordPartKind.PARAMETER_EXPANSION:
                 expected = eof if value is None else value + 1

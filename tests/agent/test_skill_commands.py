@@ -752,7 +752,7 @@ class TestSkillDirectoryHeader:
         # with hundreds of references; the absolute base is already stated
         # once in the [Skill directory: ...] header and the footer example.
         assert "- scripts/run.js" in msg
-        assert f"- scripts/run.js  ->  " not in msg
+        assert "- scripts/run.js  ->  " not in msg
         assert str(skill_dir / "scripts" / "run.js") not in msg.split(
             "[This skill has supporting files"
         )[1].split("\nLoad any of these")[0]

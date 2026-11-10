@@ -190,7 +190,7 @@ def _warn_profile_fallback_once() -> None:
         active = active_path.read_text(encoding="utf-8").strip() if active_path.exists() else ""
     except (UnicodeDecodeError, OSError):
         active = ""
-    except Exception:  # noqa: BLE001 — pure diagnostics: must never break get_hermes_home()
+    except Exception:
         active = ""
     if active and active != "default":
         # Direct stderr, not logging: runs at import time (often before logging is

@@ -7,6 +7,12 @@ from types import SimpleNamespace
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _isolate_plugin_toolsets(monkeypatch):
+    """This suite exercises core toolset policy, independently of installed plugins."""
+    monkeypatch.setattr("hermes_cli.tools_config._get_plugin_toolset_keys", lambda: set())
+
 from tests.gateway.test_session_follow_profile_config import _create, _owner, _route
 
 

@@ -128,7 +128,7 @@ class RelayDiscordInteractionMixin:
         session key matches the one the follow-up capability was bound under."""
         try:
             payload = orjson.loads(bytes(getattr(forward, "body", b"")).decode("utf-8"))
-        except Exception:
+        except (TypeError, ValueError, UnicodeError):
             return None
         if not isinstance(payload, dict):
             return None

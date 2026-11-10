@@ -739,7 +739,7 @@ class TestGeneratedCodeParses:
         generated = _fix_for_windows(source).command
         proc = subprocess.run(
             [self.BASH, "--noprofile", "--norc", "-n"],
-            input=generated,
+            check=False, input=generated,
             capture_output=True,
             text=True,
         )

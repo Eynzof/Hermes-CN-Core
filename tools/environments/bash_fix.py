@@ -72,7 +72,7 @@ from __future__ import annotations
 
 import sys
 
-from agent.re_compat import re  # noqa: F401  (historical module surface)
+from agent.re_compat import re
 
 from tools.environments.shell_compat import bash_core as _bc
 from tools.environments.shell_compat import fallback_data as _fd
@@ -158,7 +158,6 @@ def fix_bash_command(command: str) -> BashFix:
     return _bc.fix_bash_command(command)
 
 __all__ = [
-    "BashFix",
     "_ASSIGNMENT_RE",
     "_COLUMN_PERL",
     "_COMMAND_END_KEYWORDS",
@@ -169,7 +168,6 @@ __all__ = [
     "_FALLBACK_BODIES",
     "_FALLBACK_COMMAND_WRAPPERS",
     "_HEREDOC_TRAILING_OPERATORS",
-    "_HereDoc",
     "_KILLALL_PS",
     "_LIST_KEYWORDS",
     "_MAX_NESTING_DEPTH",
@@ -192,7 +190,6 @@ __all__ = [
     "_SHELL_WRAPPERS",
     "_STUB_AWARE_FALLBACKS",
     "_SYSTEMINFO_PS",
-    "_Scanner",
     "_TASKKILL_PS",
     "_TASKLIST_PS",
     "_TREE_PERL",
@@ -202,8 +199,11 @@ __all__ = [
     "_WRAPPER_OPTIONS_WITH_VALUE",
     "_WRAPPER_PATH_OPTIONS",
     "_WRAPPER_PATH_OPTION_LONG",
-    "_Wrapper",
     "_ZIP_PS",
+    "BashFix",
+    "_HereDoc",
+    "_Scanner",
+    "_Wrapper",
     "_apply_heredoc_operator_move",
     "_fallback_definition",
     "_fix_heredoc_trailing_operators",

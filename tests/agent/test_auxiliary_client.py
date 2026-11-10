@@ -999,9 +999,9 @@ class TestExpiredCodexFallback:
         with patch("agent.anthropic_adapter.build_anthropic_client") as mock_build:
             mock_build.return_value = MagicMock()
             from agent.auxiliary_client import _resolve_auto_route
-            client, model, _provider = _resolve_auto_route()
+            client, _model, _provider = _resolve_auto_route()
             # Should NOT be Codex, should be Anthropic (or another available provider)
-            assert not isinstance(client, type(None)), "Should find a provider after expired Codex"
+            assert not (client is None), "Should find a provider after expired Codex"
 
 
     def test_expired_codex_openrouter_key_is_not_implicit_fallback(self, tmp_path, monkeypatch):
@@ -1668,7 +1668,7 @@ class TestTryPaymentFallback:
         with patch("agent.auxiliary_client._try_custom_endpoint", return_value=(None, None)), \
              patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(None, None)), \
              patch("agent.auxiliary_client._read_main_provider", return_value="openrouter"):
-            client, model, label = _try_payment_fallback("openrouter")
+            client, _model, label = _try_payment_fallback("openrouter")
         assert client is None
         assert label == ""
 
@@ -1677,7 +1677,7 @@ class TestTryPaymentFallback:
         mock_client = MagicMock()
         with patch("agent.auxiliary_client._try_custom_endpoint", return_value=(mock_client, "local-model")), \
              patch("agent.auxiliary_client._read_main_provider", return_value="openai-codex"):
-            client, model, label = _try_payment_fallback("openai-codex", task="vision")
+            client, _model, label = _try_payment_fallback("openai-codex", task="vision")
         assert client is mock_client
         assert label == "local/custom"
 
@@ -3925,7 +3925,7 @@ class TestVisionAutoSkipsKimiCoding:
             "agent.auxiliary_client._get_cached_client", gcc_mock,
         )
 
-        provider, client, model = resolve_vision_provider_client(
+        provider, client, _model = resolve_vision_provider_client(
             provider="kimi-coding",
         )
         assert provider == "kimi-coding"
@@ -4739,7 +4739,7 @@ class TestAuxUnhealthyCache:
              patch("agent.auxiliary_client._try_nous") as nous_try, \
              patch("agent.auxiliary_client._try_custom_endpoint") as custom_try, \
              patch("agent.auxiliary_client._resolve_api_key_provider", return_value=(api_client, "api-model")):
-            client, model, label = _try_payment_fallback("openrouter", task="compression")
+            client, _model, label = _try_payment_fallback("openrouter", task="compression")
         assert client is api_client
         assert label == "api-key"
         # OR/Nous are no longer implicit rungs; custom is skipped via unhealthy cache.

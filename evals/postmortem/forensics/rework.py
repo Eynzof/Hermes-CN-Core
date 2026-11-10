@@ -21,7 +21,7 @@ from pathlib import Path
 
 
 def _git(repo: str, *args: str) -> str:
-    return subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False).stdout
+    return subprocess.run(["git", "-C", repo, *args], timeout=300, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False).stdout
 
 
 def main(argv=None) -> int:

@@ -21,7 +21,7 @@ class SystemReminder(Reminder):
         self,
         type: str,
         content: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         super().__init__(
             type=type,
@@ -42,7 +42,7 @@ class SystemReminderProvider(ReminderProvider):
         self,
         agent: Any,
         api_call_count: int,
-    ) -> List[SystemReminder]:
+    ) -> list[SystemReminder]:
         """Return reminders to inject before this API call.
 
         Args:

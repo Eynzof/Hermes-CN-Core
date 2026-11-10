@@ -384,6 +384,8 @@ class PluginContext(PluginCapabilityCtxMixin):
             with _facade()._plugin_home_scope(self._manager.home_path):
                 cfg = load_config() or {}
         except Exception:
+            logger = _facade().logger
+            logger.debug('PluginContext._tool_override_allowed failed', exc_info=True)
             return False  # fail closed: better to break the override than silently grant it
         # Pass THIS manager's profile-scoped config so a multi-profile process never consults the
         # active profile's consent state instead.

@@ -8,7 +8,6 @@ whose callers fall back to the in-repo lists on ``None``.
 from __future__ import annotations
 
 import contextvars
-import json
 import logging
 import orjson
 import os
@@ -216,9 +215,6 @@ def _read_disk_cache() -> tuple[dict[str, Any] | None, float]:
     except (OSError, FileNotFoundError):
         return (None, 0.0)
     try:
-        with open(path, encoding="utf-8-sig") as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError):
         with open(path, encoding="utf-8-sig", errors="replace") as fh:
             data = orjson.loads(fh.read())
     except (OSError, orjson.JSONDecodeError):
@@ -246,7 +242,8 @@ def _bundled_catalog_candidates() -> list[Path]:
     rel = Path("website") / "static" / "api" / "model-catalog.json"
 
     # Source checkout / editable install
-    candidates.append(Path(__file__).parent.parent / rel)
+    from hermes_cli._startup_fast import project_root_str
+    candidates.append(Path(project_root_str()) / rel)
 
     # setuptools data_files locations
     for scheme in ("data", "purelib", "platlib"):
@@ -287,7 +284,6 @@ def _seed_cache_from_bundled() -> bool:
             logger.debug("bundled model catalog at %s failed validation", src)
             continue
         _write_disk_cache(data)
-        reset_cache()
         logger.info("seeded model catalog cache from bundled copy at %s", src)
         return True
     return False
@@ -358,23 +354,19 @@ def get_catalog(*, force_refresh: bool = False) -> dict[str, Any]:
             _spawn_catalog_swr_refresh(cfg["url"])
         return _remember(disk_data, disk_mtime)
 
-        # Need to (re)fetch. Seed from a bundled copy first so offline/fresh
-        # installs still have a fallback, then try the network.
-        if disk_data is None:
-            _seed_cache_from_bundled()
-            disk_data, disk_mtime = _read_disk_cache()
+    # Need to (re)fetch. Seed from a bundled copy first so offline/fresh
+    # installs still have a fallback, then try the network.
+    if disk_data is None:
+        _seed_cache_from_bundled()
+        disk_data, disk_mtime = _read_disk_cache()
 
-        if not force_refresh and disk_data is None and _backing_off("manifest", cfg["url"]):
-            return {}
+    if not force_refresh and disk_data is None and _backing_off("manifest", cfg["url"]):
+        return {}
 
-        # Need to (re)fetch. If it fails, fall back to any stale disk copy.
-        # CN fork: the synchronous fetch walks NO fallback chain — the CN mirror
-        # is the primary source and the merged upstream fallback URLs are only
-        # used by the background SWR refresh below. Passing an empty fallback
-        # tuple keeps the mirror-only policy while routing through the shared
-        # helper (the merged test suite exercises it in both shapes).
-        fetched = _fetch_manifest_with_fallback(cfg["url"], DEFAULT_FETCH_TIMEOUT, fallback_urls=())
-        _note_fetch_result("manifest", cfg["url"], fetched is not None)
+    # CN fork: synchronous requests use the CN mirror only; background SWR
+    # refreshes may also try the upstream fallback URLs.
+    fetched = _fetch_manifest_with_fallback(cfg["url"], DEFAULT_FETCH_TIMEOUT, fallback_urls=())
+    _note_fetch_result("manifest", cfg["url"], fetched is not None)
     if fetched is not None:
         _write_disk_cache(fetched)
         new_disk_data, new_mtime = _read_disk_cache()
@@ -484,9 +476,6 @@ def seed_cache_from_checkout(project_root: Path | str) -> bool:
     the remote fetch is bot-gated. Validated, then written via the same atomic writer."""
     src = Path(project_root) / "website" / "static" / "api" / "model-catalog.json"
     try:
-        with open(src, encoding="utf-8-sig") as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError) as exc:
         with open(src, encoding="utf-8-sig", errors="replace") as fh:
             data = orjson.loads(fh.read())
     except (OSError, orjson.JSONDecodeError) as exc:

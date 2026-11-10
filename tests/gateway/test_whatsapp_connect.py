@@ -477,7 +477,7 @@ class TestHttpSessionLifecycle:
             # (GBK on zh-CN Windows) — locale decode + replace, never strict.
             text=True,
             errors="replace",
-            timeout=10,
+            timeout=10, check=False,
         )
         mock_proc.terminate.assert_not_called()
         mock_proc.kill.assert_not_called()

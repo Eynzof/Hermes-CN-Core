@@ -422,9 +422,7 @@ class TestAllowlistConcurrency:
             )
         t.join(timeout=1.0)
         assert not errors, f"errors: {errors}"
-        assert shell_hooks._is_allowlisted(
-            "on_session_start", "/bin/x.sh",
-        )
+        assert ("on_session_start", "/bin/x.sh") in shell_hooks.allowlisted_pairs()
 
 
     def test_save_allowlist_uses_unique_tmp_paths(self, tmp_path, monkeypatch):

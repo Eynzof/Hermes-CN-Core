@@ -240,7 +240,7 @@ def test_speaker_drain_keeps_a_say_enqueued_during_the_rewrite(tmp_path, monkeyp
     contended = watch_file_lock_contention(monkeypatch)
 
     queue = tmp_path / "say_queue.jsonl"
-    queue.write_text(json.dumps({"id": "a", "text": "first"}) + "\n")
+    queue.write_text(orjson.dumps({"id": "a", "text": "first"}).decode() + "\n", encoding="utf-8")
     pm._write_active({"pid": 0, "meeting_id": "abc-defg-hij", "out_dir": str(tmp_path), "mode": "realtime",
                       "url": "https://meet.google.com/abc-defg-hij", "started_at": 0})
     stub = _StubSession()

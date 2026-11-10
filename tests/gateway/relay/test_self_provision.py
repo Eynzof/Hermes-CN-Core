@@ -38,7 +38,7 @@ def _clean_env(monkeypatch):
     ):
         monkeypatch.delenv(k, raising=False)
     # Never read config.yaml off disk in these tests.
-    monkeypatch.setattr("gateway.run._load_gateway_config", dict, raising=False)
+    monkeypatch.setattr("gateway.relay._load_cfg", dict, raising=False)
 
 
 def _stub_post(captured: dict):
@@ -160,7 +160,7 @@ def test_post_provision_body_includes_instanceId_only_when_set(monkeypatch):
 
     def _fake_urlopen(req, timeout=None):
         sent["body"] = json.loads(req.data.decode())
-    def _fake_urlopen(req, timeout=None):  # noqa: ANN001
+    def _fake_urlopen(req, timeout=None):
         sent["body"] = orjson.loads(req.data.decode())
         return _Resp()
 
@@ -329,7 +329,7 @@ def test_startup_idp_secret_ref_keeps_launch_env_value_when_multiplexed(tmp_path
     monkeypatch.setenv("HERMES_HOME", str(launch_home))
     # The autouse fixture stubs config reads; this test needs the real ``${VAR}`` expansion.
     from hermes_cli.config_effective import load_user_config_effective
-    monkeypatch.setattr("gateway.run._load_gateway_config",
+    monkeypatch.setattr("gateway.relay._load_cfg",
                         lambda config_path=None: load_user_config_effective(launch_home / "config.yaml"))
     monkeypatch.setenv("RELAY_IDP_SECRET", "injected-launch-secret")
     for name in ("GATEWAY_RELAY_IDP_TOKEN_URL", "GATEWAY_RELAY_IDP_CLIENT_ID",

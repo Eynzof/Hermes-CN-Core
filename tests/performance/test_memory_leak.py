@@ -30,7 +30,7 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
-from agent.tool_result_store import (  # noqa: E402
+from agent.tool_result_store import (
     DEFAULT_MAX_MEMORY_BYTES,
     DEFAULT_SPILL_THRESHOLD_BYTES,
     ToolCallResult,
@@ -247,7 +247,7 @@ def test_long_session_rss_stability(tmp_path, timing_context):
     )
     try:
         for i in range(1000):
-            store.add((f"payload-{i} " * 512))  # ~5 KB each -> ~5 MB total
+            store.add(f"payload-{i} " * 512)  # ~5 KB each -> ~5 MB total
         gc.collect()
         rss_after = _rss_mb()
         growth = rss_after - rss_before

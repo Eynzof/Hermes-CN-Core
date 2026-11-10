@@ -347,7 +347,7 @@ _ROUTE_MODEL_REJECTION_PATTERNS = (
 
 _MODEL_NOT_FOUND_PATTERNS = (
     "is not a valid model", "invalid model", "model not found", "model_not_found", "does not exist",
-    "no such model", "unknown model", "unsupported model", "no endpoints found that support tool use",
+    "no such model", "no available channel", "unknown model", "unsupported model", "no endpoints found that support tool use",
     "openrouter catalog",
     # Nous 404 when the provider retires a :free route — the slug is dead for every
     # credential, so fall back instead of burning retries (#123180). Unlike the free-tier
@@ -1161,6 +1161,8 @@ def _shape_context(c: _Ctx, verdict: Verdict, *, hooked: bool) -> dict[str, Any]
     ``should_fallback=False``), and for built-in verdicts ``quota_exhausted`` and ``route_rejects_model``."""
     extra: dict[str, Any] = {}
     reason = verdict["reason"]
+    if isinstance(c.error, json.JSONDecodeError) or "expecting value" in c.msg:
+        extra["invalid_json"] = True
     if isinstance(c.error, TimeoutError) or "Timeout" in c.error_type or "timed out" in c.msg:
         extra["transport"] = "timeout"
     elif (reason is _R.timeout and not c.status_code

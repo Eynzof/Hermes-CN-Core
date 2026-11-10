@@ -48,7 +48,7 @@ SANDBOX_AVAILABLE = True
 # is an isolation boundary - it must stay a separate process, so under the
 # frozen runtime execute_code reports unavailable with a clear message
 # instead of degrading to in-process execution.
-from tools.runtime_compat import is_frozen_runtime  # noqa: E402  (after logger)
+from tools.runtime_compat import is_frozen_runtime
 
 if is_frozen_runtime():
     SANDBOX_AVAILABLE = False

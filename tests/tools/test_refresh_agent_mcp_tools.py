@@ -481,7 +481,7 @@ agent = _agent(["read_file"], enabled=["hermes-cli"], disabled=["terminal"])
 mcp_tool_agent.restore_agent_tool_prefix(agent, pin)
 assert [t["function"]["name"] for t in agent.tools] == ["read_file", "focus_pane"]
 assert agent.valid_tool_names == {"read_file", "focus_pane"}
-"""], capture_output=True, text=True, timeout=30)
+"""], check=False, capture_output=True, text=True, timeout=30)
     assert child.returncode == 0, child.stdout + child.stderr
 
 

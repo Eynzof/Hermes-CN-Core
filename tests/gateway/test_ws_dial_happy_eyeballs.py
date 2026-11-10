@@ -38,3 +38,19 @@ async def test_relay_ws_transport_dial_races_ipv6_ipv4(monkeypatch):
     with pytest.raises(ConnectionRefusedError):
         await t._dial_and_start()
     assert rec.kwargs["happy_eyeballs_delay"] == EXPECTED_DELAY
+
+
+def test_relay_dial_accepts_uvloop(monkeypatch):
+    uvloop = pytest.importorskip("uvloop")
+    import gateway.relay.ws_transport as mod
+
+    rec = _Recorder()
+    monkeypatch.setattr(mod.websockets, "connect", rec)
+    loop = uvloop.new_event_loop()
+    try:
+        transport = mod.WebSocketRelayTransport("ws://unused", "discord", "bot", reconnect=False)
+        with pytest.raises(ConnectionRefusedError):
+            loop.run_until_complete(transport._dial_and_start())
+        assert "happy_eyeballs_delay" not in rec.kwargs
+    finally:
+        loop.close()

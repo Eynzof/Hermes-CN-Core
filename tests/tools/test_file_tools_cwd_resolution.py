@@ -96,7 +96,7 @@ def test_absolute_terminal_cwd_used_verbatim(_isolated_cwd, monkeypatch):
 
 def test_absolute_input_path_ignores_base(_isolated_cwd, monkeypatch):
     """An absolute input path is never re-anchored."""
-    workspace, decoy = _isolated_cwd
+    workspace, _decoy = _isolated_cwd
     monkeypatch.setenv("TERMINAL_CWD", ".")
     abs_target = str(workspace / "target.py")
 
@@ -218,7 +218,7 @@ def test_warning_fires_from_terminal_cwd_when_registry_empty(_isolated_cwd, monk
 
 def test_write_file_reports_resolved_absolute_path(_isolated_cwd, monkeypatch):
     """write_file_tool must put the absolute on-disk path in files_modified."""
-    workspace, decoy = _isolated_cwd
+    workspace, _decoy = _isolated_cwd
     terminal_tool.record_session_cwd("t1", str(workspace))
 
     import orjson

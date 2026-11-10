@@ -948,7 +948,7 @@ def _hud_surface_note(session: dict) -> str:
             # Tool search defers the desktop tools by default: they stay callable through the
             # tool_call bridge, so the HUD note must count them and name the bridge (main 312f6bc2fd6).
             from agent.prompt_builder import hud_surface_note
-            from agent.tool_executor import _tool_search_scoped_names
+            from agent.tool_executor_tool_search import _tool_search_scoped_names
             return hud_surface_note(direct, _tool_search_scoped_names(agent))
     committed = {"surface": surface, "voice_context": session.get("voice_live_context")}
     return surface_note(committed, direct)

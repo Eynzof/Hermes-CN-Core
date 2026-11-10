@@ -141,7 +141,7 @@ def _load_api_key() -> str:
     return (match.group(1) if match else text).strip()
 
 
-def _load_tts_config() -> Dict[str, Any]:
+def _load_tts_config() -> dict[str, Any]:
     """Read the live TTS config (monkeypatch-friendly for tests)."""
     try:
         from tools.tts_tool import _load_tts_config
@@ -153,7 +153,7 @@ def _load_tts_config() -> Dict[str, Any]:
         return {}
 
 
-def resolve_moss_api_key(tts_config: Dict[str, Any] | None = None) -> str:
+def resolve_moss_api_key(tts_config: dict[str, Any] | None = None) -> str:
     """Return the Moss API key via the shared provider-secret chain."""
     cfg = tts_config if tts_config is not None else _load_tts_config()
     section = cfg.get("moss") if isinstance(cfg, dict) else {}
@@ -172,7 +172,7 @@ def resolve_moss_api_key(tts_config: Dict[str, Any] | None = None) -> str:
         return config_value
 
 
-def _resolve_endpoint(cfg: Dict[str, Any]) -> tuple[str, float]:
+def _resolve_endpoint(cfg: dict[str, Any]) -> tuple[str, float]:
     section = cfg.get("moss") if isinstance(cfg, dict) else {}
     section = section if isinstance(section, dict) else {}
     base_url = str(section.get("base_url") or DEFAULT_BASE_URL).strip()
@@ -183,7 +183,7 @@ def _resolve_endpoint(cfg: Dict[str, Any]) -> tuple[str, float]:
     return base_url.rstrip("/"), timeout
 
 
-def build_http_kwargs(tts_config: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def build_http_kwargs(tts_config: dict[str, Any] | None = None) -> dict[str, Any]:
     """Resolve key, endpoint, timeout and auth headers for Moss HTTP calls."""
     cfg = tts_config if tts_config is not None else _load_tts_config()
     base_url, timeout = _resolve_endpoint(cfg)
@@ -242,7 +242,7 @@ class MossClient:
     def _error_detail(response: requests.Response) -> str:
         try:
             data = response.json()
-        except Exception:  # noqa: BLE001 - best-effort error parsing
+        except Exception:
             return (response.text or response.reason or "")[:500]
         if isinstance(data, dict):
             error = data.get("error")
@@ -264,14 +264,14 @@ class MossClient:
     def _parse_json(response: requests.Response) -> dict:
         try:
             data = response.json()
-        except Exception as exc:  # noqa: BLE001 - requests exposes varied decoders
+        except Exception as exc:
             raise MossError("Moss API returned a non-JSON response") from exc
         if not isinstance(data, dict):
             raise MossError(f"Moss API returned an unexpected payload: {data!r}")
         return data
 
     def _post_json(
-        self, path: str, payload: Dict[str, Any], *, expect_audio: bool
+        self, path: str, payload: dict[str, Any], *, expect_audio: bool
     ) -> bytes | dict:
         try:
             response = requests.post(
@@ -528,7 +528,7 @@ class MossClient:
         return self.save_audio(response.content, output_path)
 
 
-def build_client(tts_config: Dict[str, Any] | None = None) -> MossClient:
+def build_client(tts_config: dict[str, Any] | None = None) -> MossClient:
     """Build the repository-owned Moss client from live configuration."""
     cfg = tts_config if tts_config is not None else _load_tts_config()
     base_url, timeout = _resolve_endpoint(cfg)

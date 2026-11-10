@@ -1398,13 +1398,13 @@ def get_ticker_last_error() -> Optional[str]:
 # preserved and the cached canonical copy can never be mutated by a caller.
 # ---------------------------------------------------------------------------
 _jobs_cache_lock = threading.Lock()
-_jobs_cache_key: Optional[Tuple[str, int, int, int]] = None
-_jobs_cache_value: Optional[List[Dict[str, Any]]] = None
+_jobs_cache_key: Optional[tuple[str, int, int, int]] = None
+_jobs_cache_value: Optional[list[dict[str, Any]]] = None
 
 
 def _jobs_cache_signature(
     stat_result: os.stat_result, jobs_file: Optional[Path] = None
-) -> Tuple[str, int, int, int]:
+) -> tuple[str, int, int, int]:
     """Cache-validation identity for jobs.json: (path, mtime_ns, size, ino).
 
     ``JOBS_FILE`` is read dynamically (not captured) so a monkeypatched or
@@ -1429,7 +1429,7 @@ def _jobs_cache_signature(
     )
 
 
-def _read_cached_jobs(signature: Tuple[str, int, int, int]) -> Optional[List[Dict[str, Any]]]:
+def _read_cached_jobs(signature: tuple[str, int, int, int]) -> Optional[list[dict[str, Any]]]:
     """Return a deep copy of the cached jobs iff the signature still matches."""
     with _jobs_cache_lock:
         if _jobs_cache_value is not None and _jobs_cache_key == signature:
@@ -1437,7 +1437,7 @@ def _read_cached_jobs(signature: Tuple[str, int, int, int]) -> Optional[List[Dic
     return None
 
 
-def _store_cached_jobs(signature: Tuple[str, int, int, int], jobs: List[Dict[str, Any]]) -> None:
+def _store_cached_jobs(signature: tuple[str, int, int, int], jobs: list[dict[str, Any]]) -> None:
     """Store a private deep copy of ``jobs`` under ``signature``."""
     global _jobs_cache_key, _jobs_cache_value
     with _jobs_cache_lock:
@@ -1453,7 +1453,7 @@ def _invalidate_jobs_cache() -> None:
         _jobs_cache_value = None
 
 
-def _refresh_jobs_cache_after_save(jobs: List[Dict[str, Any]]) -> None:
+def _refresh_jobs_cache_after_save(jobs: list[dict[str, Any]]) -> None:
     """Prime the read cache with the just-written jobs.
 
     Called after a successful ``save_jobs`` so an immediately-following
@@ -1507,7 +1507,7 @@ def load_jobs() -> list[dict[str, Any]]:
         # handling below still runs.
         stat_result = None
 
-    signature: Optional[Tuple[str, int, int, int]] = None
+    signature: Optional[tuple[str, int, int, int]] = None
     if stat_result is not None:
         signature = _jobs_cache_signature(stat_result, jobs_file)
         cached = _read_cached_jobs(signature)
@@ -1605,7 +1605,7 @@ def load_jobs() -> list[dict[str, Any]]:
     return jobs
 
 
-def _peek_jobs_unlocked() -> Optional[List[Dict[str, Any]]]:
+def _peek_jobs_unlocked() -> Optional[list[dict[str, Any]]]:
     """Repair-free read under ``_jobs_lock()``: ``[]`` if missing, ``None`` if corrupt (never
     shrink-merge against an unknown baseline). Never saves — that would recurse."""
     jobs_file = _current_cron_store().jobs_file

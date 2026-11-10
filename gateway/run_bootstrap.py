@@ -410,7 +410,7 @@ def _validate_cron_startup() -> bool:
                 )
                 return False
         try:
-            import croniter  # noqa: F401
+            import croniter
         except ImportError:
             logger.warning(
                 "Cron startup: 'croniter' package is not installed. "

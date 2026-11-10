@@ -44,7 +44,7 @@ def test_profile_serve_signature_changes_on_atomic_replacement_with_pinned_mtime
     half the watcher relies on on Windows, where the in-place variant above is invisible."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text("x" * 64, encoding="utf-8")
-    before = profile_serve_signature(tmp_path)
+    _before = profile_serve_signature(tmp_path)
     st = cfg.stat()
 
     staging = tmp_path / "config.yaml.staging"

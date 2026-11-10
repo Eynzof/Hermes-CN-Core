@@ -188,19 +188,29 @@ class GatewaySessionAgentMixin:
             run_budget_seconds=policy.run_budget_seconds if policy else None,
         )
 
+    def _turn_agent_signature(self, turn_route, combined_ephemeral, skip_context_files):
+        ctx = self._ctx
+        runner = self._runner
+        from model_tools import _select_tool_names
+        from tools.registry import registry
+        cache_keys = runner._extract_cache_busting_config(ctx.user_config)
+        names = _select_tool_names(ctx.enabled_toolsets, None, quiet_mode=True)
+        cache_keys["tools.registry_generation"] = registry.get_selected_generation(names)
+        return runner._agent_config_signature(
+            turn_route["model"], turn_route["runtime"], ctx.enabled_toolsets, combined_ephemeral,
+            cache_keys=cache_keys,
+            user_id=getattr(ctx.source, "user_id", None),
+            user_id_alt=getattr(ctx.source, "user_id_alt", None),
+            skip_context_files=skip_context_files,
+        )
+
     def _resolve_turn_agent(self, turn_route, platform_key, combined_ephemeral, max_iterations, reasoning_config, pr):
         """Reuse this session's cached AIAgent (frozen system prompt + tool schemas → prompt cache
         hits) or build a fresh one. Returns (agent, reused_cached_agent)."""
         ctx = self._ctx
         runner = self._runner
         skip_context_files = self._skip_context_files(platform_key)
-        sig = runner._agent_config_signature(
-            turn_route["model"], turn_route["runtime"], ctx.enabled_toolsets, combined_ephemeral,
-            cache_keys=runner._extract_cache_busting_config(ctx.user_config),
-            user_id=getattr(ctx.source, "user_id", None),
-            user_id_alt=getattr(ctx.source, "user_id_alt", None),
-            skip_context_files=skip_context_files,
-        )
+        sig = self._turn_agent_signature(turn_route, combined_ephemeral, skip_context_files)
         cache_lock = getattr(runner, "_agent_cache_lock", None)
         cache = getattr(runner, "_agent_cache", None)
         peek_sid, dead = self._cached_sid_is_dead(cache_lock, cache)
@@ -232,6 +242,9 @@ class GatewaySessionAgentMixin:
                     turn_route, platform_key, combined_ephemeral, max_iterations, reasoning_config, pr,
                     skip_context_files,
                 )
+            # Building the first agent lazily registers its tools. Record that settled
+            # generation, so the next turn reuses it; later registry reloads still invalidate it.
+            sig = self._turn_agent_signature(turn_route, combined_ephemeral, skip_context_files)
             if cache_lock and cache is not None:
                 with cache_lock:
                     # Record the snapshot's session_id with message_count so the cross-process guard

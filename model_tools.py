@@ -209,7 +209,7 @@ TOOL_FIELD_ALIASES = {
 # conflict with global aliases (e.g. ``delegate_task`` uses ``goal``
 # instead of ``prompt``, or ``cronjob`` uses ``action`` instead of
 # ``acp_command``).
-TOOL_SPECIFIC_ALIASES: Dict[str, Dict[str, str]] = {
+TOOL_SPECIFIC_ALIASES: dict[str, dict[str, str]] = {
     # delegate_task uses 'goal' rather than 'prompt'; redirect LLM
     # synonyms that would otherwise map to the wrong field globally.
     "delegate_task": {
@@ -242,8 +242,9 @@ TOOL_SPECIFIC_ALIASES: Dict[str, Dict[str, str]] = {
 # arrives as `path=<patch text>` and fails. See tools/file_tools.py PATCH_SCHEMA
 # (the V4A layer is advertised to OpenAI-family mains only) and its
 # ``cross_profile`` note.
-TOOL_ACCEPTED_EXTRA_KEYS: Dict[str, frozenset[str]] = {
+TOOL_ACCEPTED_EXTRA_KEYS: dict[str, frozenset[str]] = {
     "patch": frozenset({"mode", "patch", "cross_profile"}),
+    "terminal": frozenset({"notify_on_complete", "watch_patterns"}),
 }
 logger = logging.getLogger(__name__)
 # Optional callback for notifying external systems (TUI, ACP) about argument repairs.
@@ -493,7 +494,7 @@ _LEGACY_TOOLSET_MAP = {
 # earliest check_fn verdict it was filtered on (registry.check_fn_verdict_window): a hit
 # never re-runs the checks, so without that expiry an MCP server that dropped and
 # reconnected without re-registering would stay hidden for the life of the process.
-_tool_defs_cache: Dict[tuple, Tuple[List[Dict[str, Any]], List[str]]] = {}
+_tool_defs_cache: dict[tuple, tuple[list[dict[str, Any]], list[str]]] = {}
 _tool_defs_expiry: dict[tuple, float] = {}  # cache key -> time.monotonic() deadline
 # Reentrant: _clear_tool_defs_cache() can be called by a thread that already holds
 # the lock (the CLI/gateway pre-warm the dispatch path from a background thread
@@ -515,7 +516,7 @@ def _clear_tool_defs_cache() -> None:
         _tool_defs_expiry.clear()
 
 
-def _live_tool_defs_entry(cache_key: tuple) -> Optional[Tuple[List[Dict[str, Any]], List[str]]]:
+def _live_tool_defs_entry(cache_key: tuple) -> Optional[tuple[list[dict[str, Any]], list[str]]]:
     """The memo entry for *cache_key* unless missing or past its verdict expiry. Caller holds the lock."""
     cached = _tool_defs_cache.get(cache_key)
     if cached is None or time.monotonic() >= _tool_defs_expiry.get(cache_key, float("inf")):
@@ -570,12 +571,12 @@ _dispatch_warm_lock = threading.Lock()
 # Toolset fingerprints already warmed (or warming). Bounds thread churn on the
 # gateway, which builds a fresh AIAgent per message: only the FIRST agent for a
 # given (enabled, disabled) selection spawns a warmup thread.
-_dispatch_warmed_keys: Set[tuple] = set()
+_dispatch_warmed_keys: set[tuple] = set()
 
 
 def _dispatch_warm_key(
-    enabled_toolsets: Optional[List[str]],
-    disabled_toolsets: Optional[List[str]],
+    enabled_toolsets: Optional[list[str]],
+    disabled_toolsets: Optional[list[str]],
 ) -> tuple:
     return (
         frozenset(enabled_toolsets) if enabled_toolsets is not None else None,
@@ -584,8 +585,8 @@ def _dispatch_warm_key(
 
 
 def _run_dispatch_warm(
-    enabled_toolsets: Optional[List[str]],
-    disabled_toolsets: Optional[List[str]],
+    enabled_toolsets: Optional[list[str]],
+    disabled_toolsets: Optional[list[str]],
     key: tuple,
 ) -> None:
     """Body of the warmup: complete discovery, build+cache the schema list, and
@@ -624,8 +625,8 @@ def _run_dispatch_warm(
 
 
 def warm_dispatch_path(
-    enabled_toolsets: Optional[List[str]] = None,
-    disabled_toolsets: Optional[List[str]] = None,
+    enabled_toolsets: Optional[list[str]] = None,
+    disabled_toolsets: Optional[list[str]] = None,
     *,
     background: bool = True,
     force: bool = False,
@@ -681,8 +682,8 @@ def _reset_dispatch_warm_state() -> None:
     with _dispatch_warm_lock:
         _dispatch_warmed_keys.clear()
 
-def get_tool_definitions(enabled_toolsets: Optional[List[str]] = None, disabled_toolsets: Optional[List[str]] = None,
-                         quiet_mode: bool = False, skip_tool_search_assembly: bool = False) -> List[Dict[str, Any]]:
+def get_tool_definitions(enabled_toolsets: Optional[list[str]] = None, disabled_toolsets: Optional[list[str]] = None,
+                         quiet_mode: bool = False, skip_tool_search_assembly: bool = False) -> list[dict[str, Any]]:
     """Tool definitions for model API calls, filtered by toolset.
 
     enabled_toolsets None = all; disabled_toolsets are subtracted after enabling.
@@ -743,7 +744,7 @@ def get_tool_definitions(enabled_toolsets: Optional[List[str]] = None, disabled_
     return list(cached[0])
 
 
-def _serve_cached_definitions(cached: Tuple[List[Dict[str, Any]], List[str]], quiet_mode: bool) -> List[Dict[str, Any]]:
+def _serve_cached_definitions(cached: tuple[list[dict[str, Any]], list[str]], quiet_mode: bool) -> list[dict[str, Any]]:
     """Serve a memo entry: refresh the resolved-name global, replay the captured
     status lines for non-quiet callers, and return a fresh shallow copy."""
     global _last_resolved_tool_names
@@ -776,7 +777,7 @@ def _tool_defs_cache_key(
     # [CN-fork] The terminal tool's description is built from the resolved shell
     # (P-016/P-019), so a mid-session shell change must invalidate the memo.
     try:
-        from tools.terminal_tool import _detect_shell_for_description
+        from tools.terminal_description import _detect_shell_for_description
         _shell_fp = _detect_shell_for_description()
     except Exception:
         _shell_fp = "bash"
@@ -790,11 +791,11 @@ _is_delegated_child_context(), _is_dispatcher_owned_worker(), profile_scope, che
 
 
 def _compute_tool_definitions_with_status(
-    enabled_toolsets: Optional[List[str]] = None,
-    disabled_toolsets: Optional[List[str]] = None,
+    enabled_toolsets: Optional[list[str]] = None,
+    disabled_toolsets: Optional[list[str]] = None,
     quiet_mode: bool = False,
     skip_tool_search_assembly: bool = False,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> tuple[list[dict[str, Any]], list[str]]:
     """:func:`_compute_tool_definitions` plus the tool-selection status lines it
     would have printed, captured instead of emitted.
 
@@ -802,7 +803,7 @@ def _compute_tool_definitions_with_status(
     definitions and prints the status lines itself); the memo needs the pair so a
     later non-quiet cache hit can replay the lines without recomputing.
     """
-    lines: List[str] = []
+    lines: list[str] = []
     previous = getattr(_status_sink_local, "lines", None)
     _status_sink_local.lines = lines
     try:
@@ -813,7 +814,7 @@ def _compute_tool_definitions_with_status(
     return result, lines
 
 
-def _apply_toolset_selection(tools: set, names: List[str], quiet_mode: bool, *, disable: bool) -> None:
+def _apply_toolset_selection(tools: set, names: list[str], quiet_mode: bool, *, disable: bool) -> None:
     """Add (or subtract) every toolset in *names* to/from *tools*, printing the selection unless quiet."""
     from toolsets import bundle_non_core_tools, get_toolset
     verb, icon = ("Disabled", "🚫") if disable else ("Enabled", "✅")
@@ -1201,10 +1202,10 @@ def _sanitize_tool_error(error_msg: str) -> str:
 
 def repair_tool_arg_keys(
     tool_name: str,
-    args: Dict[str, Any],
+    args: dict[str, Any],
     _recursive: bool = False,
     _properties: dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Repair tool call argument keys to match the tool's JSON Schema.
 
     LLMs frequently use alternative field names (e.g. "file" instead of
@@ -1317,9 +1318,9 @@ def repair_tool_arg_keys(
 
 def _repair_nested_args(
     tool_name: str,
-    args: Dict[str, Any],
-    schema_properties: Dict[str, Any],
-) -> Dict[str, Any]:
+    args: dict[str, Any],
+    schema_properties: dict[str, Any],
+) -> dict[str, Any]:
     """Recursively repair field names inside nested dicts and lists of dicts.
 
     Walks through *args* using *schema_properties* to decide when a value

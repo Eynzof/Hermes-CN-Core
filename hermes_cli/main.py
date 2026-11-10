@@ -1300,7 +1300,7 @@ def _probe_container(cmd: list, backend: str, via_sudo: bool = False):
         if sys.platform == "win32":
             from hermes_cli._subprocess_compat import windows_hide_flags
             _subprocess_kwargs["creationflags"] = windows_hide_flags()
-        return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15, **_subprocess_kwargs)  # windows-footgun: ok — creationflags in _subprocess_kwargs
+        return subprocess.run(cmd, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15, **_subprocess_kwargs)  # windows-footgun: ok — creationflags in _subprocess_kwargs
     except subprocess.TimeoutExpired:
         label = f"sudo {backend}" if via_sudo else backend
         print(
@@ -2688,7 +2688,7 @@ def _dashboard_prepare_runtime(args, headless_backend) -> bool:
     }:
         def _prewarm_agent_import() -> None:
             try:
-                from run_agent import AIAgent  # noqa: F401  # warms model_tools + adapters
+                from run_agent import AIAgent  # warms model_tools + adapters
             except Exception:
                 logger.debug("dashboard agent-import prewarm failed", exc_info=True)
 
@@ -3521,7 +3521,7 @@ def _register_internal_worker_subcommands(subparsers) -> None:
                 _popen_kwargs["creationflags"] = windows_detach_flags_without_breakaway()
                 subprocess.Popen(cmd, **_popen_kwargs)
         else:
-            _popen_kwargs["start_new_session"] = True
+            _popen_kwargs["start_new_session"] = True  # detached-spawn: ok — gateway restart transfers ownership to the replacement daemon
             subprocess.Popen(cmd, **_popen_kwargs)
 
     gateway_restart_watch_parser = subparsers.add_parser(

@@ -50,6 +50,7 @@ After difficult/iterative tasks, offer to save as a skill. If a skill you loaded
   email:
     - email-inbox-triage: Triage an inbox: prioritize threads, draft replies safely.
     - himalaya: Himalaya CLI: IMAP/SMTP email from terminal.
+  - gh: Install, authenticate and use the GitHub CLI (gh).
   - youtube-content: YouTube transcripts to summaries, threads, blogs.
   - obsidian: Read, search, create, and edit notes in the Obsidian vault.
   productivity:

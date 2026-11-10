@@ -183,7 +183,7 @@ def _get_category_from_path(skill_path: Path) -> Optional[str]:
     return None
 
 
-def _skill_origin(name: str, skill_dir: Path, scan_dir: Path, bundled_names: Set[str]) -> str:
+def _skill_origin(name: str, skill_dir: Path, scan_dir: Path, bundled_names: set[str]) -> str:
     """Best-effort source classification for dashboard/UI consumers."""
     try:
         skill_dir.relative_to(SKILLS_DIR)
@@ -194,7 +194,7 @@ def _skill_origin(name: str, skill_dir: Path, scan_dir: Path, bundled_names: Set
         return "external"
 
 
-def _parse_tags(tags_value) -> List[str]:
+def _parse_tags(tags_value) -> list[str]:
     """Tags from frontmatter: a parsed list, "[a, b]", or "a, b"."""
     if not tags_value:
         return []

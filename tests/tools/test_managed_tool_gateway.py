@@ -106,7 +106,7 @@ def test_read_nous_access_token_refreshes_expiring_cached_token(tmp_path, monkey
 def test_is_managed_tool_gateway_ready_skips_refresh_for_expired_cached_token(tmp_path, monkeypatch):
     monkeypatch.delenv("TOOL_GATEWAY_USER_TOKEN", raising=False)
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    expired_at = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
+    expired_at = (datetime.now(UTC) - timedelta(seconds=30)).isoformat()
     (tmp_path / "auth.json").write_text(json.dumps({
         "providers": {
             "nous": {

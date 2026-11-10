@@ -267,10 +267,10 @@ class TestJsonParsing:
         """The fenced block does not parse, and the whole reply cannot be used either: parsing it hits
         the recursion limit, or the plugin's schema is invalid or holds a ``$ref`` that does not
         resolve. The released parser answered text in each case; the fallback must not raise instead."""
-        import json
+        import orjson
 
         text = '{"a": "```hello```"}'
-        loads = json.loads
+        loads = orjson.loads
 
         def nested_too_deep(candidate, *args, **kwargs):
             if candidate == text:
@@ -278,7 +278,7 @@ class TestJsonParsing:
             return loads(candidate, *args, **kwargs)
 
         with monkeypatch.context() as patch:
-            patch.setattr(json, "loads", nested_too_deep)
+            patch.setattr(orjson, "loads", nested_too_deep)
             assert _parse_structured_text(text=text, json_mode=True, json_schema=None) == (None, "text")
         pytest.importorskip("jsonschema")
         for schema in ({"type": "nonsense"}, {"$ref": "#/missing"}):

@@ -30,7 +30,7 @@ class FakeResponse:
             raise ValueError("not json")
         return self._data
 
-    def iter_lines(self, decode_unicode=False):  # noqa: ARG002
+    def iter_lines(self, decode_unicode=False):
         yield from self._lines
 
     def close(self):
@@ -45,7 +45,7 @@ def client() -> MossClient:
 def test_speech_uses_documented_fields_and_full_model(client, monkeypatch):
     captured = SimpleNamespace(kwargs=None)
 
-    def fake_post(*args, **kwargs):  # noqa: ARG001
+    def fake_post(*args, **kwargs):
         captured.kwargs = kwargs
         return FakeResponse(data={"status": "SUCCESS", "url": "https://cdn.test/a.mp3"})
 
@@ -71,7 +71,7 @@ def test_speech_uses_documented_fields_and_full_model(client, monkeypatch):
 def test_dialogue_and_voice_design_use_full_models(client, monkeypatch):
     payloads = []
 
-    def fake_post(*args, **kwargs):  # noqa: ARG001
+    def fake_post(*args, **kwargs):
         payloads.append(kwargs["json"])
         return FakeResponse(data={"task_id": "task-1"})
 
@@ -99,7 +99,7 @@ def test_streaming_does_not_send_non_stream_fields(client, monkeypatch):
         'data: {"type":"speech.audio.done"}',
     ]
 
-    def fake_post(*args, **kwargs):  # noqa: ARG001
+    def fake_post(*args, **kwargs):
         captured.kwargs = kwargs
         return FakeResponse(lines=lines)
 

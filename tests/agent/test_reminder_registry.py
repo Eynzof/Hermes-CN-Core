@@ -17,18 +17,18 @@ from agent.user_reminder import (
 
 
 class _SystemProvider(SystemReminderProvider):
-    def __init__(self, reminders: List[SystemReminder]):
+    def __init__(self, reminders: list[SystemReminder]):
         self._reminders = reminders
 
-    def get_reminders(self, agent: Any, api_call_count: int) -> List[SystemReminder]:
+    def get_reminders(self, agent: Any, api_call_count: int) -> list[SystemReminder]:
         return list(self._reminders)
 
 
 class _UserProvider(UserReminderProvider):
-    def __init__(self, reminders: List[UserReminder]):
+    def __init__(self, reminders: list[UserReminder]):
         self._reminders = reminders
 
-    def get_reminders(self, agent: Any, api_call_count: int) -> List[UserReminder]:
+    def get_reminders(self, agent: Any, api_call_count: int) -> list[UserReminder]:
         return list(self._reminders)
 
 
@@ -52,7 +52,7 @@ class TestReminderRegistry:
         class _BadSystem(SystemReminderProvider):
             def get_reminders(
                 self, agent: Any, api_call_count: int
-            ) -> List[SystemReminder]:
+            ) -> list[SystemReminder]:
                 raise ValueError("boom")
 
         registry = ReminderRegistry()
@@ -136,7 +136,7 @@ class TestReminderRegistry:
         class _BadUser(UserReminderProvider):
             def get_reminders(
                 self, agent: Any, api_call_count: int
-            ) -> List[UserReminder]:
+            ) -> list[UserReminder]:
                 raise ValueError("boom")
 
         registry = ReminderRegistry()
@@ -149,11 +149,11 @@ class TestReminderRegistry:
     def test_lifecycle_hooks_fan_out(self):
         class _TrackingProvider(SystemReminderProvider):
             def __init__(self):
-                self.calls: List[str] = []
+                self.calls: list[str] = []
 
             def get_reminders(
                 self, agent: Any, api_call_count: int
-            ) -> List[SystemReminder]:
+            ) -> list[SystemReminder]:
                 return []
 
             def on_context_compacted(self, agent: Any) -> None:
@@ -177,7 +177,7 @@ class TestReminderRegistry:
         class _Bad(SystemReminderProvider):
             def get_reminders(
                 self, agent: Any, api_call_count: int
-            ) -> List[SystemReminder]:
+            ) -> list[SystemReminder]:
                 return []
 
             def on_turn_start(self, agent: Any) -> None:

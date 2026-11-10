@@ -1137,7 +1137,7 @@ async def fs_list(path: str, request: Request, profile: Optional[str] = None):
     if backend is not None:
         try:
             return await asyncio.to_thread(backend.list_dir, path, _FS_READDIR_HIDDEN)
-        except Exception as exc:
+        except Exception as exc:  # health: allow BLE001 -- _raise_fs_backend_error always raises the translated HTTP error
             _raise_fs_backend_error(exc)
     target = _agent_fs_path(path, profile_home=_fs_profile_home(profile))
     _hosted_fs_read_guard(target, request)

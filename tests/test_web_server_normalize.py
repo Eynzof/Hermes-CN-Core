@@ -38,7 +38,7 @@ def test_passes_none_content():
 
 def test_passes_empty_string():
     """Empty string content must return empty string."""
-    assert _normalize_message_content("") is ""
+    assert _normalize_message_content("") == ""
 
 
 def test_drops_model_switch_with_whitespace():

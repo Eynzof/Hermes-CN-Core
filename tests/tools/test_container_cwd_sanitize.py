@@ -41,7 +41,7 @@ class TestIsUnusableContainerCwd:
     def test_container_backends_set(self):
         from tools.terminal_tool_config import _CONTAINER_BACKENDS
         assert _CONTAINER_BACKENDS == frozenset(
-            {"docker", "singularity", "modal", "daytona", "vercel_sandbox"}
+            {"docker", "modal", "daytona", "vercel_sandbox"}
         )
 
 

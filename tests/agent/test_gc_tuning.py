@@ -191,7 +191,7 @@ def test_gc_disabled_during_init(monkeypatch):
     ``agent.agent_init.init_agent``, so the probe takes the same decorator —
     otherwise swapping the seam out removes the very window under test.
     """
-    import agent.agent_init as agent_init
+    from agent import agent_init
     from run_agent import AIAgent
 
     observed = {}

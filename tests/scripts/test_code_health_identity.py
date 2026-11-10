@@ -268,14 +268,14 @@ def test_typescript_install_uses_repo_npmrc_and_fails_cleanly(tmp_path, monkeypa
     probe = tmp_path / "npmrc-probe"
     probe.mkdir()
     (probe / ".npmrc").write_text("min-release-age=14\n", encoding="utf-8")
-    reporting = subprocess.run([npm, "config", "get", "min-release-age"], cwd=probe,
+    reporting = subprocess.run([npm, "config", "get", "min-release-age"], check=False, cwd=probe,
                                capture_output=True, text=True, timeout=60).stdout.strip()
     if reporting != "14":
         # npm 11.10–11.16 — the band the checked-in `.npmrc` engine floor rejects
         # (`engines.npm`: <11.10.0 || >=11.17.0) — folds the key into the derived
         # `before` date instead of reporting it, so the policy read cannot be
         # asserted against that toolchain. Unsupported npm, not a finding.
-        version = subprocess.run([npm, "--version"], capture_output=True, text=True,
+        version = subprocess.run([npm, "--version"], check=False, capture_output=True, text=True,
                                  timeout=60).stdout.strip()
         pytest.skip(f"npm {version} does not report min-release-age "
                     "(engines.npm band <11.10.0 || >=11.17.0)")

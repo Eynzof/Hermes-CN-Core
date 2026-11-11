@@ -1,5 +1,5 @@
 name: UI canary production signing
-run-name: v0.9.0 remote UI canary production signature
+run-name: v0.9.1 remote isolation UI canary production signature
 on:
   workflow_dispatch: {}
 permissions:
@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   sign:
-    if: github.ref == 'refs/heads/chore/sign-v090-ui-canary-20261111'
+    if: github.ref == 'refs/heads/chore/sign-v091-ui-canary-20261111'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -21,14 +21,14 @@ jobs:
           {
             "schemaVersion": 1,
             "channel": "canary",
-            "uiVersion": "0.9.1-canary.remote.20261111.1",
+            "uiVersion": "0.9.1-canary.remote.20261111.2",
             "appVersionFloor": "0.9.0",
             "platform": "win32",
             "arch": "x64",
-            "artifactUrl": "https://dl-desktop.hermesagent.org.cn/v0.9.1-canary.remote.20261111.1/hermes-ui-win32-x64.zip",
-            "sha256": "4c50aa6270e0ce00b661ea1c5ff9014c66eb999f43fe9d500a34100a891186e0",
+            "artifactUrl": "https://dl-desktop.hermesagent.org.cn/v0.9.1-canary.remote.20261111.2/hermes-ui-win32-x64.zip",
+            "sha256": "b3056d99bc660ef0c91d13fb8868bf2522d55839b6a397ed4cddf57a9d1c2b86",
             "sourceRepo": "Eynzof/Hermes-CN-Desktop",
-            "sourceCommit": "d4d077fed09a5a9959d9a65d5055b2175dccc041"
+            "sourceCommit": "c1268d38d2f54dbec01fd379071cbfea76637905"
           }
       shell: python
       run: |
@@ -40,17 +40,17 @@ jobs:
         import subprocess
         import tempfile
         import urllib.request
-
+        
         manifest = json.loads(os.environ['UI_CANARY_MANIFEST'])
         assert manifest['channel'] == 'canary'
         assert manifest['appVersionFloor'] == '0.9.0'
-        assert manifest['sourceCommit'] == 'd4d077fed09a5a9959d9a65d5055b2175dccc041'
+        assert manifest['sourceCommit'] == 'c1268d38d2f54dbec01fd379071cbfea76637905'
         expected_public_der = base64.b64decode('MCowBQYDK2VwAyEAqPkLQ4o67G2GMTgkQQQZXWwDBZM/4hqq5thSZSNhoC0=')
         request = urllib.request.Request(manifest['artifactUrl'], headers={'User-Agent': 'hermes-agent-cn-desktop-update-check'})
         with urllib.request.urlopen(request, timeout=60) as response:
             archive = response.read()
         assert hashlib.sha256(archive).hexdigest() == manifest['sha256']
-
+        
         fields = ['schemaVersion', 'channel', 'uiVersion', 'appVersionFloor', 'platform', 'arch', 'artifactUrl', 'sha256', 'sourceRepo', 'sourceCommit']
         payload = '\n'.join(str(manifest[field]) for field in fields).encode()
         with tempfile.TemporaryDirectory(prefix='ui-canary-sign-', dir=os.environ['RUNNER_TEMP']) as directory:
@@ -65,9 +65,9 @@ jobs:
             signature = (root / 'signature').read_bytes()
             subprocess.run(['openssl', 'pkey', '-in', str(private_path), '-pubout', '-out', str(root / 'public.pem')], check=True)
             subprocess.run(['openssl', 'pkeyutl', '-verify', '-rawin', '-pubin', '-inkey', str(root / 'public.pem'), '-in', str(root / 'payload'), '-sigfile', str(root / 'signature')], check=True)
-
+        
         manifest['signature'] = base64.b64encode(signature).decode()
-        output = Path('signed-ui-canary')
+        output = Path('signed-ui-canary-v091')
         output.mkdir()
         (output / 'canary-win32-x64.json').write_text(json.dumps(manifest, indent=2) + '\n')
         report = {'productionPublicKeyMatchesV090': True, 'publicKeyDerSha256': hashlib.sha256(public_der).hexdigest(), 'privateKeyExported': False, 'archiveSha256Verified': manifest['sha256'], 'archiveBytes': len(archive), 'sourceCommit': manifest['sourceCommit'], 'runId': os.environ['GITHUB_RUN_ID']}
@@ -75,7 +75,7 @@ jobs:
         print(json.dumps(report))
     - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
       with:
-        name: signed-v090-ui-canary
-        path: signed-ui-canary/
+        name: signed-v091-ui-canary
+        path: signed-ui-canary-v091/
         if-no-files-found: error
         retention-days: 7

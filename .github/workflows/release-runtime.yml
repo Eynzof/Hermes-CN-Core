@@ -1,81 +1,41 @@
-name: UI canary production signing
-run-name: v0.9.1 remote isolation UI canary production signature
-on:
-  workflow_dispatch: {}
-permissions:
-  contents: read
-concurrency:
-  group: ui-canary-production-signing-20261111
-  cancel-in-progress: false
-jobs:
-  sign:
-    if: github.ref == 'refs/heads/chore/sign-v091-ui-canary-20261111'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-    - name: Verify artifact and sign with original production key
-      env:
-        RUNTIME_SIGN_PRIVATE_KEY_PEM: ${{ secrets.RUNTIME_SIGN_PRIVATE_KEY_PEM 
-          }}
-        UI_CANARY_MANIFEST: |
-          {
-            "schemaVersion": 1,
-            "channel": "canary",
-            "uiVersion": "0.9.1-canary.remote.20261111.2",
-            "appVersionFloor": "0.9.0",
-            "platform": "win32",
-            "arch": "x64",
-            "artifactUrl": "https://dl-desktop.hermesagent.org.cn/v0.9.1-canary.remote.20261111.2/hermes-ui-win32-x64.zip",
-            "sha256": "b3056d99bc660ef0c91d13fb8868bf2522d55839b6a397ed4cddf57a9d1c2b86",
-            "sourceRepo": "Eynzof/Hermes-CN-Desktop",
-            "sourceCommit": "c1268d38d2f54dbec01fd379071cbfea76637905"
+{
+  "name": "UI stable production signing",
+  "run-name": "Windows v0.9.1 UI production signature only",
+  "on": {
+    "workflow_dispatch": {}
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "concurrency": {
+    "group": "ui-stable-production-signing-20261111",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "sign": {
+      "if": "github.ref == 'refs/heads/chore/sign-v091-ui-stable-20261111'",
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 10,
+      "steps": [
+        {
+          "name": "Verify frozen Windows artifact and sign with original production key",
+          "env": {
+            "RUNTIME_SIGN_PRIVATE_KEY_PEM": "${{ secrets.RUNTIME_SIGN_PRIVATE_KEY_PEM }}",
+            "UI_STABLE_MANIFEST": "{\n  \"schemaVersion\": 1,\n  \"channel\": \"stable\",\n  \"uiVersion\": \"0.9.1\",\n  \"appVersionFloor\": \"0.9.0\",\n  \"platform\": \"win32\",\n  \"arch\": \"x64\",\n  \"artifactUrl\": \"https://dl-desktop.hermesagent.org.cn/v0.9.1/hermes-ui-win32-x64.zip\",\n  \"sha256\": \"3d04d8c573c16906a73e0c8dee872608b3caf3313e5389bc002611529fe29695\",\n  \"sourceRepo\": \"Eynzof/Hermes-CN-Desktop\",\n  \"sourceCommit\": \"12480ba6374876272504eb84d0a09b84c493ac30\"\n}\n"
+          },
+          "shell": "python",
+          "run": "import base64\nimport hashlib\nimport json\nimport os\nfrom pathlib import Path\nimport subprocess\nimport tempfile\nimport urllib.request\n\nmanifest = json.loads(os.environ['UI_STABLE_MANIFEST'])\nassert manifest['channel'] == 'stable'\nassert manifest['appVersionFloor'] == '0.9.0'\nassert manifest['sourceCommit'] == '12480ba6374876272504eb84d0a09b84c493ac30'\nexpected_public_der = base64.b64decode('MCowBQYDK2VwAyEAqPkLQ4o67G2GMTgkQQQZXWwDBZM/4hqq5thSZSNhoC0=')\nrequest = urllib.request.Request(manifest['artifactUrl'], headers={'User-Agent': 'hermes-agent-cn-desktop-update-check'})\nwith urllib.request.urlopen(request, timeout=60) as response:\n    archive = response.read()\nassert hashlib.sha256(archive).hexdigest() == manifest['sha256']\n\nfields = ['schemaVersion', 'channel', 'uiVersion', 'appVersionFloor', 'platform', 'arch', 'artifactUrl', 'sha256', 'sourceRepo', 'sourceCommit']\npayload = '\\n'.join(str(manifest[field]) for field in fields).encode()\nwith tempfile.TemporaryDirectory(prefix='ui-stable-sign-', dir=os.environ['RUNNER_TEMP']) as directory:\n    root = Path(directory)\n    private_path = root / 'private.pem'\n    private_path.write_text(os.environ.pop('RUNTIME_SIGN_PRIVATE_KEY_PEM').replace('\\\\n', '\\n'))\n    private_path.chmod(0o600)\n    public_der = subprocess.check_output(['openssl', 'pkey', '-in', str(private_path), '-pubout', '-outform', 'DER'])\n    assert public_der == expected_public_der, 'Production key does not match the original v0.9.0 UI trust anchor'\n    (root / 'payload').write_bytes(payload)\n    subprocess.run(['openssl', 'pkeyutl', '-sign', '-rawin', '-inkey', str(private_path), '-in', str(root / 'payload'), '-out', str(root / 'signature')], check=True)\n    signature = (root / 'signature').read_bytes()\n    subprocess.run(['openssl', 'pkey', '-in', str(private_path), '-pubout', '-out', str(root / 'public.pem')], check=True)\n    subprocess.run(['openssl', 'pkeyutl', '-verify', '-rawin', '-pubin', '-inkey', str(root / 'public.pem'), '-in', str(root / 'payload'), '-sigfile', str(root / 'signature')], check=True)\n\nmanifest['signature'] = base64.b64encode(signature).decode()\noutput = Path('signed-ui-stable-v091')\noutput.mkdir()\n(output / 'stable-win32-x64.json').write_text(json.dumps(manifest, indent=2) + '\\n')\nreport = {'productionPublicKeyMatchesV090': True, 'publicKeyDerSha256': hashlib.sha256(public_der).hexdigest(), 'privateKeyExported': False, 'archiveSha256Verified': manifest['sha256'], 'archiveBytes': len(archive), 'sourceCommit': manifest['sourceCommit'], 'runId': os.environ['GITHUB_RUN_ID']}\n(output / 'signing-verification.json').write_text(json.dumps(report, indent=2) + '\\n')\nprint(json.dumps(report))\n"
+        },
+        {
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "signed-v091-ui-stable",
+            "path": "signed-ui-stable-v091/",
+            "if-no-files-found": "error",
+            "retention-days": 30
           }
-      shell: python
-      run: |
-        import base64
-        import hashlib
-        import json
-        import os
-        from pathlib import Path
-        import subprocess
-        import tempfile
-        import urllib.request
-        
-        manifest = json.loads(os.environ['UI_CANARY_MANIFEST'])
-        assert manifest['channel'] == 'canary'
-        assert manifest['appVersionFloor'] == '0.9.0'
-        assert manifest['sourceCommit'] == 'c1268d38d2f54dbec01fd379071cbfea76637905'
-        expected_public_der = base64.b64decode('MCowBQYDK2VwAyEAqPkLQ4o67G2GMTgkQQQZXWwDBZM/4hqq5thSZSNhoC0=')
-        request = urllib.request.Request(manifest['artifactUrl'], headers={'User-Agent': 'hermes-agent-cn-desktop-update-check'})
-        with urllib.request.urlopen(request, timeout=60) as response:
-            archive = response.read()
-        assert hashlib.sha256(archive).hexdigest() == manifest['sha256']
-        
-        fields = ['schemaVersion', 'channel', 'uiVersion', 'appVersionFloor', 'platform', 'arch', 'artifactUrl', 'sha256', 'sourceRepo', 'sourceCommit']
-        payload = '\n'.join(str(manifest[field]) for field in fields).encode()
-        with tempfile.TemporaryDirectory(prefix='ui-canary-sign-', dir=os.environ['RUNNER_TEMP']) as directory:
-            root = Path(directory)
-            private_path = root / 'private.pem'
-            private_path.write_text(os.environ.pop('RUNTIME_SIGN_PRIVATE_KEY_PEM').replace('\\n', '\n'))
-            private_path.chmod(0o600)
-            public_der = subprocess.check_output(['openssl', 'pkey', '-in', str(private_path), '-pubout', '-outform', 'DER'])
-            assert public_der == expected_public_der, 'Production key does not match the original v0.9.0 UI trust anchor'
-            (root / 'payload').write_bytes(payload)
-            subprocess.run(['openssl', 'pkeyutl', '-sign', '-rawin', '-inkey', str(private_path), '-in', str(root / 'payload'), '-out', str(root / 'signature')], check=True)
-            signature = (root / 'signature').read_bytes()
-            subprocess.run(['openssl', 'pkey', '-in', str(private_path), '-pubout', '-out', str(root / 'public.pem')], check=True)
-            subprocess.run(['openssl', 'pkeyutl', '-verify', '-rawin', '-pubin', '-inkey', str(root / 'public.pem'), '-in', str(root / 'payload'), '-sigfile', str(root / 'signature')], check=True)
-        
-        manifest['signature'] = base64.b64encode(signature).decode()
-        output = Path('signed-ui-canary-v091')
-        output.mkdir()
-        (output / 'canary-win32-x64.json').write_text(json.dumps(manifest, indent=2) + '\n')
-        report = {'productionPublicKeyMatchesV090': True, 'publicKeyDerSha256': hashlib.sha256(public_der).hexdigest(), 'privateKeyExported': False, 'archiveSha256Verified': manifest['sha256'], 'archiveBytes': len(archive), 'sourceCommit': manifest['sourceCommit'], 'runId': os.environ['GITHUB_RUN_ID']}
-        (output / 'signing-verification.json').write_text(json.dumps(report, indent=2) + '\n')
-        print(json.dumps(report))
-    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      with:
-        name: signed-v091-ui-canary
-        path: signed-ui-canary-v091/
-        if-no-files-found: error
-        retention-days: 7
+        }
+      ]
+    }
+  }
+}

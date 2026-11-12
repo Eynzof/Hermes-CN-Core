@@ -25,7 +25,7 @@ _PLUGIN_API = Path(__file__).resolve().parent / "data" / "plugin_api.json"
 def _public_api() -> frozenset:
     """The published plugin API (``hermes_cli/data/plugin_api.json``): ``module`` entries allow the
     module (underscore names excepted), ``module:Name`` entries allow one name. The docs page
-    ``developer-guide/plugins/public-api.md`` is generated from the same file."""
+    the published surface is exactly the names in that file (``hermes_cli/data/plugin_api.json``)."""
     data = json.loads(_PLUGIN_API.read_text(encoding="utf-8-sig"))
     return frozenset(entry for group in data["groups"] for entry in group["entries"])
 

@@ -335,12 +335,29 @@ def digest_matches(root: Path, recorded: str | None) -> bool:
         tree_digest(root) == recorded or _tree_digest(root, skip_metadata=False) == recorded)
 
 
+
+def _link_target_text(target: str) -> str:
+    """A symlink target with the Windows separator folded to '/' (POSIX: unchanged).
+
+    One archive has to hash the same whichever interpreter extracted it. CPython 3.15
+    normalises a tarfile symlink target to the native separator on Windows, so
+    ``share/terminfo/1/1178 -> ../a/adm1178`` lands as ``..\\a\\adm1178`` there; hashed
+    raw, every digest a 3.14-era install recorded stops matching and pm re-extracts the
+    whole store. A backslash is a separator on Windows and never a filename byte, so
+    folding is lossless there -- on POSIX it IS a filename byte, so the text is returned
+    untouched.
+    """
+    return target.replace("\\", "/") if os.name == "nt" else target
+
 def _tree_digest(root: Path, *, skip_metadata: bool) -> str:
     """Deterministic sha256 over a directory tree: walk every file, sort
     by posix relpath, hash `relpath\\0<content>` per entry. No mtimes, no
     mode bits. Symlinks contribute their LINK TARGET TEXT (os.readlink),
     not the target's bytes — the link is the data. Directory symlinks and
     junctions are not followed.
+    A Windows separator inside that text is folded to '/' (_link_target_text):
+    CPython 3.15 normalises tarfile symlink targets to the native separator, and
+    a digest a 3.14 toolchain recorded must still match afterwards.
 
     ``__pycache__`` directories are skipped: CPython writes .pyc caches
     into them the first time the staged interpreter runs (uv venv/uv sync
@@ -370,7 +387,7 @@ def _tree_digest(root: Path, *, skip_metadata: bool) -> str:
         digest.update(rel.encode("utf-8"))
         digest.update(b"\0")
         if path.is_symlink() or is_junction(path):
-            digest.update(os.readlink(path).encode("utf-8"))
+            digest.update(_link_target_text(os.readlink(path)).encode("utf-8"))
         else:
             with open(path, "rb") as f:
                 for block in iter(lambda: f.read(1024 * 1024), b""):

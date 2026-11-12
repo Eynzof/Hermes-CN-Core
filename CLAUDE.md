@@ -10,7 +10,7 @@ It tracks upstream while carrying a documented patch set for Chinese provider me
 Dashboard APIs consumed by [`Hermes-CN-Desktop`](https://github.com/Eynzof/Hermes-CN-Desktop). The
 `pyproject.toml` project name is still `hermes-agent` and the CLI entry point is still `hermes` — do not assume
 "clean reimplementation," assume "downstream patches on top of upstream." (`README.md` is the Chinese version;
-`README.en.md` is English. Some maintenance docs such as `MAINTAINING.md` still use the older `hermes-agent-cn` name.)
+some maintenance docs such as `MAINTAINING.md` still use the older `hermes-agent-cn` name.)
 
 - **Every fork-specific behavioral change is tracked in [`FORK_NOTES.md`](./FORK_NOTES.md) as `P-NNN`** (currently through P-050). Read it
   before touching `hermes_cli/web_server.py`, `tui_gateway/`, or `hermes_cli/config.py`'s `OPTIONAL_ENV_VARS` —
@@ -21,9 +21,17 @@ Dashboard APIs consumed by [`Hermes-CN-Desktop`](https://github.com/Eynzof/Herme
   wholesale from `upstream/main` (fork-side changes there, if any appear, are dropped).
 - **Branch model (see [`MAINTAINING.md`](./MAINTAINING.md)):** `origin/main` is the stable fork branch;
   `upstream/main` is read-only. **Never merge `upstream/main` directly into `main`** — sync via
-  `./scripts/sync-upstream.sh`, which creates a `chore/sync-*` branch for a PR. Fork patches go on `cn/P-xxx-*`
-  branches; clean branches for official upstream PRs go on `upstream-pr/*`. `runtime-v*` tags publish signed
-  desktop runtime artifacts.
+  `python scripts/git_merge.py` (or its wrapper `./scripts/sync-upstream.sh`), which merges upstream
+  file-by-file into a `chore/sync-*` branch for a PR. Fork patches go on `cn/P-xxx-*` branches; clean
+  branches for official upstream PRs go on `upstream-pr/*`. `runtime-v*` tags publish signed desktop
+  runtime artifacts.
+- **This fork ships code, not documentation.** The Docusaurus docs site (`website/docs`, `website/i18n`,
+  `website/src`, `website/scripts`), `contributors/`, `reports/`, `.plans/`, the translated READMEs and
+  the CONTRIBUTING/CODE_OF_CONDUCT prose are deleted on purpose; `website/` keeps runtime data only
+  (model catalog, catalog artwork, icons, OAuth client metadata). `scripts/upstream-deletions.txt` is the
+  authoritative list and `scripts/git_merge.py` enforces it — **never restore a deleted path**, not even
+  as a new file inside a deleted directory. New prose goes in a commit message, an `AGENTS.md` line or
+  `FORK_NOTES.md`. See AGENTS.md § "Deleted upstream trees".
 - **The `cn-desktop` extra in `pyproject.toml` is the source of truth for what the frozen PyInstaller runtime
   bundles.** The frozen runtime *cannot* lazy-install (no working pip), so any backend the desktop exposes
   (web, anthropic, mcp, feishu/钉钉/企微/微信) MUST be pre-baked there even though `[all]` deliberately excludes
@@ -31,16 +39,16 @@ Dashboard APIs consumed by [`Hermes-CN-Desktop`](https://github.com/Eynzof/Herme
 
 ## AGENTS.md is the canonical deep guide
 
-[`AGENTS.md`](./AGENTS.md) (~1,385 lines) is the authoritative development reference — architecture internals,
-the tool registry chain, slash-command registry, TUI/Dashboard/Electron surfaces, plugins, skills, delegation,
-curator, cron, kanban, profiles, and the full "Known Pitfalls" list. **Read it for any non-trivial change.**
-This file is the orientation layer + fork specifics; AGENTS.md is the detail.
+`AGENTS.md` ([`AGENTS.md`](./AGENTS.md)) is the authoritative development reference and a routing table
+into the per-area `AGENTS.md` files (agent/, hermes_cli/, gateway/, tools/, plugins/, tui_gateway/, web/,
+skills/, cron/, pm/, tests/). Read it — and the area file it points at — for any non-trivial change.
+This file is the orientation layer + fork specifics; AGENTS.md and its area files are the detail.
 
 ## Commands
 
 ```bash
 # Dev install (editable, all extras)
-pip install -e ".[all,dev]"        # or: uv pip install -e ".[all,dev]"  (Python 3.14)
+pip install -e ".[all,dev]"        # or: uv pip install -e ".[all,dev]"  (Python 3.15)
 
 # Tests — ALWAYS use the wrapper, not raw pytest. It enforces CI parity
 # (unset API keys, TZ=UTC, C.UTF-8, per-file subprocess isolation).
@@ -72,7 +80,7 @@ The Python test suite is large — ~1,700 test files; CI slices it 8 ways. Run t
 
 Hermes CN 的需求与 bug 修复通常**同时横跨 Core 与 [Desktop](https://github.com/Eynzof/Hermes-CN-Desktop) 两个仓库**。正式动手写代码前，两个仓库都必须先过这道预检，**不要直接在 `main` 上改**：
 
-1. **确认主分支已与远端同步**。对 Core 与 Desktop 分别 `git fetch origin`，确认本地 `main` 与 `origin/main` 一致（`git rev-list --left-right --count main...origin/main` 应为 `0  0`）；落后就先快进，工作区脏就先收拾干净。Core 是 fork——**永远不要把 `upstream/main` 直接并进 `main`**，上游同步走 `./scripts/sync-upstream.sh`（见 "This is a fork"）。
+1. **确认主分支已与远端同步**。对 Core 与 Desktop 分别 `git fetch origin`，确认本地 `main` 与 `origin/main` 一致（`git rev-list --left-right --count main...origin/main` 应为 `0  0`）；落后就先快进，工作区脏就先收拾干净。Core 是 fork——**永远不要把 `upstream/main` 直接并进 `main`**，上游同步走 `python scripts/git_merge.py`（见 "This is a fork"）。
 2. **为每个仓库开独立的功能分支 + git worktree**，让 Core 与 Desktop 的改动互不干扰、可并行：
    ```bash
    git -C <repo> fetch origin

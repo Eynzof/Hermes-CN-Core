@@ -153,23 +153,7 @@ def test_documented_session_helper_and_own_install_path_fallback_are_not_flagged
     assert sites == ["__init__.py:8 hermes_cli.gateway_client._session_ticket"], sites
 
 
-def test_plugin_guide_session_identity_example_validates_clean(tmp_path):
-    """Regression for #148311: the plugin guide's ``get_session_env`` example uses the import spelling
-    ``hermes plugins validate`` accepts, so a plugin that copies it gets no private-import warning."""
-    import ast
-    import re
 
-    guide = Path(__file__).resolve().parents[2] / "website/docs/developer-guide/plugins/index.md"
-    blocks = [b for b in re.findall(r"```python\n(.*?)```", guide.read_text(encoding="utf-8"), re.DOTALL)
-              if "get_session_env" in b]
-    assert blocks, "plugins/index.md shows no code example importing get_session_env"
-    for block in blocks:  # validate sees only imports, and skips code that does not parse
-        assert any(isinstance(node, ast.ImportFrom) and node.module == "gateway.session_context"
-                   and "get_session_env" in {alias.name for alias in node.names}
-                   for node in ast.walk(ast.parse(block))), block
-    plugin = _plugin(tmp_path / "sessid", {f"example_{i}.py": b for i, b in enumerate(blocks)})
-
-    assert _private_warnings(validate_plugin_dir(plugin)) == []
 
 
 def test_private_method_calls_on_core_handles_warn_but_own_helpers_do_not(tmp_path):
@@ -218,12 +202,4 @@ def test_every_published_plugin_api_entry_passes_validate(tmp_path):
     assert sites == [f"uses_api.py:{len(imports)} hermes_cli.plugins.get_plugin_manager"], sites
 
 
-def test_public_api_docs_page_is_generated_from_the_data_file():
-    import importlib.util
 
-    spec = importlib.util.spec_from_file_location("gen_plugin_api_docs", _ROOT / "scripts" / "gen_plugin_api_docs.py")
-    assert spec and spec.loader
-    gen = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(gen)
-
-    assert gen.check() == 0, "website/docs/developer-guide/plugins/public-api.md is stale"

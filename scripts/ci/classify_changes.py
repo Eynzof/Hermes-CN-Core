@@ -24,7 +24,6 @@ Lanes:
   suites run only on a release run or a manual dispatch.
 * ``frontend``    — TS typecheck matrix + desktop build, and the WhatsApp
   bridge's ``node --test`` suites.
-* ``site``        — Docusaurus + generated skill docs.
 * ``scan``        — supply-chain scan (Python files, .pth, setup hooks).
 * ``deps``        — pyproject.toml dependency bounds check.
 * ``uv_lock``     — ``PM lock check``. Re-resolves the whole graph against
@@ -78,9 +77,11 @@ must never skip one a change could break:
 * ``website/static/oauth/`` is python-relevant too: it publishes the OAuth
   Client ID Metadata Document that ``tests/tools/test_mcp_cimd.py`` checks
   against the pinned callback ports in ``tools/mcp_oauth.py``.
-* ``website/docs/`` and ``website/scripts/`` are python-relevant for the same
-  reason: the docs tree generates ``llms.txt``, and
-  ``tests/website/test_generate_llms_txt.py`` asserts every page reaches it.
+  * ``website/static/api/`` is python-relevant: the bundled model catalog is read
+    by ``hermes_cli/model_catalog.py`` and pinned by ``tests/hermes_cli/
+    test_model_catalog.py``. (The Docusaurus docs site that used to live beside
+    it is deleted in this fork — see ``scripts/upstream-deletions.txt``.)
+
 * A cross-language fixture (``_SHARED_FIXTURE_CONSUMERS``) selects the test
   lanes of every consumer that reads it: the update-marker corpus runs pytest,
   cargo, vitest and the Windows hand-off tests, not only ``python``; the plugin
@@ -107,7 +108,6 @@ _ROOT_NPM = {"package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"}
 _DOCKER_META = ("docker/", ".hadolint.yaml", "Dockerfile", ".dockerignore") # docker setup
 _NIX_PATHS = ("nix/",) # nix files
 _NIX_FILES = {"flake.nix", "flake.lock"} # base nix files
-_SITE = ("website/", "skills/", "optional-skills/")  # docs site + skill pages
 # CI configuration outside .github/: workflows run their commands as just recipes
 # through this wrapper, so a change here can break any lane, as a workflow edit can.
 _CI_CONFIG_FILES = {"justfile", "scripts/hermes-python"}
@@ -118,15 +118,13 @@ _PY_SKIP = ("docs/", "website/") + _FRONTEND
 # callback ports in tools/mcp_oauth.py, so editing it alone must still run the
 # Python lane — otherwise dropping a redirect URI goes green here and breaks
 # every CIMD login on main.
-# website/docs/ and website/scripts/ are asserted about the same way. The docs
-# tree generates llms.txt — the index every LLM (Hermes included, via the
-# hermes-agent skill) reads to learn what Hermes can do — and
-# tests/website/test_generate_llms_txt.py holds every page to appearing in it.
-# Skipping Python on a docs-only PR is how the index drifted to 53% coverage.
+# website/static/api/ and website/static/oauth/ are asserted about the same way.
+# The fork keeps only these data artifacts under website/ (the Docusaurus site,
+# its docs and its i18n tree are deleted), so skipping Python on a website-only
+# PR is only safe for the image/artwork directories.
 _PY_RELEVANT_SITE = (
+    "website/static/api/",
     "website/static/oauth/",
-    "website/docs/",
-    "website/scripts/",
 )
 # Cross-language contract files: data committed under a frontend tree that a
 # pytest pins against the Python side (emitter inventory, command registry).
@@ -142,7 +140,7 @@ _PY_RELEVANT_CONTRACT_FILES = {
     "apps/desktop/src/lib/desktop-slash-registry.json",
     # tests/tui_gateway/test_show_reasoning_display_gate.py (card-tool names vs the gateway lifecycle set)
     "apps/desktop/src/lib/tool-render-class.ts",
-    # tests/website/test_catalog_rules_mirror.py (docs page mirrors the canonical rules)
+    # tests/hermes_cli/test_plugin_catalog.py syncs the canonical rules into the CLI
     "plugin-catalog/README.md",
     # tests/hermes_cli/test_plugin_docs_public_imports.py (its examples import only the plugin API)
     "plugins/AGENTS.md",
@@ -150,7 +148,7 @@ _PY_RELEVANT_CONTRACT_FILES = {
 
 # Catalog entry data: read by the catalog tests and the Plugin Catalog CI
 # admission gate, executed by nothing. Same set that gate allows in an entry PR.
-_CATALOG_DATA = ("plugin-catalog/", "contributors/emails/")
+_CATALOG_DATA = ("plugin-catalog/",)
 
 # Supply-chain scan: files that can execute code at install/import time.
 _SCAN_EXTS = (".py", ".pth")
@@ -663,7 +661,6 @@ def classify(files: list[str], run_e2e: bool = False) -> dict[str, bool]:
         "python_prod": python_prod,
         "docker_meta": docker_meta,
         "frontend": frontend,
-        "site": any(f.startswith(_SITE) for f in files),
         "scan": any(_is_scan(f) for f in files),
         "deps": deps,
         "uv_lock": any(f in ("pyproject.toml", "uv.lock") for f in files),
@@ -687,7 +684,6 @@ def classify(files: list[str], run_e2e: bool = False) -> dict[str, bool]:
         ret["python_prod"] = True
         ret["docker_meta"] = True
         ret["frontend"] = True
-        ret["site"] = True
         ret["scan"] = True
         ret["deps"] = True
         ret["uv_lock"] = True

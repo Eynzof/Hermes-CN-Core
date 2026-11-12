@@ -1,8 +1,9 @@
 {
   "_comment": [
     "The modules and names a plugin may import from Hermes core. `hermes plugins validate` warns on any other",
-    "Hermes import (hermes_cli/plugin_validate_private_imports.py), and scripts/gen_plugin_api_docs.py renders",
-    "website/docs/developer-guide/plugins/public-api.md from this file.",
+    "Hermes import (hermes_cli/plugin_validate_private_imports.py). This fork deletes the generated",
+    "developer-guide page that used to mirror this file (scripts/upstream-deletions.txt), so this file is the",
+    "single source of truth for the published plugin API.",
     "A `module` entry allows the module and its non-underscore names; `module:Name` allows that one name.",
     "Harvested from the Hermes-module imports in the developer-guide and plugin docs, what PluginContext hands",
     "out, and the names those pages tell authors to call, raise, return or subclass. Re-harvest when they change."

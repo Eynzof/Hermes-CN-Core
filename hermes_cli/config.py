@@ -2344,11 +2344,20 @@ def _last_known_good_fallback(config_path: Path, path_key: str, cache_sig, exc: 
         # It holds the raw file (``${VAR}`` templates intact), so it goes through the same
         # canonicalize -> expand -> managed-overlay pipeline as a normal load.
         from hermes_cli.config_backups import load_newest_good_backup
-        from hermes_cli.moa_config import apply_user_moa_presets
         raw_good = load_newest_good_backup(config_path)
         if raw_good is not None:
             merged_good = _deep_merge(copy.deepcopy(DEFAULT_CONFIG), raw_good)
-            apply_user_moa_presets(merged_good, raw_good)
+            # Imported here, not beside the backup import: moa_config may be exactly what broke
+            # the load that sent us down this path (its `orjson` extension missing from a mixed-ABI
+            # environment), and a fallback that re-raises the failure it exists to survive turns a
+            # recoverable config error into a crash at `hermes chat`. Presets are an enrichment --
+            # without that module the last-known-good config still stands, minus the MoA overlay.
+            try:
+                from hermes_cli.moa_config import apply_user_moa_presets
+            except ImportError:
+                pass
+            else:
+                apply_user_moa_presets(merged_good, raw_good)
             normalized = _canonicalize_config(merged_good)
             expanded_good: dict[str, Any] = _expand_env_vars(normalized)  # type: ignore[assignment]
             lkg, _ = _merge_managed_overlay(expanded_good)

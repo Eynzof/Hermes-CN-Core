@@ -22,7 +22,7 @@ import subprocess
 import sys
 
 _REMOVED_LIST = re.compile(r"/removed\.yaml$")
-_DATA_PATHS = re.compile(r"^(plugin-catalog|contributors/emails)/")
+_DATA_PATHS = re.compile(r"^plugin-catalog/")
 
 
 _GIT_SECONDS = 900
@@ -62,8 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     except subprocess.CalledProcessError as exc:
         return exc.returncode
     if outside:
-        print("::error::catalog entry PRs may only touch plugin-catalog/** and "
-              "contributors/emails/**, found:")
+        print("::error::catalog entry PRs may only touch plugin-catalog/**, found:")
         # Filenames are PR-controlled; a newline in one could smuggle a workflow command into
         # the log.
         print(" ".join(outside))

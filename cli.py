@@ -27,6 +27,11 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
+# `load_cli_config` below parses ~/.hermes/config.yaml while this module is still importing, so the
+# reader it shares with hermes_cli.config has to be bound before `CLI_CONFIG` is built (not at the
+# bottom of the file, which is too late and turned every config read into a NameError).
+from utils import fast_safe_load
+
 logger = logging.getLogger(__name__)
 
 os.environ["HERMES_QUIET"] = "1"  # suppress our modules' startup chatter
@@ -2071,4 +2076,3 @@ if __name__ == "__main__":
     import fire
 
     fire.Fire(main)
-from utils import base_url_host_matches, base_url_hostname, fast_safe_load, is_truthy_value

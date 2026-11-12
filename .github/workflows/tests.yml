@@ -373,8 +373,8 @@ jobs:
             pyproject.toml
             uv.lock
 
-      - name: Set up Python 3.14
-        run: uv python install 3.14
+      - name: Set up Python 3.15
+        run: uv python install 3.15
 
       - name: Install dependencies
         # `uv sync --locked` installs the exact pinned set from uv.lock (and
@@ -388,7 +388,7 @@ jobs:
         # in the venv up front.
         uses: ./.github/actions/retry
         with:
-          command: uv sync --locked --python 3.14 --extra all --group dev --extra anthropic --extra mistral --extra fal --extra modal --extra daytona --extra parallel-web --extra keychain
+          command: uv sync --locked --python 3.15 --extra all --group dev --extra anthropic --extra mistral --extra fal --extra modal --extra daytona --extra parallel-web --extra keychain
 
       - name: Install bubblewrap
         # Every spawned updater runs in bwrap (own PID namespace, no user

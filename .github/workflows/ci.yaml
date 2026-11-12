@@ -76,7 +76,6 @@ jobs:
       python: ${{ steps.gate-lanes.outputs.python }}
       python_prod: ${{ steps.gate-lanes.outputs.python_prod }}
       frontend: ${{ steps.gate-lanes.outputs.frontend }}
-      site: ${{ steps.gate-lanes.outputs.site }}
       scan: ${{ steps.gate-lanes.outputs.scan }}
       deps: ${{ steps.gate-lanes.outputs.deps }}
       uv_lock: ${{ steps.gate-lanes.outputs.uv_lock }}
@@ -283,15 +282,7 @@ jobs:
     with:
       commit: ${{ inputs.commit }}
 
-  docs-site:
-    name: Docs Site
-    needs: detect
-    if: needs.detect.outputs.site == 'true'
-    uses: ./.github/workflows/docs-site-checks.yml
-    with:
-      commit: ${{ inputs.commit }}
-
-  # Every cheap repository guard (infographics, profile archives, case collisions, large blobs,
+    # Every cheap repository guard (infographics, profile archives, case collisions, large blobs,
   # lazy_deps imports, stale icons, unrelated histories, contributor attribution, uv.lock,
   # prompt-surface and JS lockfile diffs, supply-chain scan, Docker lint) as steps of ONE job.
   # Each used to be its own job on the same runner: a full billed minute for 0-13s of work.
@@ -304,7 +295,6 @@ jobs:
       commit: ${{ inputs.commit }}
       event_name: ${{ needs.detect.outputs.event_name }}
       python: ${{ needs.detect.outputs.python == 'true' }}
-      catalog: ${{ needs.detect.outputs.catalog == 'true' }}
       scan: ${{ needs.detect.outputs.scan == 'true' }}
       deps: ${{ needs.detect.outputs.deps == 'true' }}
       npm_lock: ${{ needs.detect.outputs.npm_lock == 'true' }}
@@ -351,7 +341,6 @@ jobs:
       - e2e-desktop
       - e2e-desktop-core
       - e2e-desktop-update
-      - docs-site
       - repo-guards
       # OSV runs weekly against main (osv-scanner.yml schedule), not per PR:
       # every PR was reporting the same repo-wide baseline of pinned-dep CVEs

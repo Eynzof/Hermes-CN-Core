@@ -183,7 +183,7 @@ jobs:
       # version depends on the runner image. Pin it instead of trusting it.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
 
       - name: Write install stamp
         env:
@@ -367,7 +367,7 @@ jobs:
       # Same python3 steps as the build job; pin it the same way.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
 
       - name: Write install stamp
         run: |

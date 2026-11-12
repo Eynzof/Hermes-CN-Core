@@ -1,8 +1,11 @@
 """Map commit authors to GitHub logins for release notes and attribution checks.
 
 ``AUTHOR_MAP`` merges the frozen ``LEGACY_AUTHOR_MAP`` (authors_legacy.py) with
-the one-file-per-email entries under ``contributors/emails/``; the directory
-wins on duplicates.
+the one-file-per-email entries under ``contributors/emails/`` when that directory
+exists; the directory wins on duplicates. This fork deletes ``contributors/``
+(scripts/upstream-deletions.txt), so only the frozen map applies here — the
+loader stays because a checkout that still has the directory (an upstream
+worktree used for salvage) must keep resolving its authors.
 """
 from __future__ import annotations
 

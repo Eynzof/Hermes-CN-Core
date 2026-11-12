@@ -27,7 +27,7 @@ REPO_URL = "https://fixture.invalid/repo"
 
 
 def _step(name_prefix: str) -> str:
-    data = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    data = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8-sig"))
     for job in data["jobs"].values():
         for step in job["steps"]:
             if step.get("name", "").startswith(name_prefix):
@@ -232,7 +232,7 @@ def test_an_attested_binary_is_verified_against_the_pin_and_then_allowed(tmp_pat
     res = _gate(tmp_path, origin, [entry])
     assert res.returncode == 0, res.stdout + res.stderr
     assert f"PASS: {entry}" in res.stdout
-    [call] = log.read_text(encoding="utf-8").splitlines()
+    [call] = log.read_text(encoding="utf-8-sig").splitlines()
     # The gate strips only a github.com prefix from the repo, so the fixture URL passes whole.
     assert call.startswith("attestation verify ")
     assert call.endswith(f"/plugin/{path} --repo {REPO_URL} --source-digest {sha} "
@@ -360,13 +360,11 @@ NEW = {"plugin-catalog/new.yaml": "name: new\n"}
     (lambda r: _write(r, {**NEW, "scripts/tool.py": "x = 2\n"}), 1, [], "scripts/tool.py"),
     (lambda r: _write(r, {"plugin-catalog/old.yaml": "name: old\nsha: b\n"}), 0,
      ["plugin-catalog/old.yaml"], None),
-    (lambda r: _write(r, {**NEW, "contributors/emails/a@b.c": "someone\n"}), 0,
-     ["plugin-catalog/new.yaml"], None),
     (lambda r: _write(r, {"plugin-catalog/README.md": "rules v2\n",
                           "website/docs/catalog.md": "docs\n",
                           ".github/workflows/x.yml": "on: push\n"}), 0, [], None),
 ], ids=["rename", "typechange", "entry-plus-tooling", "sha-bump",
-        "entry-plus-email-map", "readme-docs-ci-only"])
+ "readme-docs-ci-only"])
 def test_changed_entries_step(tmp_path, change, rc, listed, text):
     """Renames and typechanges must reach the pinned gate; an entry PR that also
     touches tooling fails before any clone, while email maps and entry-free
@@ -390,7 +388,7 @@ def test_changed_entries_step(tmp_path, change, rc, listed, text):
         **os.environ, "GITHUB_OUTPUT": str(out), "GITHUB_WORKSPACE": str(ROOT),
         "PATH": f"{Path(sys.executable).parent}:{os.environ['PATH']}"})
     assert res.returncode == rc, res.stdout + res.stderr
-    lines = out.read_text(encoding="utf-8").splitlines()
+    lines = out.read_text(encoding="utf-8-sig").splitlines()
     assert [f for f in lines if f and "__EOF__" not in f and f != "files<<__EOF__"] == listed
     if text:
         assert text in res.stdout

@@ -1,0 +1,129 @@
+# Paths this fork deliberately deleted from upstream NousResearch/hermes-agent.
+#
+# `scripts/git_merge.py` reads this file and SKIPS every path that matches, even
+# when upstream has a newer version of it or adds a new file under a deleted
+# tree: the deletion is a fork decision, not a merge accident, so a sync must
+# never resurrect it. The script also treats any path that is missing from the
+# working tree as deleted, so this file is the *declaration*; the auto-detection
+# is the safety net.
+#
+# Syntax: one glob per line, POSIX separators, matched against the repo-relative
+# path. `**` spans directories, `*` and `?` do not. `#` starts a comment, a
+# blank line is ignored, and a leading `!` re-includes a path a broader glob
+# above matched. Everything outside this fork's own additions belongs here only
+# when the upstream file itself is documentation or generated metadata — never
+# for code the fork still ships.
+#
+# Why these trees are gone: the fork ships the agent, the gateway, the TUI, the
+# dashboard, the plugins/skills data and the tests. It does not ship the
+# published documentation site, the translated guides, the contributor
+# attribution data or the recorded performance reports.
+
+# ── the published Docusaurus site ─────────────────────────────────────────────
+# Only website/static/{api,img,oauth} survives: the bundled model catalog, the
+# plugin-catalog artwork and the OAuth Client ID Metadata Document are runtime
+# data read by hermes_cli/model_catalog.py, apps/desktop and tools/mcp_oauth.py.
+website/docs/**
+website/i18n/**
+website/src/**
+website/plugins/**
+website/scripts/**
+website/static/img/docs/**
+website/static/img/dashboard/**
+website/static/img/kanban-tutorial/**
+website/static/.nojekyll
+website/package.json
+website/package-lock.json
+website/sidebars.ts
+website/docusaurus.config.ts
+website/tsconfig.json
+website/README.md
+website/.gitignore
+website/.npmrc
+
+# ── contributor attribution data (one file per commit-author email) ───────────
+contributors/**
+
+# ── recorded performance reports, plans and eval result write-ups ────────────
+reports/**
+.plans/**
+evals/*.md
+evals/**/*README.md
+evals/**/SUMMARY.md
+evals/**/SCORECARD-*.md
+
+# ── translated / governance prose at the repo root ───────────────────────────
+# README.md, AGENTS.md, CLAUDE.md, SECURITY.md, MAINTAINING.md and FORK_NOTES.md
+# stay: they are the front page, the agent instructions, the security scope
+# authority and the fork patch registry.
+README.en.md
+README.es.md
+README.ur-pk.md
+README.zh-CN.md
+CONTRIBUTING.md
+CONTRIBUTING.es.md
+SECURITY.es.md
+CODE_OF_CONDUCT.md
+MAINTAINING.zh-CN.md
+FORK_NOTES.zh-CN.md
+SOUL.md
+fix_plan.md
+
+# ── CI / tooling prose ───────────────────────────────────────────────────────
+.github/workflows/README.md
+.github/actions/setup-pm/README.md
+scripts/build/README.md
+scripts/update-test/HANDOFF.md
+scripts/whatsapp-bridge/PASSKEY.md
+
+# ── package-level prose (AGENTS.md and SKILL.md files stay) ──────────────────
+apps/desktop/BUILDING.md
+apps/desktop/DESIGN.md
+apps/desktop/ENGINEERING.md
+apps/desktop/README.md
+apps/desktop/docs/**
+apps/desktop/e2e/core/README.md
+apps/desktop/scripts/perf/README.md
+apps/desktop/scripts/profile-typing-lag.md
+apps/desktop/src/debug/README.md
+apps/desktop/src/plugins/README.md
+apps/desktop/src/plugins/radio/README.md
+gateway/platforms/ADDING_A_PLATFORM.md
+plugins/*/README.md
+plugins/**/README.md
+plugins/**/DESIGN.md
+providers/README.md
+tests/compat/README.md
+tests/conformance/persistence/README.md
+tests/install/BUNDLED_UPDATES.md
+tests/install/KNOWN_FAILURES.md
+tests/install/README.md
+tools/wakewords/README.md
+ui-tui/CANONICAL_GATEWAY.md
+ui-tui/README.md
+web/README.md
+
+# ── the docs site's CI, generators and their tests ───────────────────────────
+# These exist only to build, publish, index or link-check the deleted site, or
+# to maintain the deleted contributor attribution data. A sync must not bring
+# them back: a workflow that runs `npm ci --prefix website` has nothing to build.
+.github/workflows/deploy-site.yml
+.github/workflows/docs-search-monitor.yml
+.github/workflows/docs-site-checks.yml
+.github/workflows/skills-index.yml
+.github/workflows/skills-index-freshness.yml
+scripts/add_contributor.py
+scripts/audit_pr_attribution.py
+scripts/contributor_audit.py
+scripts/ci/check_contributor_emails.py
+scripts/ci/check_docs_drift.py
+scripts/ci/docs_drift_baseline.json
+scripts/ci/skills_index_probe.py
+scripts/ci/skills_index_watchdog_issue.py
+scripts/gen_gateway_command_parity.py
+scripts/gen_plugin_api_docs.py
+tests/ci/test_docs_drift.py
+tests/ci/test_skills_index_probe.py
+tests/ci/test_skills_index_watchdog_issue.py
+tests/scripts/test_contributor_map.py
+tests/website/**

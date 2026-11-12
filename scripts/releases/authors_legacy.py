@@ -1,7 +1,7 @@
 """Frozen legacy commit-email → GitHub login mappings. Data only; never append.
 
-The contributor-email step of the repo-guards CI job and ``scripts/audit_pr_attribution.py`` grep this
-file for ``"<email>"``, so the entries must stay a literal dict here.
+This fork deletes the contributor-email guard and its mapping data (scripts/upstream-deletions.txt), so
+this dict is the whole map here; keep the entries literal, they are read from source, not imported.
 """
 
 # FROZEN legacy mappings — do NOT add new entries here. New contributor

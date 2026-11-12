@@ -7,12 +7,12 @@ name = "hermes-agent"
 version = "0.0.0"
 description = "The self-improving AI agent — creates skills from experience, improves them during use, and runs anywhere"
 readme = "README.md"
-# 3.14 is the newest python we know we have wheels for.
-# we *only* support 3.14, BUT we need to allow old hermes installs on <3.14
+# 3.15 is the newest python we know we have wheels for.
+# we *only* support 3.15, BUT we need to allow old hermes installs on <3.15
 # to get thru their update step on old python.
 # Shortly after they do, we update to our latest python.
 # See tests/compat/README.md for the updater contract this keeps.
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.11,<3.16"
 authors = [{ name = "Nous Research" }]
 license = "MIT"
 license-files = ["LICENSE"]

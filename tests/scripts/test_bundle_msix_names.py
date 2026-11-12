@@ -22,7 +22,7 @@ def test_python_docx_unzipped_template_leaves_venv_and_uv_cache(tmp_path):
     site = "venv/Lib/site-packages/docx/templates"
     cache = "uv-cache/archive-v0/cXkCcX-PYzjQ7QIz/docx/templates"
     _write(tmp_path, *(f"{base}/{name}" for base in (site, cache) for name in DOCX_TEMPLATE),
-           "hermes-agent/contributors/emails/[bot]@example.com")
+           "hermes-agent/skills/[bot]@example.com")
 
     removed = drop_msix_reserved_names(tmp_path)
 
@@ -34,7 +34,7 @@ def test_python_docx_unzipped_template_leaves_venv_and_uv_cache(tmp_path):
     for base in (site, cache):
         assert (tmp_path / base / "default.docx").is_file()
         assert (tmp_path / base / "default-styles.xml").is_file()
-    assert (tmp_path / "hermes-agent/contributors/emails/[bot]@example.com").is_file()
+    assert (tmp_path / "hermes-agent/skills/[bot]@example.com").is_file()
 
 
 def test_unknown_reserved_name_fails_staging_and_names_the_file(tmp_path):

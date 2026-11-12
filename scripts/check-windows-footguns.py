@@ -94,7 +94,6 @@ EXCLUDED_DIRS = {
     ".mypy_cache",
     ".pytest_cache",
     "site-packages",
-    "website/build",
     "optional-skills",  # external skills
 }
 
@@ -123,11 +122,9 @@ EXCLUDED_SUFFIXES = {
     ".min.css",
 }
 
-# Files we never scan (self-referential — this script mentions the
-# patterns it detects — and the CONTRIBUTING docs that list them).
+# Files we never scan (self-referential — this script mentions the patterns it detects).
 EXCLUDED_FILES = {
     "scripts/check-windows-footguns.py",
-    "CONTRIBUTING.md",
 }
 
 

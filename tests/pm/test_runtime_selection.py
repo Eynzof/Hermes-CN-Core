@@ -219,3 +219,55 @@ def test_invalid_selected_environment_never_silently_falls_back(tmp_path, monkey
     }))
     with pytest.raises(RuntimeError, match="environment"):
         runtime_paths.selected_venv(root)
+
+def test_a_generation_built_for_another_interpreter_is_never_activated(tmp_path, monkeypatch):
+    """A generation holds one interpreter's packages: compiled extensions inside it are named
+    for that ABI (``orjson.cp314-win_amd64.pyd``), so a boot on another minor version imports
+    the package directory and then dies on the extension itself
+    (``ModuleNotFoundError: No module named 'orjson.orjson'``) -- while everything the tree
+    carries in pure Python quietly replaces the interpreter's own, correct copy. Observed from
+    ``uv run hermes`` on 3.15 against the 3.14.9 generation this install had committed. Only
+    the interpreter that built a generation may activate it; ``committed_venv`` already states
+    the same rule for the pre-PM in-tree venv.
+    """
+    import os
+    import subprocess
+    import sys
+    from pm import environments as runtime_paths
+
+    root = tmp_path / "repo"
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "home"))
+    state = runtime_paths.install_state_dir(root)
+    foreign = state / "environments" / "foreign" / "venv"
+    foreign_packages = runtime_paths.site_packages(foreign)
+    foreign_packages.mkdir(parents=True)
+    (foreign_packages / "foreign_only.py").write_text("version = 'must-not-leak'", encoding="utf-8")
+    built_for = f"{sys.version_info.major}.{sys.version_info.minor + 1}.0"
+    (foreign / "pyvenv.cfg").write_text(f"home = test\nversion_info = {built_for}\n", encoding="utf-8")
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "facts.json").write_text(json.dumps({"schema": 1, "packages": {
+        "venv": {"environment": str(foreign)}
+    }}), encoding="utf-8")
+    matching = state / "environments" / "matching" / "venv"
+    matching.mkdir(parents=True)
+    (matching / "pyvenv.cfg").write_text("home = test\n", encoding="utf-8")
+    assert runtime_paths.environment_matches_interpreter(foreign) is False
+    # A tree that does not say (a hand-made venv) keeps the caller's behaviour.
+    assert runtime_paths.environment_matches_interpreter(matching) is True
+
+    code = (
+        "import os, sys, importlib.util\n"
+        "from pathlib import Path\n"
+        "from pm.environments import activate_dependencies, NoCommittedEnvironment\n"
+        "try:\n"
+        "    activate_dependencies(Path(sys.argv[1]))\n"
+        "except NoCommittedEnvironment:\n"
+        "    pass  # PM's bare store Python refuses rather than keep foreign packages\n"
+        "print(importlib.util.find_spec('foreign_only') is None)\n"
+        "print(str(Path(sys.argv[2])) not in (os.environ.get('PYTHONPATH') or '').split(os.pathsep))\n"
+    )
+    process = subprocess.run([sys.executable, "-c", code, str(root), str(foreign_packages)],
+                             env=dict(os.environ), text=True, capture_output=True, timeout=30, check=False)
+    assert process.returncode == 0, process.stderr
+    assert process.stdout.splitlines() == ["True", "True"], process.stdout
+    assert f"built for Python {built_for.rsplit('.', 1)[0]}" in process.stderr, process.stderr

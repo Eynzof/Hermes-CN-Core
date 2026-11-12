@@ -224,7 +224,7 @@ class DebPackage(Package):
 def deb_data_tar(name: str, archive: Path) -> bytes:
     """A .deb's data.tar, ready for tarfile. Ubuntu compresses it with zstd
     (default since 21.10), decompressed here with the stdlib module PM's
-    3.14 runtime carries; lzma (the pre-xz format) is refused."""
+    3.15 runtime carries; lzma (the pre-xz format) is refused."""
     raw = archive.read_bytes()
     if raw[:8] != b"!<arch>\n":
         raise InstallError(name, f"not an ar archive: {archive.name}")

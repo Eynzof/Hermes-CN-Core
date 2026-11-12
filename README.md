@@ -1,6 +1,5 @@
 # Hermes-CN-Core
 
-简体中文（兼容入口：[README.zh-CN.md](./README.zh-CN.md)） · [English](./README.en.md)
 
 [![Tests](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/tests.yml/badge.svg)](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/tests.yml)
 [![Runtime Release](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/release-runtime.yml/badge.svg)](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/release-runtime.yml)
@@ -41,7 +40,7 @@ Hermes Agent 中文社区官网是 [hermesagent.org.cn](https://hermesagent.org.
 
 ## 和上游有什么不同？
 
-所有 fork 专属改动都记录在 [FORK_NOTES.zh-CN.md](./FORK_NOTES.zh-CN.md)；英文版记录见 [FORK_NOTES.md](./FORK_NOTES.md)。简单说，这个 fork 主要维护：
+所有 fork 专属改动都记录在 [FORK_NOTES.md](./FORK_NOTES.md)。简单说，这个 fork 主要维护：
 
 - **中文模型服务商元数据**：让 Dashboard 环境变量面板识别 ARK、千帆、混元、SiliconFlow、ModelScope、AI302、CompShare、LongCat 等配置项。
 - **桌面端依赖的 Dashboard API**：包括附件上传、workspace 目录浏览、MCP server 摘要、active profile 读写等接口。
@@ -228,9 +227,9 @@ What gets imported from OpenClaw:
 
 We welcome contributions! See the [Contributing Guide](https://hermes-agent.nousresearch.com/docs/developer-guide/contributing) for development setup, code style, and PR process.
 
-Start with the [PM developer workflow](website/docs/reference/package-management.md#developer-workflow)
-for activation, daily use, dependency changes, and leaving the environment.
-[Development Setup](CONTRIBUTING.md#development-setup) covers the separate test environment and verification commands.
+Start with [`AGENTS.md`](./AGENTS.md) § Development Environment for the PM environment, activation
+and the `scripts/check` lint gate; the test environment and verification commands are in
+[`tests/AGENTS.md`](./tests/AGENTS.md) and `scripts/run_tests.sh`.
 
 运行 fork 维护者常用的 Dashboard 冒烟检查：
 
@@ -238,7 +237,7 @@ for activation, daily use, dependency changes, and leaving the environment.
 hermes dashboard --no-open
 ```
 
-随后按 [MAINTAINING.zh-CN.md](./MAINTAINING.zh-CN.md) 中的说明验证 fork 专属 Dashboard API。
+随后按 [MAINTAINING.md](./MAINTAINING.md) 中的冒烟检查验证 fork 专属 Dashboard API。
 
 ## 仓库结构
 
@@ -252,8 +251,7 @@ skills/              内置 skills
 optional-skills/     可选 skill packs
 web/                 Dashboard Web 前端资源
 ui-tui/              终端 UI 前端资源
-website/             继承自上游的文档站点
-docs/                fork/runtime 文档
+website/ 仅保留运行时数据（模型目录、插件图、图标、OAuth 元数据）
 .github/workflows/   测试、upstream watch、runtime release 和安全扫描流水线
 ```
 
@@ -268,18 +266,18 @@ docs/                fork/runtime 文档
 - `upstream-pr/*` 用于基于上游 `main` 准备官方 upstream PR。
 - `runtime-v*` tag 用于发布桌面端使用的签名 runtime artifact。
 
-完整维护流程见 [MAINTAINING.zh-CN.md](./MAINTAINING.zh-CN.md)。
+完整维护流程见 [MAINTAINING.md](./MAINTAINING.md)；上游同步使用 `python scripts/git_merge.py`。
 
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request。请注意：
 
-1. fork 专属行为变更需要写入 [FORK_NOTES.zh-CN.md](./FORK_NOTES.zh-CN.md)。
+1. fork 专属行为变更需要写入 [FORK_NOTES.md](./FORK_NOTES.md)。
 2. 适合贡献给上游的通用修复，尽量整理成干净的 `upstream-pr/*` 分支。
 3. 不要把无关的 upstream 同步和 CN fork 补丁 squash 到一个提交里。
 4. 不要提交真实 API key、用户配置、本地 `.env` 文件或 runtime 签名私钥。
 
-较大变更请先阅读 [CONTRIBUTING.md](./CONTRIBUTING.md) 和 [MAINTAINING.zh-CN.md](./MAINTAINING.zh-CN.md)。
+较大变更请先阅读 [AGENTS.md](./AGENTS.md) 和 [MAINTAINING.md](./MAINTAINING.md)。
 
 ## 安全
 

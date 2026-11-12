@@ -795,3 +795,28 @@ def test_openrouter_startup_key_never_holds_a_real_openai_key(env, expected):
     # so it must already follow the sk-or- gate for openrouter.ai.
     cli = _make_cli(env_overrides=env)
     assert (cli.api_key or "") == expected
+
+
+def test_the_profile_config_is_read_at_import_time(tmp_path):
+    """``CLI_CONFIG`` is built while ``cli`` is still importing, so every reader that first read calls
+    must be bound by then. A helper imported at the bottom of the module made it a ``NameError`` that
+    ``load_cli_config`` swallows -- every launch then ran on built-in defaults instead of the profile's
+    ``config.yaml``. A fresh process is the only place that first read is observable.
+    """
+    import json
+    import subprocess
+    from pathlib import Path
+
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.yaml").write_text("display: {compact: true}\n", encoding="utf-8")
+    repo = Path(__file__).resolve().parents[2]
+    env = {k: os.environ[k] for k in ("PATH", "SYSTEMROOT", "LANG", "TZ", "HOME", "USERPROFILE") if k in os.environ}
+    env.pop("HERMES_IGNORE_USER_CONFIG", None)
+    env.update(HERMES_HOME=str(home), PYTHONPATH=str(repo))
+    probe = "import json, cli; print(json.dumps({'compact': cli.CLI_CONFIG.get('display', {}).get('compact')}))"
+    result = subprocess.run(
+        [sys.executable, "-c", probe], cwd=repo, env=env, stdin=subprocess.DEVNULL,
+        capture_output=True, text=True, timeout=180, check=False)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip().splitlines()[-1])["compact"] is True, result.stdout + result.stderr

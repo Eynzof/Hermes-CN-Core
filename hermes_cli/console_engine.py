@@ -15,9 +15,12 @@ from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Callable, Iterable, Literal, NoReturn, Sequence
+from typing import Callable, Iterable, Iterator, Literal, NoReturn, Sequence, TYPE_CHECKING
 
 from tools.ansi_strip import strip_ansi as _strip_ansi
+
+if TYPE_CHECKING:  # pragma: no cover - annotation-only, hermes_state imports this module's siblings
+    from hermes_state import SessionDB
 
 
 ConsoleStatus = Literal["ok", "error", "confirm_required", "exit", "clear"]
@@ -583,15 +586,32 @@ def _logs(_engine: HermesConsoleEngine, args: list[str]) -> str:
             session=ns.session, since=ns.since, component=ns.component))
 
 
-def _session_db(*, read_only: bool = True):
-    """``with _session_db() as db:`` — SessionDB closed on exit.
+@contextlib.contextmanager
+def _session_db(*, read_only: bool = True) -> Iterator[SessionDB]:
+    """``with _session_db() as db:`` — the handle is closed (or released) on exit.
 
     The console runs inside the dashboard process, which already owns a handle on state.db;
     reads attach ``read_only`` so they never add a writer connection beside it (#100896).
-    Mutating commands pass ``read_only=False``.
+    Mutating commands (``read_only=False``) take the process-wide registry handle instead of a
+    bare ``SessionDB()``, so a rename/optimize/repair lands on the ONE writer this process
+    already holds rather than opening a second connection, lock, token-writer thread and
+    close-time WAL checkpoint on the same file (#90837). With no other holder the refcount is
+    the only reference and the release below is an ordinary close, so a standalone console
+    behaves exactly as before.
     """
     from hermes_state import SessionDB
-    return closing(SessionDB(read_only=read_only))
+
+    if read_only:
+        with closing(SessionDB(read_only=True)) as db:
+            yield db
+        return
+    from hermes_state_registry import acquire, release_or_close
+
+    db = acquire()
+    try:
+        yield db
+    finally:
+        release_or_close(db)
 
 
 def _sessions_list(_engine: HermesConsoleEngine, args: list[str]) -> str:

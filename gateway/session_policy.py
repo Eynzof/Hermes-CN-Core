@@ -990,7 +990,8 @@ def route_launch_key(authority, policy, config):
 
 
 def restore_policy(data):
-    """Reject incomplete private policy rather than rebuilding from current defaults."""
+    """Reject incomplete private policy rather than rebuilding from current defaults. A model is the
+    one optional field: None is "this session names none", not missing data."""
     try:
         policy = LocalSessionPolicy(**data)
         from gateway.session_a2a import is_forward_policy
@@ -998,7 +999,7 @@ def restore_policy(data):
         if ((not is_forward_policy(policy) and
              (policy.source not in surfaces or policy.platform != surfaces[policy.source]))
                 or not isinstance(policy.cwd, str) or not Path(policy.cwd).is_absolute()
-                or not isinstance(policy.model, str) or not policy.model.strip()
+                or not _valid_model(policy.model)
                 or not isinstance(policy.toolsets, (list, tuple))
                 or any(not isinstance(name, str) for name in policy.toolsets)
                 or type(policy.safe_mode) is not bool or type(policy.ignore_user_config) is not bool
@@ -1020,6 +1021,14 @@ def restore_policy(data):
         return replace(policy, toolsets=tuple(policy.toolsets))
     except (KeyError, TypeError, ValueError) as exc:
         raise RuntimeStoreError('storage_unavailable') from exc
+
+
+def _valid_model(model):
+    """A stored ``model``: its route's non-blank name, or None when the launch named none and the
+    profile resolved none (``build_policy`` keeps it; ``create_local_session`` only replaces it when
+    the profile has a default to resolve). Every reader already takes ``self.model or ''``. A blank
+    or non-string value is neither of those and stays a corrupt receipt."""
+    return model is None or (isinstance(model, str) and bool(model.strip()))
 
 
 def _valid_client_env(value, kind: type = str):

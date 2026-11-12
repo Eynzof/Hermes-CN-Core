@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import subprocess
 import sys
 
 # The runner invokes this file before the checkout has been installed.
@@ -18,7 +19,7 @@ from pm.paths import lockfile_path
 from pm.registry import walk
 from pm.store import current_target
 
-# npm stays beside pnpm: website/ and the sidecars are standalone npm projects.
+# npm stays beside pnpm: the sidecars are standalone npm projects.
 _ROOTS = {"python": ["uv"], "node": ["npm", "pnpm"], "all": ["npm", "pnpm", "uv"]}
 
 
@@ -166,14 +167,22 @@ def restore_cygwin_symlinks(root: Path) -> int:
             try:
                 if os.lstat(path).st_reparse_tag != _LX_SYMLINK:
                     continue
-                target = subprocess.run([readlink, path], env=env, capture_output=True,
+                target = subprocess.run([readlink, path], env=env, capture_output=True, creationflags=_hide_console(),
                                         text=True, check=True, timeout=30).stdout.rstrip("\n")
                 os.remove(path)
-                subprocess.run([ln, "-s", target, path], env=env, check=True, timeout=30)
+                subprocess.run([ln, "-s", target, path], env=env, check=True, timeout=30,
+                               creationflags=_hide_console())
                 repaired += 1
             except (OSError, subprocess.SubprocessError):
                 continue
     return repaired
+
+
+def _hide_console() -> int:
+    """``creationflags`` for a child process: no console window flash on Windows."""
+    if os.name != "nt":
+        return 0
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def install(args) -> None:

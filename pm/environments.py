@@ -413,6 +413,42 @@ def venv_python_version(venv: Path) -> tuple[int, int] | None:
     return None
 
 
+def environment_matches_interpreter(venv: Path) -> bool:
+    """Can *venv*'s site-packages be activated into this process at all?
+
+    A venv holds one interpreter's packages: its compiled extensions are named for that
+    ABI (``orjson.cp314-win_amd64.pyd``), so a process on another minor version imports
+    the package directory and then dies on the extension itself
+    (``ModuleNotFoundError: No module named 'orjson.orjson'``), while everything the tree
+    carries in pure Python quietly replaces the interpreter's own, correct copy. Only the
+    interpreter that built a generation can run it -- the rule ``committed_venv`` already
+    states for the pre-PM in-tree venv, which is why activation never picks that one.
+
+    ``venv_python_version`` answers ``None`` for a tree that does not say (a hand-built
+    test venv): unknown keeps the caller's behaviour, and only a positive mismatch refuses.
+    """
+    import sys
+
+    held = venv_python_version(venv)
+    return held is None or held == (sys.version_info.major, sys.version_info.minor)
+
+
+def warn_incompatible_environment(venv: Path) -> None:
+    """Name the skew, so a half-working boot is diagnosable instead of mysterious."""
+    import sys
+
+    stream = sys.stderr
+    if stream is None:
+        return  # pythonw: there is no console to warn into, and no attribute to write to
+    held = venv_python_version(venv)
+    target = (sys.version_info.major, sys.version_info.minor)
+    print(f"⚠ not activating the dependency environment at {venv}: it was built for Python "
+          f"{held[0]}.{held[1]} and this process runs {target[0]}.{target[1]}, so its compiled "
+          f"modules cannot load here (the interpreter keeps its own packages). Launch Hermes "
+          f"with the install's own interpreter, or move PM's pinned Python to "
+          f"{target[0]}.{target[1]}.", file=stream, flush=True)
+
+
 def site_packages(venv: Path) -> Path:
     import sys
 
@@ -466,6 +502,8 @@ def activate_dependencies(project_root: Path) -> None:
 
     A process with no extension selection keeps its original launch contract.
     Already-running processes are never switched after a dependency install.
+    A generation built for another interpreter is not selected at all
+    (``environment_matches_interpreter``): its compiled modules belong to that ABI.
     """
     import sys
 
@@ -481,6 +519,11 @@ def activate_dependencies(project_root: Path) -> None:
             environment = committed_venv(project_root)
             if environment is None:
                 return _require_own_dependencies(project_root)
+            # Before the lease: a generation built for another interpreter is not this
+            # process's to hold, and leasing it would pin it against collection.
+            if not environment_matches_interpreter(environment):
+                warn_incompatible_environment(environment)
+                return _require_own_dependencies(project_root)
             release = lease_generation(environment)
             # Without the lock, an installer may commit a new generation between the
             # read and the lease, leaving the leased one unselected and collectable.
@@ -495,6 +538,9 @@ def activate_dependencies(project_root: Path) -> None:
         # Never consult VIRTUAL_ENV: it can describe the invoking shell's Python.
         environment = payload_venv(project_root)
         if environment is None:
+            return _require_own_dependencies(project_root)
+        if not environment_matches_interpreter(environment):
+            warn_incompatible_environment(environment)
             return _require_own_dependencies(project_root)
         selected = site_packages(environment)
         if not selected.is_dir():

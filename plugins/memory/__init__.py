@@ -394,16 +394,7 @@ def _load_provider_from_dir(provider_dir: Path, *, register_skills: bool = True)
             host, provider_dir, _module_name(provider_dir, name))
     mod = _load_package(provider_dir, name)
     if mod is None:
-        # PyInstaller split layout (P-057): ``load_plugin_module`` needs a physical
-        # ``__init__.py`` beside the manifest, which the frozen bundle does not stage; the
-        # provider code is importable through the frozen module loader anyway.
-        if not _is_bundled(provider_dir) or not _bundled_module_is_importable(module_name):
-            return None
-        try:
-            mod = importlib.import_module(module_name)
-        except Exception as e:
-            logger.debug("Failed to import frozen module %s: %s", module_name, e)
-            return None
+        return None
 
     if hasattr(mod, "register"):
         collector = _ProviderCollector(name, register_skills=register_skills)

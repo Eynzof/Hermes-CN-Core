@@ -142,8 +142,6 @@ def project_switch(project: str, task_id: Optional[str] = None) -> str:
         # Same rule as create.
         if not _moves_session(task_id, _primary_path(proj)):
             pdb.set_active(conn, proj.id)
-            return orjson.dumps({"success": False, "error": f"no project matching '{project}'"}).decode('utf-8')
-        pdb.set_active(conn, proj.id)
     return _activated(proj, task_id)
 
 

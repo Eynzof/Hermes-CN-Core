@@ -2,6 +2,8 @@
 (``HERMES_DEBUG_INTERRUPT=1``): loop entry/exit, interrupt/timeout detection and ~30s
 heartbeats so "agent never sees the interrupt" reports can be diagnosed from agent.log."""
 
+import logging
+import re
 import threading
 import time
 
@@ -73,3 +75,16 @@ class _WaitTrace:
     def natural_exit(self, returncode) -> None:
         if self.enabled:
             self._emit("EXIT (natural)", self.iterations, self._elapsed(), returncode)
+
+
+def compile_wait_pattern(pattern: str | None):
+    """Compile the optional readiness pattern used during a foreground wait."""
+    if not pattern:
+        return None
+    try:
+        return re.compile(pattern)
+    except re.error:
+        logging.getLogger("tools.environments.base").warning(
+            "Invalid wait_for_pattern %r ignored (bad regex)", pattern,
+        )
+        return None

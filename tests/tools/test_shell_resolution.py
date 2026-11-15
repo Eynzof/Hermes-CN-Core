@@ -553,12 +553,13 @@ class TestIsWslBashLauncher:
                 assert _is_wsl_bash_launcher(wsl_bash) is True
 
 
+@pytest.mark.platforms("windows")
 class TestFindBashWindowsRejectsWsl:
     """_find_bash() on Windows must prefer Git Bash and never return WSL bash."""
 
     @contextlib.contextmanager
     def _stub_environment(self, monkeypatch):
-        monkeypatch.setattr("tools.environments.local._IS_WINDOWS", True)
+        monkeypatch.setattr("pm.shell.bash", lambda: None)
         monkeypatch.setattr("tools.environments.local._wsl_bash_launcher_cache", {})
         monkeypatch.setattr("tools.environments.local._where_git_executables", lambda: [])
         monkeypatch.setattr("tools.environments.local._bash_starts", lambda _p: True)

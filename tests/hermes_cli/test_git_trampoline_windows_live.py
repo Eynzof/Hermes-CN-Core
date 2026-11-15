@@ -7,15 +7,15 @@ helpers against the runner's genuine Git-for-Windows install plus a real
 broken-trampoline stand-in (a .bat that reproduces the launcher's
 "BUG (fork bomb)" guard output and refuses to run).
 
-windows-latest ships full Git for Windows at ``C:\\Program Files\\Git`` with
-the real ``mingw64\\libexec\\git-core\\git.exe`` — exactly the layout the
-locator targets — so the swap path is exercised end to end.
+The Windows lanes stage Git through PM. Its selected store entry supplies
+the real ``{mingw64,clangarm64}\\libexec\\git-core\\git.exe``; a host Git
+installation must not mask a missing PM lookup.
 """
 
 from __future__ import annotations
 
 import subprocess
-import sys
+import shutil
 from pathlib import Path
 
 import pytest
@@ -27,6 +27,28 @@ _FORK_BOMB_BAT = (
     "echo BUG (fork bomb): tried to spawn itself, check your PATH 1>&2\r\n"
     "exit /b 1\r\n"
 )
+
+
+@pytest.fixture(scope="module")
+def _pm_git_store(tmp_path_factory):
+    from pm.build_operations import stage_tools
+    from pm.store import current_target
+
+    # The hermetic runner keeps PATH but strips HERMES_RUNTIME_DIR. Copy the
+    # runner's verified PM Git once; tests must not use or mutate its store.
+    binary = shutil.which("git")
+    assert binary is not None, "the Windows lane must stage Git on PATH"
+    source = next((root for root in Path(binary).parents if (root / "facts.json").is_file()), None)
+    assert source is not None, f"expected PM facts above PATH Git: {binary}"
+    return stage_tools(
+        ["git"], source_store=source,
+        out=tmp_path_factory.mktemp("trampoline-pm") / "tools", target=current_target(),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_pm_git(_hermetic_environment, _pm_git_store, monkeypatch):
+    monkeypatch.setenv("HERMES_RUNTIME_DIR", str(_pm_git_store))
 
 
 def _make_broken_trampoline(tmp_path: Path) -> Path:
@@ -54,14 +76,15 @@ class TestGitTrampolineLive:
         bat = _make_broken_trampoline(tmp_path)
         assert update_cmd._git_is_trampoline([str(bat)]) is True
 
-    @_runner_git_layout
     def test_locate_real_git_finds_runner_git_core(self):
         from hermes_cli import update_cmd
+        from pm import installed_package
 
+        managed = installed_package("git", allow_outdated=True)
+        assert managed is not None, "the Windows lane must stage PM Git"
         real = update_cmd._locate_real_git()
-        # windows-latest ships Git for Windows under Program Files with the
-        # canonical git-core layout the locator searches first.
-        assert real is not None, "expected git-core git.exe on windows-latest"
+        assert real is not None, "expected git-core git.exe in the PM store"
+        assert real.is_relative_to(managed.path), real
         assert real.exists()
         assert real.name == "git.exe"
         probe = subprocess.run(
@@ -71,7 +94,6 @@ class TestGitTrampolineLive:
         assert probe.returncode == 0
         assert "git version" in probe.stdout.lower()
 
-    @_runner_git_layout
     def test_ensure_non_trampoline_git_swaps_live(self, tmp_path, capsys):
         from hermes_cli import update_cmd
 

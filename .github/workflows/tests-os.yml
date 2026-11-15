@@ -12,7 +12,7 @@ name: OS-specific tests
 # is where those markers actually execute:
 #
 #   macos    → ``-m platforms``    on blacksmith-12vcpu-macos-latest
-#   windows  → ``-m platforms``    on blacksmith-32vcpu-windows-2025 and windows-latest-32-arm-core
+#   windows  → ``-m platforms``    on blacksmith-32vcpu-windows-2025 and windows-11-arm
 #
 # (tests/conftest.py's ``pytest_collection_modifyitems`` hook skips
 # foreign-OS ``platforms(...)`` markers on each host, so one shared ``-m
@@ -96,12 +96,12 @@ jobs:
             runner: blacksmith-32vcpu-windows-2025
             marker: windows
           - name: Windows-only tests (arm64, 1/2)
-            runner: windows-latest-32-arm-core
+            runner: windows-11-arm
             marker: windows
             timeout: 60
             slice: 1/2
           - name: Windows-only tests (arm64, 2/2)
-            runner: windows-latest-32-arm-core
+            runner: windows-11-arm
             marker: windows
             timeout: 60
             slice: 2/2

@@ -129,20 +129,29 @@ class TestFindShellWindowsBehavior:
             assert os.path.isfile(result) and os.path.isfile(bash)
 
 
-class TestFindBashCollapsedToPmShell:
-    """_find_bash is now a thin wrapper over pm.shell(); the Windows
-    candidate ladder (HERMES_GIT_BASH_PATH → %LOCALAPPDATA%\\hermes\\git →
-    Program Files) and the ASLR diagnostic were deleted — the store is the
-    authority on bundled bash."""
+class TestFindBashPmPreference:
+    """PM owns shell discovery; Windows must also support external MSYS children."""
 
-    @pytest.mark.platforms("windows")
-    def test_delegates_to_pm_shell(self, monkeypatch):
-        """_find_bash returns whatever pm.shell() resolves (store bash or
-        provisioned PATH)."""
-        monkeypatch.setattr(
-            "pm.shell.bash", lambda: r"C:\store\tools\git-x\usr\bin\bash.exe"
-        )
-        assert _find_bash() == r"C:\store\tools\git-x\usr\bin\bash.exe"
+    @pytest.mark.platforms("posix", "windows")
+    def test_delegates_to_pm_shell(self, tmp_path, monkeypatch):
+        import tools.environments.local as local_mod
+
+        bash = tmp_path / ("bash.exe" if sys.platform == "win32" else "bash")
+        bash.touch()
+        probes = []
+        monkeypatch.setattr("pm.shell.bash", lambda: str(bash))
+        monkeypatch.setattr(local_mod, "_bash_starts", lambda path: probes.append(path) or True)
+
+        assert _find_bash() == str(bash)
+        assert probes == ([str(bash)] if sys.platform == "win32" else [])
+
+    @pytest.mark.platforms("posix")
+    def test_raises_when_pm_shell_finds_nothing(self, monkeypatch):
+        monkeypatch.setattr("pm.shell.bash", lambda: None)
+        with pytest.raises(RuntimeError, match="No shell found.*hermes pm install"):
+            _find_bash()
+        assert _find_bash(raise_if_missing=False) is None
+
     def test_returns_string(self):
         """_find_shell always returns a non-empty string on any platform."""
         result = _find_shell()
@@ -167,7 +176,8 @@ class TestFindBashSkipsBrokenCustomPath:
     """Stale HERMES_GIT_BASH_PATH must not brick Windows terminal startup."""
 
     @pytest.mark.platforms("windows")
-    def test_falls_through_to_portable_when_custom_fails_probe(self, tmp_path, monkeypatch):
+    @pytest.mark.parametrize("pm_candidate", [False, True], ids=["pm-missing", "pm-broken"])
+    def test_falls_through_to_portable_when_custom_fails_probe(self, tmp_path, monkeypatch, pm_candidate):
         """Windows-only: the candidate ladder (HERMES_GIT_BASH_PATH →
         %LOCALAPPDATA%\\hermes\\git → Program Files) only exists in
         ``_find_bash``'s Windows branch."""
@@ -185,6 +195,7 @@ class TestFindBashSkipsBrokenCustomPath:
 
         monkeypatch.setenv("HERMES_GIT_BASH_PATH", str(broken))
         monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+        monkeypatch.setattr("pm.shell.bash", lambda: str(broken) if pm_candidate else None)
 
         def fake_starts(path: str) -> bool:
             return path == str(portable)
@@ -268,6 +279,8 @@ class TestGitBashExternalProgramProbe:
 
         monkeypatch.setenv("HERMES_GIT_BASH_PATH", "")
         monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+        monkeypatch.setattr("pm.shell.bash", lambda: None)
+        monkeypatch.setattr(local_mod, "_where_git_executables", lambda: [])
         monkeypatch.setenv("ProgramFiles", str(tmp_path / "empty-program-files"))
         monkeypatch.delenv("ProgramFiles(x86)", raising=False)
         monkeypatch.setattr(local_mod.shutil, "which", lambda _name: None)
@@ -281,14 +294,14 @@ class TestGitBashExternalProgramProbe:
 
         monkeypatch.setattr(local_mod, "_bash_starts", failed_probe)
 
-    def test_raises_when_pm_shell_finds_nothing(self, monkeypatch):
-        """A store with no bash (and no PATH bash) surfaces a clear error
-        pointing at `hermes pm install` instead of hunting locations."""
-        monkeypatch.setattr("pm.shell.bash", lambda: None)
         with pytest.raises(RuntimeError) as exc_info:
-            _find_bash()
-        assert "No shell found" in str(exc_info.value)
-        assert "hermes pm install" in str(exc_info.value)
+            local_mod._find_bash()
+        message = str(exc_info.value)
+        assert "Mandatory ASLR" in message
+        assert "Reinstalling Git will not change" in message
+        assert "Set-ProcessMitigation" in message
+        assert str(tmp_path / "hermes" / "git") in message
+        assert local_mod._find_bash(raise_if_missing=False) is None
 
 
 

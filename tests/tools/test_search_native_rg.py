@@ -111,7 +111,8 @@ def test_kill_switch_routes_search_back_to_the_shell(tree, ops_factory, monkeypa
     calls = []
     result = ops_factory(tree, calls).search(pattern="needle", path=str(tree))
     assert result.total_count == 4
-    assert any(c.startswith("test -e") for c in calls)
+    # Local existence checks stay in-process; the kill switch controls the
+    # search transport, which must still execute its rg pipeline in the shell.
     assert any(c.startswith("set -o pipefail; ") for c in calls)
 
 

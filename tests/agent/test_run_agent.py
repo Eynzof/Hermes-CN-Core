@@ -966,7 +966,7 @@ class TestBuildSystemPrompt:
         ):
             agent = AIAgent(
                 api_key="test-k...7890",
-                base_url="https://openrouter.ai/api/v1",
+                base_url="https://openrouter.ai/api/v1", enabled_toolsets=["web", "skills"],
                 quiet_mode=True,
                 skip_context_files=True,
                 skip_memory=True,

@@ -55,3 +55,31 @@ def test_artifact_build_rejects_nix_development_shell_environment(kind, tmp_path
 
     assert result.returncode != 0
     assert "Building wheels or sdists for hermes-agent is not supported" in result.stderr
+
+
+def test_wheel_ships_importable_embedded_runtime(tmp_path):
+    result = _build_artifact("wheel", tmp_path, nix_build=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    wheel = next(tmp_path.glob("*.whl"))
+    # Import only from the built artifact: neither an editable install nor the
+    # checkout may hide an omitted package in the Desktop runtime's wheel.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "import hermes_embedded; "
+            "assert hermes_embedded.ffi_surface_version == "
+            "hermes_embedded.FFI_SURFACE_VERSION; "
+            "assert callable(hermes_embedded.handle_rpc)",
+            str(wheel),
+        ],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

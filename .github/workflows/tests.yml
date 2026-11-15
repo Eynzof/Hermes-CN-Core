@@ -143,7 +143,7 @@ jobs:
 
   e2e:
     # The core suites spawn real serve / gateway / tui_gateway / MCP / SQLite
-    # writer processes per test; a 4-vCPU runner serialises them into timeouts.
+    # writer processes per test; keep their file concurrency bounded below.
     if: inputs.e2e
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 30

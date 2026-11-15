@@ -1,93 +1,28 @@
-"""Regression coverage for the user-facing macOS Hermes launcher."""
-
-from __future__ import annotations
-
+"""The published source launcher does not require PATH utilities such as realpath."""
+import json
 import os
-import re
-import shutil
-import stat
-import subprocess
-import sys
 from pathlib import Path
+import subprocess
 
 import pytest
 
-
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-INSTALL_SH = REPO_ROOT / "scripts" / "install.sh"
-
-
-def _make_executable(path: Path, content: str) -> None:
-    path.write_text(content, encoding="utf-8")
-    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+from hermes_cli import _launchers
+from tests.hermes_cli.test_source_launcher_publication import fixture_tree, select_generation
 
 
-def _setup_path_function() -> str:
-    match = re.search(
-        r"^setup_path\(\) \{\n.*?^}\n",
-        INSTALL_SH.read_text(encoding="utf-8"),
-        re.MULTILINE | re.DOTALL,
-    )
-    assert match is not None, "setup_path function not found in scripts/install.sh"
-    return match.group(0)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: macOS launcher harness uses POSIX sh/dirname/realpath symlinks")
-def test_venv_launcher_bypasses_uv_console_script_that_requires_realpath(tmp_path: Path) -> None:
-    """Stock macOS must start Hermes even when its uv console script needs realpath."""
-    install_dir = tmp_path / "install"
-    venv_bin = install_dir / "venv" / "bin"
-    command_dir = tmp_path / "command"
-    minimal_path = tmp_path / "minimal-path"
-    result = tmp_path / "launch-result"
-    venv_bin.mkdir(parents=True)
-    minimal_path.mkdir()
-
-    dirname = shutil.which("dirname")
-    assert dirname is not None
-    (minimal_path / "dirname").symlink_to(dirname)
-
-    _make_executable(
-        venv_bin / "python",
-        '#!/bin/sh\nprintf "%s\\n" "$@" > "$LAUNCH_RESULT"\n',
-    )
-    (install_dir / "hermes").write_text("# source entrypoint\n", encoding="utf-8")
-    _make_executable(
-        venv_bin / "hermes",
-        "#!/bin/sh\n"
-        f'PATH="{minimal_path}"\n'
-        "'''exec' \"$(dirname -- \"$(realpath -- \"$0\")\")\"/'python3' \"$0\" \"$@\"\n"
-        "' '''\n",
-    )
-
-    harness = "\n".join(
-        [
-            "set -e",
-            'get_command_link_dir() { printf "%s" "$COMMAND_LINK_DIR"; }',
-            'get_command_link_display_dir() { printf "%s" "$COMMAND_LINK_DIR"; }',
-            "log_info() { :; }",
-            "log_success() { :; }",
-            _setup_path_function(),
-            "setup_path",
-        ]
-    )
-    env = os.environ | {
-        "USE_VENV": "true",
-        "INSTALL_DIR": str(install_dir),
-        "DISTRO": "macos",
-        "COMMAND_LINK_DIR": str(command_dir),
-    }
-    subprocess.run(["/bin/bash", "-c", harness], env=env, check=True)
-
-    completed = subprocess.run(
-        [command_dir / "hermes", "--version"],
-        env=os.environ | {"LAUNCH_RESULT": str(result)},
-        text=True,
-        capture_output=True,
-    )
-
-    assert completed.returncode == 0, completed.stderr
-    assert result.read_text(encoding="utf-8").splitlines() == [
-        str(install_dir / "hermes"),
-        "--version",
-    ]
+@pytest.mark.platforms("posix")
+def test_source_launcher_starts_without_realpath_or_legacy_console_scripts(tmp_path, monkeypatch):
+    root, _home, interpreter = fixture_tree(tmp_path, monkeypatch)
+    select_generation(root, "ready", "selected")
+    out = tmp_path / "commands"
+    _launchers.ensure_install_launchers(root, out)
+    env = dict(os.environ, PATH="", PYTHONHOME=str(tmp_path / "foreign-python"),
+               PYTHONPATH=str(tmp_path / "foreign-dependencies"))
+    result = subprocess.run([str(out / "hermes"), "--version"], cwd=tmp_path, env=env,
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 7, result.stdout + result.stderr
+    receipt = json.loads(result.stdout)
+    assert receipt["argv"] == ["--version"]
+    assert receipt["value"] == "selected"
+    assert Path(receipt["exe"]).samefile(interpreter)
+    assert not (root / "venv").exists()

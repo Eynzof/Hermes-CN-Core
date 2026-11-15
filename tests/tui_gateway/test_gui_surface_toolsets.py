@@ -134,7 +134,9 @@ class TestExplicitEmptySelection:
             config_mod, "load_config", lambda: {"platform_toolsets": platform_toolsets}
         )
 
-    def test_explicit_empty_list_yields_no_toolsets(self, no_desktop_env):
+    @pytest.mark.parametrize("plugin_toolsets", [set(), {"new_plugin"}])
+    def test_explicit_empty_list_yields_no_toolsets(self, no_desktop_env, plugin_toolsets):
+        no_desktop_env.setattr("hermes_cli.tools_config._get_plugin_toolset_keys", lambda: plugin_toolsets)
         self._config(no_desktop_env, {"cli": []})
 
         assert server._load_enabled_toolsets("desktop") == []

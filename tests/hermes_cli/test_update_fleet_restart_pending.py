@@ -27,6 +27,7 @@ from hermes_cli import main_install_repair
 from hermes_cli import update_cmd
 from hermes_cli import update_cmd_fleet
 from hermes_cli.update_receipt import COMMAND_BOUNDARY_STOP_REASON
+from hermes_cli.version_info import VersionInfo
 from hermes_constants import get_hermes_home
 import hermes_cli.update_host_obligation as host_obligation
 from gateway import host_rendezvous
@@ -91,13 +92,12 @@ def _make_head_moved_side_effect(pre_sha=PRE_SHA, post_sha=POST_SHA):
 def _patch_update_deps(monkeypatch, tmp_path, run_side_effect):
     """Isolate machine maintenance while exercising interrupted fleet updates."""
     monkeypatch.setattr(hermes_main.subprocess, "run", run_side_effect)
-    # The update's git (the commit point's target resolve, the move itself) goes through the custody
-    # runner; off Windows it calls subprocess.run, on Windows a job-bound Popen the fake above
-    # would miss. Fake the runner itself so the seam holds on every OS.
+    # All update git goes through custody, including platform-specific Popen paths.
+    # Fake that boundary so these fleet tests never execute git on the host.
     from hermes_cli import update_custody
 
-    monkeypatch.setattr(update_custody, "run",
-                        lambda argv, *, inherit_lock=False, **kw: run_side_effect(list(argv), **kw))
+    monkeypatch.setattr(update_custody, "run_git",
+                        lambda git_cmd, args, **kw: run_side_effect([*git_cmd, *args], **kw))
     monkeypatch.setattr(hermes_main, "PROJECT_ROOT", tmp_path)
     # cmd_update runs the ownership redirect (update_owning_install, upstream) before its
     # preflight; with an in-checkout .venv it would re-spawn the real updater, so stub it here.
@@ -166,7 +166,7 @@ def _patch_update_deps(monkeypatch, tmp_path, run_side_effect):
     # update flow's own pre/post captures.
     monkeypatch.setattr(
         "hermes_cli.version_info.get_version_info",
-        lambda *a, **k: SimpleNamespace(),
+        lambda *a, **k: VersionInfo("unknown", "git.abc1230", None, PRE_SHA, "main", "git"),
     )
     monkeypatch.setattr(update_cmd, "_purge_stale_hermes_modules", lambda: None)
     monkeypatch.setattr(hermes_main, "_purge_stale_hermes_modules", lambda: None)

@@ -84,12 +84,10 @@ def _without_runtime_secrets(value: Any) -> Any:
 
 
 def _ensure_client_dependency() -> None:
-    """Lazily install the Hindsight client (``tools.lazy_deps``) before importing it."""
+    """Load the declared Hindsight client extra before importing it."""
     try:
-        from tools.lazy_deps import ensure as _lazy_ensure
-        _lazy_ensure("memory.hindsight", prompt=False)
-    except ImportError:
-        pass
+        from pm import ensure_import
+        ensure_import("hindsight")
     except Exception as exc:
         raise ImportError(str(exc)) from exc
 
@@ -123,8 +121,7 @@ def _cloud_api_key(config: dict) -> str:
 
 
 def _maybe_upgrade_client() -> None:
-    """Auto-upgrade an outdated hindsight-client via the environment-aware lazy_deps
-    installer (sealed hosted venvs redirect to the durable target)."""
+    """Synchronize an outdated Hindsight client with the project's locked extra."""
     try:
         from importlib.metadata import version as pkg_version
         from packaging.version import Version
@@ -144,16 +141,13 @@ def _maybe_upgrade_client() -> None:
                     "available in the portable runtime (deps are pre-baked)."
                 )
                 return
-            from tools.lazy_deps import install_specs
-            outcome = install_specs([f"hindsight-client>={_MIN_CLIENT_VERSION}"], timeout=120)
-            if outcome.ok:
-                logger.info("hindsight-client upgraded to >=%s", _MIN_CLIENT_VERSION)
-            elif outcome.blocked:
-                logger.warning("Auto-upgrade unavailable: %s. Run: uv pip install 'hindsight-client>=%s'",
-                               outcome.reason, _MIN_CLIENT_VERSION)
-            else:
-                logger.warning("Auto-upgrade failed: %s. Run: uv pip install 'hindsight-client>=%s'",
-                               (outcome.stderr or "").strip() or "install error", _MIN_CLIENT_VERSION)
+            from pm import InstallError, install_hint, sync_venv
+            try:
+                sync_venv(["hindsight"])
+            except (InstallError, OSError, ValueError) as exc:
+                logger.warning("Auto-upgrade unavailable: %s. Run: %s", exc, install_hint("hindsight"))
+                return
+            logger.info("hindsight-client synchronized; restart Hermes to load the updated SDK")
     except Exception:
         pass  # packaging not available or other issue — proceed anyway
 
@@ -428,19 +422,12 @@ class HindsightMemoryProvider(MemoryProvider):
             if not has_config:
                 return False
 
-            # In a normal Python env with lazy_deps available, config-only check
-            # is correct because ensure() can install the SDK on demand later.
-            # But in the PyInstaller frozen runtime (CN Desktop), lazy_deps is
-            # not available and the SDK must be pre-baked — fall back to checking
-            # actual SDK importability to avoid a false green light. See P-040.
-            try:
-                from tools.lazy_deps import ensure as _lazy_ensure
-                return True
-            except ImportError:
-                # Frozen runtime: tools.lazy_deps is not bundled.
-                import importlib.util
-                return importlib.util.find_spec("hindsight") is not None \
-                       or importlib.util.find_spec("hindsight_client") is not None
+            # Mutable runtimes can install through PM on first use; the frozen
+            # Desktop must carry its SDK before reporting availability.
+            from pm import available
+            from tools.runtime_compat import is_frozen_runtime
+
+            return not is_frozen_runtime() or available("hindsight")
         except Exception:
             return False
 

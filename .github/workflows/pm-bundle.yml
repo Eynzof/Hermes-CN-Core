@@ -77,7 +77,7 @@ jobs:
           - label: win32-x64
             runner: blacksmith-32vcpu-windows-2025
           - label: win32-arm64
-            runner: windows-latest-32-arm-core
+            runner: windows-11-arm
     steps:
       - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a  # v1
         with:
@@ -86,10 +86,8 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           fetch-tags: true
 
-      # The bootstrap scripts need Python >= 3.11 (tomllib). Larger runners
-      # (ubuntu-latest-32-*) are provisioned with ubuntu-22.04 images whose
-      # system python3 is 3.10, so pin the bootstrap interpreter instead of
-      # trusting the image.
+      # The bootstrap scripts need Python >= 3.11 (tomllib); pin the bootstrap
+      # interpreter so native targets use the same version.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
@@ -101,7 +99,8 @@ jobs:
           phase: restore
           source: ${{ github.workspace }}
           work: ${{ runner.temp }}/payload-job
-          cache: ${{ runner.temp }}/payload-inputs
+          # grpcio's nested MSVC object path exceeds MAX_PATH with payload-inputs.
+          cache: ${{ runner.temp }}/${{ runner.os == 'Windows' && 'p' || 'payload-inputs' }}
           producer: payload-test
 
       - name: Prepare native payload dependencies
@@ -109,7 +108,7 @@ jobs:
         shell: bash
         env:
           PAYLOAD_WORK: ${{ runner.temp }}/payload-job
-          PAYLOAD_CACHE: ${{ runner.temp }}/payload-inputs
+          PAYLOAD_CACHE: ${{ runner.temp }}/${{ runner.os == 'Windows' && 'p' || 'payload-inputs' }}
           PYTHONUTF8: '1'
         run: |
           if [ "$RUNNER_OS" = Windows ]; then bootstrap=python; else bootstrap=python3; fi
@@ -125,7 +124,7 @@ jobs:
           phase: save
           source: ${{ github.workspace }}
           work: ${{ runner.temp }}/payload-job
-          cache: ${{ runner.temp }}/payload-inputs
+          cache: ${{ runner.temp }}/${{ runner.os == 'Windows' && 'p' || 'payload-inputs' }}
           producer: payload-test
           key: ${{ steps.native-cache.outputs.cache-key }}
 

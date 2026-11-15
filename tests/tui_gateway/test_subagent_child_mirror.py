@@ -10,29 +10,14 @@ shows a real midstream turn instead of sitting silent until persistence.
 from __future__ import annotations
 
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 
 @pytest.fixture()
 def server():
-    # Mocks are scoped to the initial import only (see
-    # tests/tui_gateway/test_protocol.py for the rationale).
-    with patch.dict(
-        "sys.modules",
-        {
-            "hermes_constants": MagicMock(
-                get_hermes_home=MagicMock(return_value="/tmp/hermes_test_child_mirror")
-            ),
-            "hermes_cli.env_loader": MagicMock(),
-            "hermes_cli.banner": MagicMock(),
-            "hermes_state": MagicMock(),
-        },
-    ):
-        import importlib
-
-        mod = importlib.import_module("tui_gateway.server")
+    # The runner already isolates HERMES_HOME; import the real Path-valued
+    # home API and request registry so profile routing keeps their identities.
+    from tui_gateway import server as mod
 
     yield mod
     mod._sessions.clear()

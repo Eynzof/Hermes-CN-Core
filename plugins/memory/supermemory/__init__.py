@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-import importlib.util
 import orjson
 import logging
 import os
@@ -181,7 +179,8 @@ class _SupermemoryClient:
                  search_mode: str = "hybrid", base_url: str = ""):
         # Lazy-install the SDK on demand (honors security.allow_lazy_installs and sealed Docker
         # venvs). On failure fall through so the raw import produces the canonical ImportError.
-        _quietly(lambda: importlib.import_module("tools.lazy_deps").ensure("memory.supermemory", prompt=False))
+        from pm import ensure_import
+        _quietly(lambda: ensure_import("supermemory"))
         from supermemory import Supermemory
         self._api_key, self._container_tag, self._timeout = api_key, container_tag, timeout
         self._search_mode = search_mode if search_mode in _VALID_SEARCH_MODES else "hybrid"

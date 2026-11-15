@@ -33,7 +33,7 @@ def _clean_state():
     # Reset context-local session identity too: earlier tests (gateway, cron)
     # may leave a session key bound in this context, which would make
     # get_current_session_key() resolve to a leaked key instead of "default".
-    _key_token = approval_module.set_current_session_key("")
+    _key_token = set_current_session_key("")
     try:
         from gateway import session_context
         session_context.reset_session_vars()
@@ -47,7 +47,7 @@ def _clean_state():
     approval_module._session_approved.clear()
     approval_module._pending.clear()
     approval_module._permanent_approved.clear()
-    approval_module.reset_current_session_key(_key_token)
+    reset_current_session_key(_key_token)
     try:
         from gateway import session_context
         session_context.reset_session_vars()

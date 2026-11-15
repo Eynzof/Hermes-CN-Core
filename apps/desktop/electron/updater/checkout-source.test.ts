@@ -390,9 +390,15 @@ if not getattr(urllib.request, '_hermes_loopback', False):
 
     const strategy: ReturnType<typeof createCheckoutStrategy> = createCheckoutStrategy(deps)
     const spawned: { command: string; args: string[]; options: SpawnOptions }[] = []
+    const realNow: () => number = Date.now
+    let handoffClockOffset: number = 0
+    vi.spyOn(Date, 'now').mockImplementation((): number => realNow() + handoffClockOffset)
     vi.spyOn(updaterProcess, 'spawnUpdaterProcess').mockImplementation(
       (command: string, args: string[], options: SpawnOptions): updaterProcess.UpdaterChild => {
         spawned.push({ command, args, options })
+        // Cross a second between planning and spawning: legacy claims must echo
+        // the launcher's started_at, even when the script starts later.
+        handoffClockOffset += 1000
         // C2: a hand-off has started only once the script takes the Desktop's
         // bridge marker in its own (live, foreign) name — do that here. Line 2
         // echoes HERMES_UPDATE_STARTED_AT as posix.sh does; a fresh clock read
@@ -427,7 +433,8 @@ if not getattr(urllib.request, '_hermes_loopback', False):
       expect(spawned).toHaveLength(0)
       fs.mkdirSync(scriptDirectory, { recursive: true })
       fs.writeFileSync(script, '')
-      expect(await strategy.apply()).toMatchObject({ ok: true, handedOff: true })
+      const applied: unknown = await strategy.apply()
+      expect(applied, JSON.stringify(applied)).toMatchObject({ ok: true, handedOff: true })
       const handoff: (typeof spawned)[number] | undefined = spawned.pop()
       // The update ran and released its claim; the next apply starts clean.
       fs.rmSync(markerPath(home), { force: true })

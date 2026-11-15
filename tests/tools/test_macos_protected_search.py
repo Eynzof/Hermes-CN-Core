@@ -143,6 +143,7 @@ def test_grep_fallback_prunes_by_path_not_basename(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="darwin-only TCC pruning needs the POSIX rg/grep/find pipeline; the Windows local backend uses the in-process P-030 fallback (sys.platform==darwin + local Windows is not a reachable combination)")
+@pytest.mark.platforms("macos")
 def test_grep_pruned_search_still_finds_nested_protected_names(tmp_path, monkeypatch):
     """A repo-internal directory literally named 'Downloads' must still be
     searched by the pruned grep path — the exact regression --exclude-dir had."""

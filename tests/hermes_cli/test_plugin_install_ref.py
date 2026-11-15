@@ -448,13 +448,11 @@ def test_checkout_mismatch_is_rejected(monkeypatch, tmp_path):
         _checkout_exact_revision(clone, "git", old_sha)
 
 
+@_windows_git_uri
 def test_metadata_write_failure_rolls_back_new_install(monkeypatch, tmp_path, isolated_python):
     from hermes_cli.plugins_cmd import _install_plugin_core, PluginOperationError
     from pm import client
     from tests.pm._fixtures import worker_toolchain
-@_windows_git_uri
-def test_metadata_write_failure_rolls_back_new_install(monkeypatch, tmp_path):
-    from hermes_cli.plugins_cmd import _install_plugin_core
 
     repo, old_sha, _new_sha = _plugin_repo(tmp_path)
     home = tmp_path / "home"

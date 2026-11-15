@@ -9,6 +9,7 @@ import sys
 import time
 
 import pytest
+import psutil
 
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -24,6 +25,10 @@ def main():
     if '--version' in sys.argv:
         print('Install directory: ' + str(Path(__file__).resolve().parents[1])); return 0
     if '--help' in sys.argv:
+        if ready := os.environ.get('HANDOFF_HELP_READY'):
+            Path(ready).touch()
+            while not Path(os.environ['HANDOFF_HELP_RELEASE']).exists():
+                time.sleep(0.05)
         print('--keep-stash'); return 0
     if sys.argv[1:2] == ['update']:   # the update's first act: say so, then wait to be released
         hold = Path(os.environ['HANDOFF_HOLD'])
@@ -42,9 +47,31 @@ def _ps(command: str, timeout: int = 60) -> str:
 
 
 def _creation_time(pid: int) -> str:
-    out = _ps(f"$c = (Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CreationDate; "
-              "[DateTimeOffset]::new($c.ToUniversalTime()).ToUnixTimeMilliseconds().ToString()")
-    return f'{int(out) / 1000:.3f}'
+    """Independent native identity, without another PowerShell/CIM startup.
+
+    Keep FILETIME as integers: the production CIM reader truncates to milliseconds.
+    Rounding a float to three decimals can differ by 1 ms in exact marker assertions.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.GetProcessTimes.argtypes = (wintypes.HANDLE, *(ctypes.POINTER(ctypes.c_ulonglong),) * 4)
+    kernel.GetProcessTimes.restype = wintypes.BOOL
+    kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+    handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        times = [ctypes.c_ulonglong() for _ in range(4)]
+        if not kernel.GetProcessTimes(handle, *(ctypes.byref(value) for value in times)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        milliseconds = (times[0].value - 116444736000000000) // 10000
+        return f'{milliseconds // 1000}.{milliseconds % 1000:03d}'
+    finally:
+        kernel.CloseHandle(handle)
 
 
 class _ProcessWatch:
@@ -62,14 +89,26 @@ class _ProcessWatch:
         self._k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
         self._k.WaitForSingleObject.restype = wintypes.DWORD
         self._k.CloseHandle.argtypes = [wintypes.HANDLE]
-        self._handle = self._k.OpenProcess(0x00100000 | 0x1000, False, pid)   # SYNCHRONIZE | QUERY_LIMITED
+        self._handle = self._k.OpenProcess(0x00100000 | 0x1000, False, pid) # SYNCHRONIZE | QUERY_LIMITED
         assert self._handle, f'could not open pid {pid} (winerror={ctypes.get_last_error()})'
 
     def exited_within(self, seconds: float) -> bool:
-        return self._k.WaitForSingleObject(self._handle, int(seconds * 1000)) == 0   # WAIT_OBJECT_0
+        return self._k.WaitForSingleObject(self._handle, int(seconds * 1000)) == 0 # WAIT_OBJECT_0
 
     def close(self) -> None:
         self._k.CloseHandle(self._handle)
+
+
+def _alive(pid: int) -> bool:
+    return psutil.pid_exists(pid)
+
+
+@pytest.fixture
+def sleeper():
+    proc = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'])
+    yield proc
+    proc.kill()
+    proc.wait()
 
 
 def _dead_pid() -> int:

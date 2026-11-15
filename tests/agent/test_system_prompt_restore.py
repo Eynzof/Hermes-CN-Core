@@ -298,8 +298,14 @@ class TestStoredPromptReuse:
             agent.side_agent = False
             agent._bot_mode_protocol = False
             agent.tools = [_tool("read_file"), _tool("terminal")]  # the -q footprint pruned skill_manage
-            registered = [SimpleNamespace(name=t["function"]["name"]) for t in pinned]
-            with _patch("tools.registry.registry.get_all_entries", return_value=registered):
+            registered = {
+                t["function"]["name"]: SimpleNamespace(name=t["function"]["name"], schema=t["function"])
+                for t in pinned
+            }
+            with (
+                _patch("tools.registry.registry.get_all_entries", return_value=list(registered.values())),
+                _patch("tools.registry.registry.get_entry", side_effect=registered.get),
+            ):
                 _restore_or_build_system_prompt(agent, None, [{"role": "user", "content": "hi"}])
 
             agent._build_system_prompt.assert_called_once()

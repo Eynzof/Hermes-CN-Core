@@ -34,6 +34,9 @@ _efforts_lock = threading.Lock()
 _warm_started = False
 _disk_checked = False
 
+# Serve stale catalog data while the background refresh replaces it.
+_DISK_TTL_SECONDS = 24 * 60 * 60
+
 
 class _CacheState:
     """Efforts cache + once-only flags for one Hermes home (same names as the module slots)."""

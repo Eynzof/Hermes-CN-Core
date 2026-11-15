@@ -16,24 +16,17 @@ Fix: _exec() now prefers the LIVE ``env.cwd`` over the init-time
 """
 from __future__ import annotations
 
-import pytest
-
-import os
 import sys
 
 import pytest
-
-from agent.re_compat import re
 from tools.file_operations import ShellFileOperations
 
 
 class _FakeEnv:
     """Minimal terminal env that tracks cwd across execute() calls.
 
-    Matches the real ``BaseEnvironment`` contract: ``cwd`` attribute plus
-    an ``execute(command, cwd=...)`` method whose return dict carries
-    ``output`` and ``returncode``.  Commands are interpreted in-process so
-    the tests run on Windows without a ``bash``/``cat`` toolchain.
+    Uses a real shell for the Linux-only file transport cases, so atomic writes
+    and path quoting are exercised without duplicating the shell parser.
     """
 
     def __init__(self, start_cwd: str):
@@ -43,70 +36,15 @@ class _FakeEnv:
     def execute(self, command: str, cwd: str | None = None, **kwargs) -> dict:
         import subprocess
         self.calls.append({"command": command, "cwd": cwd})
-        workdir = cwd or self.cwd
-
-        # Simulate cd by updating self.cwd (the real env does the same
-        # via _extract_cwd_from_output after a successful command)
         if command.strip().startswith("cd "):
-            new = command.strip()[3:].strip()
-            self.cwd = new
+            self.cwd = command.strip()[3:].strip()
             return {"output": "", "returncode": 0}
-
-        stdin_data = kwargs.get("stdin_data")
-        if stdin_data is not None:
-            # Atomic write script emitted by _atomic_write for remote backends.
-            # Extract the target path from ``t='...';`` and write stdin_data there.
-            match = re.search(r"t='([^']+)';", command)
-            if match:
-                target = match.group(1)
-                abs_target = self._resolve(target, cwd)
-                try:
-                    os.makedirs(os.path.dirname(abs_target), exist_ok=True)
-                    # Write bytes verbatim so LF/CRLF round-trips match the
-                    # real atomic-write path (binary mode, no OS translation).
-                    with open(abs_target, "wb") as fh:
-                        fh.write(stdin_data.encode("utf-8"))
-                    return {"output": "", "returncode": 0}
-                except Exception as exc:
-                    return {"output": str(exc), "returncode": 1}
-            return {"output": "unhandled stdin command", "returncode": 1}
-
-        stripped = command.strip()
-
-        # cat <file> [2>/dev/null]
-        cat_match = re.match(r"cat\s+(.+?)(?:\s+2>/dev/null)?$", stripped)
-        if cat_match:
-            path = cat_match.group(1).strip().strip("'\"")
-            abs_path = self._resolve(path, cwd)
-            try:
-                with open(abs_path, "r", encoding="utf-8", errors="replace") as fh:
-                    return {"output": fh.read(), "returncode": 0}
-            except Exception:
-                return {"output": "", "returncode": 1}
-
-        # mkdir -p <dir>
-        mkdir_match = re.match(r"mkdir\s+-p\s+(.+)$", stripped)
-        if mkdir_match:
-            path = mkdir_match.group(1).strip().strip("'\"")
-            abs_path = self._resolve(path, cwd)
-            try:
-                os.makedirs(abs_path, exist_ok=True)
-                return {"output": "", "returncode": 0}
-            except Exception as exc:
-                return {"output": str(exc), "returncode": 1}
-
-        # wc -c < <file> [2>/dev/null]
-        wc_match = re.match(r"wc\s+-c\s+<\s+(.+?)(?:\s+2>/dev/null)?$", stripped)
-        if wc_match:
-            path = wc_match.group(1).strip().strip("'\"")
-            abs_path = self._resolve(path, cwd)
-            try:
-                size = os.path.getsize(abs_path)
-                return {"output": str(size), "returncode": 0}
-            except Exception:
-                return {"output": "", "returncode": 1}
-
-        return {"output": f"unhandled command: {command}", "returncode": 1}
+        result = subprocess.run(
+            ["bash", "-c", command], cwd=cwd or self.cwd,
+            input=kwargs.get("stdin_data"), capture_output=True, text=True,
+            check=False, timeout=30,
+        )
+        return {"output": result.stdout + result.stderr, "returncode": result.returncode}
 
 
 class _WrapperEnv:

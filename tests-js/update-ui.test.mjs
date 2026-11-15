@@ -123,6 +123,7 @@ test('test-only source probe pins staged main without changing other Python invo
   expect(sourceBranchProbe.branchProbeArgs(cmd, root, '/real&git')).toBe(cmd)
 })
 
+// Real Git operations and two Python cold starts share CI resources with the other workspaces.
 test.skipIf(process.platform === 'win32')('probe Git reaches the staged main even with global Git config isolated', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-staged-git-'))
   const git = process.env.HERMES_E2E_REAL_GIT || process.env.PATH.split(path.delimiter)
@@ -170,7 +171,7 @@ test.skipIf(process.platform === 'win32')('probe Git reaches the staged main eve
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }
-})
+}, 15_000)
 
 test.skipIf(process.platform === 'win32')('historical venv install without a PM launcher still checks staged Git main', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-legacy-branch-'))

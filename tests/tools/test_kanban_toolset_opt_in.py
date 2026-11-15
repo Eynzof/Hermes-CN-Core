@@ -66,7 +66,7 @@ def test_saved_opt_in_roundtrip_reaches_schema_and_board(surface, tmp_path, monk
     try:
         toggle(True)
         enabled_names = _names(selected())
-        assert {"kanban_list", "kanban_create", "kanban_complete"} <= enabled_names
+        assert {"kanban_list", "kanban_create", "kanban_complete", "kanban_schedule"} <= enabled_names
         assert not _names(selected("telegram")), "CLI opt-in leaked to Telegram"
         assert "file" in selected()
         # A second profile in the same process must not borrow this grant or

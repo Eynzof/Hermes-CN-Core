@@ -7,10 +7,9 @@ import tempfile
 from pathlib import Path
 
 import pytest
-import yaml
+import hermes_yaml as yaml
 
-from hermes_cli.config import DEFAULT_CONFIG, load_config, get_config_path
-from hermes_constants import get_hermes_home
+from hermes_cli.config import DEFAULT_CONFIG, load_config
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────
@@ -36,7 +35,7 @@ def _write_config(config_dir: Path, overrides: dict):
     _deep_merge(config, overrides)
     config_path = config_dir / "config.yaml"
     with open(config_path, "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
+        yaml.safe_dump(config, f, default_flow_style=False)
     return config_path
 
 

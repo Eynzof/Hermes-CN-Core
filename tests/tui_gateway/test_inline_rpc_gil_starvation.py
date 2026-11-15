@@ -17,7 +17,6 @@ the WS read loop is never blocked.
 import sys
 import threading
 import time
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -32,17 +31,8 @@ def _restore_stdout():
 
 @pytest.fixture()
 def server():
-    # Mocks are scoped to the initial import only — keeping them active for
-    # the whole test would poison modules first imported inside test bodies
-    # (see tests/tui_gateway/test_protocol.py for the full rationale).
-    with patch.dict("sys.modules", {
-        "hermes_constants": MagicMock(get_hermes_home=MagicMock(return_value="/tmp/hermes_test")),
-        "hermes_cli.env_loader": MagicMock(),
-        "hermes_cli.banner": MagicMock(),
-        "hermes_state": MagicMock(),
-    }):
-        import importlib
-        mod = importlib.import_module("tui_gateway.server")
+    # Keep the real Path-valued home API; the runner isolates HERMES_HOME.
+    from tui_gateway import server as mod
 
     # Tests below stub handlers ("session.list", "prompt.submit", ...) in
     # the module-level _methods dict shared with every other test file in

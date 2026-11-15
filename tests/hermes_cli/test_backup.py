@@ -332,11 +332,9 @@ class TestIterBackupFiles:
 # ---------------------------------------------------------------------------
 
 class TestBackup:
-
-
     def test_db_snapshots_staged_beside_output_zip(self, tmp_path, monkeypatch):
         """SQLite staging temp files must be created on the output zip's
-        filesystem (dir=out_path.parent), NOT the system /tmp default — a
+        filesystem, NOT the system temporary-directory default — a
         small tmpfs there silently drops large DBs from the backup (#35376)."""
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
@@ -352,19 +350,20 @@ class TestBackup:
 
         import hermes_cli.backup as backup_mod
         staged_dirs = []
-        real_ntf = backup_mod.tempfile.NamedTemporaryFile
+        real_copy = backup_mod._safe_copy_db
 
-        def _spy(*a, **kw):
-            staged_dirs.append(kw.get("dir"))
-            return real_ntf(*a, **kw)
+        def _spy(src, dst, **kw):
+            staged_dirs.append(dst.parent)
+            assert dst.parent.stat().st_dev == out_dir.stat().st_dev
+            return real_copy(src, dst, **kw)
 
-        monkeypatch.setattr(backup_mod.tempfile, "NamedTemporaryFile", _spy)
+        monkeypatch.setattr(backup_mod, "_safe_copy_db", _spy)
         backup_mod.run_backup(args)
 
         # At least one .db was staged, and every staging call targeted the
         # output zip's directory rather than the system temp default.
         assert staged_dirs, "no SQLite snapshot was staged"
-        assert all(d == str(out_dir) for d in staged_dirs), staged_dirs
+        assert all(d.is_relative_to(out_dir) for d in staged_dirs), staged_dirs
 
     def test_pre_update_db_snapshots_staged_beside_output_zip(self, tmp_path, monkeypatch):
         """The pre-update/pre-migration zip path (_write_full_zip_backup) must
@@ -381,18 +380,19 @@ class TestBackup:
 
         import hermes_cli.backup as backup_mod
         staged_dirs = []
-        real_ntf = backup_mod.tempfile.NamedTemporaryFile
+        real_copy = backup_mod._safe_copy_db
 
-        def _spy(*a, **kw):
-            staged_dirs.append(kw.get("dir"))
-            return real_ntf(*a, **kw)
+        def _spy(src, dst, **kw):
+            staged_dirs.append(dst.parent)
+            assert dst.parent.stat().st_dev == out_zip.parent.stat().st_dev
+            return real_copy(src, dst, **kw)
 
-        monkeypatch.setattr(backup_mod.tempfile, "NamedTemporaryFile", _spy)
+        monkeypatch.setattr(backup_mod, "_safe_copy_db", _spy)
         result = backup_mod._write_full_zip_backup(out_zip, hermes_home)
 
         assert result is not None
         assert staged_dirs, "no SQLite snapshot was staged"
-        assert all(d == str(out_zip.parent) for d in staged_dirs), staged_dirs
+        assert all(d.is_relative_to(out_zip.parent) for d in staged_dirs), staged_dirs
 
 
 
@@ -1237,7 +1237,7 @@ class TestImportAtomicWrites:
         hermes_home.mkdir()
         target = hermes_home / "config.yaml"
         target.write_text("model: original\n")
-        os.chmod(target, 0o644)
+        os.chmod(target, 0o640)  # no world bits: #59726 strips those from config.yaml
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
@@ -1248,7 +1248,7 @@ class TestImportAtomicWrites:
         run_import(Namespace(zipfile=str(zip_path), force=True))
 
         assert target.read_text() == "model: restored\n"
-        assert (target.stat().st_mode & 0o777) == 0o644
+        assert (target.stat().st_mode & 0o777) == 0o640
 
     @pytest.mark.platforms("posix")
     def test_restore_preserves_existing_file_owner(self, tmp_path, monkeypatch):
@@ -1287,26 +1287,24 @@ class TestImportAtomicWrites:
         # state.db is newly created, so there is no prior owner to restore.
         assert chown_calls == [(target, 123, 456)]
 
+    @pytest.mark.platforms("posix")
     def test_mode_is_applied_before_the_replace(self, tmp_path, monkeypatch):
-        """Publish the correct native permission bits with no permissive window."""
-    @pytest.mark.skipif(not hasattr(os, "fchmod"), reason="needs fchmod present to remove it")
-    @pytest.mark.skipif(os.name != "posix", reason=(
-        "POSIX permission bits: Windows st_mode is synthesized (0o666 for any writable file), "
-        "so neither the target's 0o644 nor the staged file's mode is observable there"))
-    def test_mode_is_applied_before_the_replace_without_fchmod(self, tmp_path, monkeypatch):
-        """Covers the Windows branch: no ``fchmod``, so ``chmod`` the temp path.
+        """Publish the correct native permission bits with no permissive window.
 
         Applying the mode only *after* ``atomic_replace`` leaves the published
         file at mkstemp's 0600 until that chmod lands (and permanently if the
         process dies in between), and ``atomic_replace``'s EXDEV/EBUSY
         ``shutil.copystat`` fallback would copy 0600 onto the target. Mirrors
         the transit-window fix ``atomic_yaml_write`` already carries.
+
+        POSIX-only: Windows st_mode is synthesized (0o666 for any writable
+        file), so neither the target's mode nor the staged file's is observable.
         """
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
         target = hermes_home / "config.yaml"
         target.write_text("model: original\n")
-        os.chmod(target, 0o644)
+        os.chmod(target, 0o640)  # no world bits: #59726 strips those from config.yaml
         expected_mode = target.stat().st_mode & 0o777
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -1852,9 +1850,9 @@ class TestFailedZipMemberRecovery:
     def test_automatic_backup_omits_crc_valid_partial_member(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
-        # newline="": the archive stores the file's bytes verbatim, so the fixture has to be LF
+        # write_bytes: the archive stores the file's bytes verbatim, so the fixture has to be LF
         # on every host (write_text translates \n to os.linesep by default).
-        (hermes_home / "config.yaml").write_text("model: test\n", newline="")
+        (hermes_home / "config.yaml").write_bytes(b"model: test\n")
         (hermes_home / "flaky.bin").write_bytes(os.urandom(300_000))
         archive = tmp_path / "automatic.zip"
         _fail_zip_write_after(monkeypatch, "flaky.bin")
@@ -1874,9 +1872,9 @@ class TestFailedZipMemberRecovery:
     def test_incomplete_pre_update_backup_does_not_rotate_last_complete(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
-        # newline="": the archive stores the file's bytes verbatim, so the fixture has to be LF
+        # write_bytes: the archive stores the file's bytes verbatim, so the fixture has to be LF
         # on every host (write_text translates \n to os.linesep by default).
-        (hermes_home / "config.yaml").write_text("model: test\n", newline="")
+        (hermes_home / "config.yaml").write_bytes(b"model: test\n")
 
         from hermes_cli.backup import create_pre_update_backup
 

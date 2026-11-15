@@ -8,8 +8,8 @@ which on Windows storms concurrent-log-handler's cross-process lock
 fails the Desktop backend readiness handshake ("Timed out connecting to Hermes
 backend after 15000ms"). See #58265 for the same fix class on another message.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import logging
 
@@ -19,7 +19,7 @@ from agent.credential_pool import (
     PooledCredential,
 )
 
-_NO_ENTRIES_MSG = "credential pool: no available entries (all exhausted or empty)"
+_NO_ENTRIES_MSG = "credential pool test: no available entries (all exhausted or empty)"
 
 
 class _FakeClock:

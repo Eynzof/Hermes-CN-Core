@@ -153,9 +153,6 @@ def test_documented_session_helper_and_own_install_path_fallback_are_not_flagged
     assert sites == ["__init__.py:8 hermes_cli.gateway_client._session_ticket"], sites
 
 
-
-
-
 def test_private_method_calls_on_core_handles_warn_but_own_helpers_do_not(tmp_path):
     """opencode-sync calls SessionDB / GatewayRunner private methods on the objects it is handed;
     no import names them, so only the attribute pass can see it. The plugin's own ``_helper`` and
@@ -203,3 +200,18 @@ def test_every_published_plugin_api_entry_passes_validate(tmp_path):
 
 
 
+def test_a_published_module_moved_under_hermes_agent_is_public_in_every_spelling(tmp_path, monkeypatch):
+    """Once ``hermes_constants`` moves, ``from hermes_agent import hermes_constants`` names the same
+    published module as ``import hermes_constants`` and must not warn."""
+    from hermes_agent.compat.paths import PathMoves
+    from hermes_cli import plugin_validate_private_imports as private_imports
+
+    monkeypatch.setattr(private_imports, "original_module",
+                        PathMoves({"hermes_constants": "hermes_agent.hermes_constants"}).original_module)
+    plugin = _plugin(tmp_path / "moved", {"uses_moved.py": (
+        "from hermes_agent import hermes_constants\n"
+        "from hermes_agent.hermes_constants import get_hermes_home\n"
+        "import hermes_agent.hermes_constants\n"
+    )})
+
+    assert _private_warnings(validate_plugin_dir(plugin)) == []

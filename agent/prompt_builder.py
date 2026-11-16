@@ -175,21 +175,20 @@ HERMES_AGENT_HELP_GUIDANCE = (
     # resolution). No "when the two differ" clause: docs-are-authoritative already carries the precedence.
     # Names Hermes Agent without restating identity: SOUL.md line 1 already says who you are, while a custom
     # persona (no Hermes identity line) still learns from "Hermes Agent itself" + "your own features" what it runs on.
-    "For help with Hermes Agent itself — configuring, setting up, using, extending, or troubleshooting it — "
-    "or to understand your own features, tools, or capabilities, the documentation at "
-    "https://hermes-agent.nousresearch.com/docs is your "
-    "authoritative reference and always holds the latest, most up-to-date information. The `hermes-agent` "
-    "skill has the actual commands and proven workflows — load it with skill_view(name='hermes-agent') "
-    "before configuring, modifying, or troubleshooting Hermes so you don't guess or invent workarounds."
+    "For anything about Hermes Agent itself — configuring, setting up, using, extending or "
+    "troubleshooting it, or understanding your own tools and capabilities — "
+    "https://hermes-agent.nousresearch.com/docs is the authoritative reference and holds the "
+    "current information. The `hermes-agent` skill has the actual commands and proven workflows: "
+    "load it with skill_view(name='hermes-agent') before configuring, modifying or troubleshooting "
+    "Hermes, so you don't guess or invent workarounds."
 )
 
 # Variant for sessions without the skills toolset (e.g. Blank Slate): naming skill_view() there would dangle.
 HERMES_AGENT_HELP_GUIDANCE_NO_SKILLS = (
-    "For help with Hermes Agent itself — configuring, setting up, using, extending, or troubleshooting it — "
-    "or to understand your own features, tools, or capabilities, the documentation at "
-    "https://hermes-agent.nousresearch.com/docs is the "
-    "authoritative reference and always holds the latest, most up-to-date information. Point the user there "
-    "(or read it yourself if you have a way to fetch web content)."
+    "For anything about Hermes Agent itself — configuring, setting up, using, extending or "
+    "troubleshooting it, or understanding your own tools and capabilities — "
+    "https://hermes-agent.nousresearch.com/docs is the authoritative reference and holds the "
+    "current information. Point the user there, or read it yourself if you can fetch web content."
 )
 
 
@@ -202,36 +201,30 @@ def build_memory_guidance(
         return ""
     if memory_enabled:
         frame = (
-            "You have persistent memory, carried across sessions and loaded "
-            "into each new session's context; the memory tool's schema defines what belongs there. "
+            "You have persistent memory, loaded into every session's context; the memory "
+            "tool's schema defines what belongs there. "
         )
     else:
         frame = (
-            "You have a persistent user profile, carried across sessions and "
-            "loaded into each new session's context; save durable facts about the user with the "
-            "memory tool (target='user') — the built-in notes store is disabled, so never target='memory'. "
+            "You have a persistent user profile, loaded into every session's context; save "
+            "durable facts about the user with the memory tool (target='user') — the built-in "
+            "notes store is disabled, so never target='memory'. "
         )
     skill_routing = (
-        "Skills come first: when you learn something while doing a task — a "
-        "procedure, a pitfall, and the user's preferences and corrections "
-        "for that kind of work — record it in the skill you used or built "
-        "for the task (skill_manage), where it loads only when relevant. "
+        "Skills come first: knowledge learned while doing a task — procedures, pitfalls, "
+        "the user's preferences and corrections for that kind of work — belongs in the "
+        "skill you used or built (skill_manage), which loads only when relevant. "
         if skill_manage_available else
-        "Task-specific knowledge — procedures, pitfalls, and the user's preferences "
-        "and corrections for that kind of work — belongs in skills, not in memory, "
-        "even when skill writing is unavailable. "
+        "Task-specific knowledge — procedures, pitfalls, the user's preferences and "
+        "corrections for that kind of work — belongs in skills, not memory, even when "
+        "skill writing is unavailable. "
     )
     return frame + skill_routing + (
-        "Memory is the narrow exception for facts that apply to EVERY "
-        "session regardless of task (who the user is, environment facts, "
-        "standing conventions with no task home); it has a hard character "
-        "budget, so when it fills, replace or consolidate stale entries "
-        "rather than skipping the save. Write entries as declarative facts, "
-        "not instructions to yourself: 'User prefers concise responses' ✓ — "
-        "'Always respond concisely' ✗ (imperative phrasing gets re-read as "
-        "a directive in later sessions and can override the user's current "
-        "request). A fact stale within a week belongs in session history; "
-        "procedures and workflows belong in skills."
+        "Memory is the narrow exception: facts true of EVERY session regardless of task. "
+        "Write them as declarative facts, not instructions to yourself ('User prefers "
+        "concise responses' ✓, 'Always respond concisely' ✗ — imperative phrasing is "
+        "re-read as a directive later and can override the user's current request). "
+        "Procedures belong in skills; a fact stale within a week belongs in session history."
     )
 
 
@@ -384,14 +377,14 @@ EXECUTION_GUIDANCE_MODELS = (
 # fabricate output when the real path is blocked. Ships in every cached prompt — keep tight.
 TASK_COMPLETION_GUIDANCE = (
     "# Finishing the job\n"
-    "When the user asks you to build, run, or verify something, the deliverable is a working artifact backed by real "
-    "tool output — not a description of one. Do not stop after writing a stub, a plan, or a single command. Keep "
-    "working until you have actually exercised the code or produced the requested result, then report what real "
-    "execution returned.\n"
-    "If a tool, install, or network call fails and blocks the real path, say so directly and try an alternative "
-    "(different package manager, different approach, ask the user). NEVER substitute plausible-looking fabricated "
-    "output (made-up data, invented file contents, synthesised API responses) for results you couldn't actually "
-    "produce. Reporting a blocker honestly is always better than inventing a result."
+    "When the user asks you to build, run, or verify something, the deliverable is a working artifact "
+    "backed by real tool output — not a description of one. Do not stop after a stub, a plan, or a "
+    "single command: keep working until you have exercised the code or produced the requested result, "
+    "then report what real execution returned.\n"
+    "If a tool, install, or network call fails and blocks the real path, say so and try an alternative "
+    "(different package manager, different approach, ask the user). NEVER substitute plausible-looking "
+    "fabricated output (made-up data, invented file contents, synthesised API responses) for results you "
+    "couldn't actually produce."
 )
 
 # Universal parallel-tool-call guidance (ALL models): the runtime already executes independent calls
@@ -412,12 +405,10 @@ TASK_COMPLETION_GUIDANCE = (
 # to hermes-agent's Python prompt-assembly architecture.
 PARALLEL_TOOL_CALL_GUIDANCE = (
     "# Parallel tool calls\n"
-    "When you need several pieces of information that don't depend on each other, request them together in a "
-    "single response instead of one tool call per turn. Independent reads, searches, web fetches, and "
-    "read-only commands should be batched into the same assistant turn — the runtime executes independent "
-    "calls concurrently, and batching avoids resending the whole conversation on every extra round-trip.\n"
-    "Only serialize calls when a later call genuinely depends on an earlier call's result (e.g. you must "
-    "read a file before you can patch it). When in doubt and the calls are independent, batch them."
+    "When several pieces of information don't depend on each other, request them together in one "
+    "response instead of one tool call per turn: the runtime runs independent calls concurrently, "
+    "and each extra round-trip resends the whole conversation. Serialise only when a later call "
+    "needs an earlier call's result (read a file before patching it)."
 )
 
 # Execution-discipline guidance for models that abandon partial results, skip prerequisite lookups, answer
@@ -1449,23 +1440,17 @@ def _render_skills_index(
         )
     return (
         "## Skills\n"
-        "Before replying, scan the skills below. If a skill matches or is even partially relevant to your "
-        "task, you MUST load it with skill_view(name) and follow its instructions. Err on the side of "
-        "loading — it is always better to have context you don't need than to miss critical steps, pitfalls, "
-        "or established workflows. Skills contain specialized knowledge — API endpoints, tool-specific "
-        "commands, and proven workflows that outperform general-purpose approaches. Load the skill "
-        f"even if you think you could handle the task with basic tools like {_basic_tools}. "
-        "Skills also encode the user's preferred approach, conventions, and quality standards for tasks like "
-        "code review, planning, and testing — load them even for tasks you already know how to do, because "
-        "the skill defines how it should be done here.\n"
-        "If a skill has issues, fix it with skill_manage(action='patch').\n"
-        "After difficult/iterative tasks, offer to save as a skill. If a skill you loaded was missing steps, "
-        "had wrong commands, or needed pitfalls you discovered, update it before finishing.\n"
+        "Scan the skills below before replying: one that matches even partially is a MUST-load — call "
+        "skill_view(name) and follow it. Skills carry the commands, pitfalls, conventions and quality bar "
+        "this environment expects, so load one even when you could handle the task with basic tools "
+        f"({_basic_tools}) or already know the domain.\n"
+        "Broken or incomplete skill? Fix it with skill_manage(action='patch') before finishing, and offer to "
+        "save a hard-won workflow as a new skill.\n"
         "\n"
         "<available_skills>\n"
         + "\n".join(index_lines) + "\n"
         "</available_skills>\n\n"
-        "Only proceed without loading a skill if genuinely none are relevant to the task."
+        "Load nothing only when no skill is genuinely relevant to the task."
         + hidden_note
     )
 

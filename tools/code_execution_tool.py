@@ -161,9 +161,9 @@ _TOOL_STUBS = {
     "patch": ('path: str = None, old_string: str = None, new_string: str = None, replace_all: bool = False, mode: str = "replace", patch: str = None, cross_profile: bool = False',
         '"""Targeted find-and-replace (mode="replace") or V4A multi-file patches (mode="patch"). Returns dict with status."""',
         '{"path": path, "old_string": old_string, "new_string": new_string, "replace_all": replace_all, "mode": mode, "patch": patch, "cross_profile": cross_profile}'),
-    "terminal": ("command: str, timeout: int = None, workdir: str = None, token_kill: bool = True, max_lines: int = None, interactive: bool = False, mode: str = None, process_id: str = None, wait_for_pattern: str = None, inactivity_timeout: int = None, promote_on_timeout: bool = False",
-                 '"""Run a shell command (foreground). Returns dict with "output" and "exit_code". interactive=True / mode="interactive" opens a persistent session; process_id continues one; wait_for_pattern (+ inactivity_timeout) waits for matching output; promote_on_timeout keeps an overrunning command alive as a background session."""',
-                 '{"command": command, "timeout": timeout, "workdir": workdir, "token_kill": token_kill, "max_lines": max_lines, "interactive": interactive, "mode": mode, "process_id": process_id, "wait_for_pattern": wait_for_pattern, "inactivity_timeout": inactivity_timeout, "promote_on_timeout": promote_on_timeout}'),
+    "terminal": ("command: str, timeout: int = None, workdir: str = None, token_kill: bool = True, max_lines: int = None, interactive: bool = False, mode: str = None, process_id: str = None, wait_for_pattern: str = None, inactivity_timeout: int = None, promote_on_timeout: bool = False, shell: str = None",
+                 '"""Run a shell command (foreground). Returns dict with "output" and "exit_code". shell="bash"|"pwsh" picks the shell mode. interactive=True / mode="interactive" opens a persistent session; process_id continues one; wait_for_pattern (+ inactivity_timeout) waits for matching output; promote_on_timeout keeps an overrunning command alive as a background session."""',
+                 '{"command": command, "timeout": timeout, "workdir": workdir, "token_kill": token_kill, "max_lines": max_lines, "interactive": interactive, "mode": mode, "process_id": process_id, "wait_for_pattern": wait_for_pattern, "inactivity_timeout": inactivity_timeout, "promote_on_timeout": promote_on_timeout, "shell": shell}'),
 }
 
 
@@ -898,20 +898,15 @@ def _get_execution_mode() -> str:
 
 # Per-tool documentation lines for the execute_code description, in canonical display order.
 _TOOL_DOC_LINES = [
-    ("web_search", "  web_search(query: str, limit: int = 5)\n"
-     " Returns {\"data\": {\"web\": [{\"url\", \"title\", \"description\"}, ...]}}"),
-    ("web_extract", "  web_extract(urls: list[str], char_limit: int = None)\n"
-     " Returns {\"results\": [{\"url\", \"title\", \"content\", \"error\"}, ...]} where content is markdown.\n"
-     " No LLM summarization. Pages over char_limit (default 15000) are head+tail truncated; full text stored on disk (path in the content footer)."),
-    ("read_file", "  read_file(path: str, offset: int = 1, limit: int = 2000)\n"
-     "    Lines are 1-indexed. Returns {\"content\": \"...\", \"total_lines\": N}"),
-    ("write_file", "  write_file(path: str, content: str)\n    Always overwrites the entire file; an existing file must be read_file'd first or the write is refused."),
-    ("search_files", "  search_files(pattern: str, target=\"content\", path=\".\", file_glob=None, limit=50, order=\"discovery\")\n"
-     "    target: \"content\" (search inside files) or \"files\" (find files by name). Returns {\"matches\": [...]}"),
-    ("patch", "  patch(path: str, old_string: str, new_string: str, replace_all: bool = False)"),
-    ("terminal", "  terminal(command: str, timeout=None, workdir=None)\n"
-     "    Foreground only (no background/pty). Returns {\"output\": \"...\", \"exit_code\": N}"),
+    ("web_search", '  web_search(query, limit=5)'),
+    ("web_extract", '  web_extract(urls, char_limit=None)'),
+    ("read_file", '  read_file(path, offset=1, limit=2000)  # 1-indexed; returns {"content", "total_lines"}'),
+    ("write_file", '  write_file(path, content)  # overwrites the whole file; read_file it first'),
+    ("search_files", '  search_files(pattern, target="content", path=".", file_glob=None, limit=50)'),
+    ("patch", '  patch(path, old_string, new_string, replace_all=False)'),
+    ("terminal", '  terminal(command, timeout=None, workdir=None)  # foreground only, no background/pty'),
 ]
+
 
 
 def build_execute_code_schema(enabled_sandbox_tools: set | None = None,
@@ -942,24 +937,23 @@ def build_execute_code_schema(enabled_sandbox_tools: set | None = None,
     # Session kernels are always on (kernel_mode retired in #96787): persistence is part of the tool's one
     # description, not a bolt-on paragraph behind a dead conditional.
     description = (
-        "Run Python that calls Hermes tools programmatically. Use when you "
-        "need 3+ tool calls with logic between them: filtering/reducing "
-        "large outputs before they enter context, branching, or loops "
-        "(N pages/files, retry on failure). Use normal tool calls for "
-        "single calls, results you must reason over in full, or anything needing user interaction.\n\n"
-        "Calls run in a persistent session kernel: variables, imports, and "
-        "loaded data survive across execute_code calls, so build on earlier "
-        "work instead of re-loading it. A timed-out or interrupted call loses that state.\n\n"
-        "Available via `from hermes_tools import ...` (each returns a dict):\n\n"
+        "Run Python that calls Hermes tools in a loop. Use when you need 3+ tool calls "
+        "with logic between them: filter or reduce large outputs before they enter "
+        "context, branch, or iterate (N pages/files, retry on failure). Use normal tool "
+        "calls for single calls, results you must read in full, or anything needing user interaction.\n\n"
+        "Calls share a persistent kernel: variables, imports and loaded data survive across "
+        "execute_code calls; a timed-out or interrupted call loses that state.\n\n"
+        "Available via `from hermes_tools import ...` — arguments follow the tool of the "
+        "same name, each returns a dict:\n\n"
         f"{tool_lines}\n\n"
-        "Limits: 5-minute timeout, max 50 tool calls per call. Stdout over "
-        "50KB shows head/tail inline; the FULL text is auto-saved to a file whose path rides in the result.\n\n"
+        "Limits: 5-minute timeout, 50 tool calls per call. Stdout over 50KB shows head/tail "
+        "inline; the full text is auto-saved to a file whose path rides in the result.\n\n"
         f"{cwd_note}\n\n"
-        "Helpers require imports: `from hermes_tools import json_parse, shell_quote, retry`. "
-        "json_parse(text) — tolerant "
-        "json.loads for terminal() output; shell_quote(s) — shlex.quote for "
-        "dynamic shell args; retry(fn, max_attempts=3, delay=2) — exponential backoff."
+        "Also importable: json_parse(text) — tolerant json.loads for terminal() output; "
+        "shell_quote(s) — shlex.quote for dynamic shell args; retry(fn, max_attempts=3, "
+        "delay=2) — exponential backoff."
     )
+
     return {
         "name": "execute_code",
         "description": description,

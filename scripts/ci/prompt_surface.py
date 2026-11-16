@@ -27,6 +27,7 @@ import difflib
 import json
 import logging
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -79,6 +80,10 @@ def _pin_environment() -> None:
     socket.socket.connect = refuse  # type: ignore[method-assign]
     socket.create_connection = refuse  # type: ignore[assignment]
     socket.getaddrinfo = refuse  # type: ignore[assignment]
+    # psutil picks its backend from ``sys.platform`` AT IMPORT TIME, so on a Windows host the
+    # patch below would make the agent's later ``import psutil`` load ``_pslinux`` and die on
+    # ``import resource``. Import it first, while the real platform is still in place.
+    import psutil  # noqa: F401
     sys.platform = "linux"  # skills index ``platforms:`` gate
 
     import hermes_time
@@ -105,15 +110,45 @@ class _ImportFailures(logging.Handler):
             self.failures.append(record.getMessage())
 
 
+def _short_path(value: str) -> str:
+    """The Windows 8.3 spelling of *value* (``C:\\Users\\MAXWEL~1``), or *value* unchanged."""
+    if os.name != "nt":
+        return value
+    import ctypes
+    buf = ctypes.create_unicode_buffer(32768)
+    written = ctypes.windll.kernel32.GetShortPathNameW(value, buf, len(buf))
+    return buf.value if written else value
+
+
+def _path_spellings(path: Path) -> list[str]:
+    """Every spelling of *path* a render can emit: native, forward-slash, and Windows short forms.
+
+    A Windows host resolves part of the temp home through 8.3 names, and it does so per segment:
+    the user directory comes back as ``MAXWEL~1`` while later segments stay long. Scrubbing only
+    ``str(path)`` therefore leaks a machine-specific directory into the snapshot.
+    """
+    native = str(path)
+    spellings = {native, native.replace("\\", "/")}
+    if os.name == "nt":
+        # ``os.getcwd()`` hands back the long form even when the env path is 8.3-short, so both
+        # directions of the short/long pair have to be scrubbed.
+        mixed = native.replace(os.path.expanduser("~"), _short_path(os.path.expanduser("~")))
+        for candidate in (native, mixed, os.path.realpath(native)):
+            spellings.update({candidate, _short_path(candidate), _short_path(candidate).replace("\\", "/")})
+    return [s for s in spellings if s]
+
+
 def _scrub(text: str, home: Path) -> str:
     import platform as _platform
-    for raw, token in sorted({
-        str(home / ".hermes"): "<HERMES_HOME>",
-        str(home): "<HOME>",
-        f"{_platform.system()} ({_platform.release()})": "<HOST_OS>",
-    }.items(), key=lambda kv: -len(kv[0])):
+    pairs = {f"{_platform.system()} ({_platform.release()})": "<HOST_OS>"}
+    for path, token in ((home / ".hermes", "<HERMES_HOME>"), (home, "<HOME>")):
+        pairs.update({spelling: token for spelling in _path_spellings(path)})
+    for raw, token in sorted(pairs.items(), key=lambda kv: -len(kv[0])):
         text = text.replace(raw, token)
-    return text
+    # A path tail after a scrubbed token is host detail too: normalise its separators so a Windows
+    # render matches the Linux CI bytes (``<HERMES_HOME>\cache\scratch`` -> ``<HERMES_HOME>/cache/scratch``).
+    return re.sub(r"(<(?:HERMES_)?HOME>)([^\s()]*)",
+                  lambda m: m.group(1) + m.group(2).replace("\\", "/"), text)
 
 
 def _enabled_toolsets(platform: str) -> list[str]:
@@ -146,7 +181,10 @@ def _render_surface(home: Path, platform: str, model: str, code: bool) -> tuple[
 
 
 def _render_child(out: Path) -> int:
-    home = Path(os.environ["HOME"]).resolve()
+    # NOT ``.resolve()``: on Windows the temp home reaches us 8.3-shortened (``MAXWEL~1``) and every
+    # rendered path spells it that way, while resolving would hand ``_scrub`` only the long form and
+    # leak the real directory into the snapshot.
+    home = Path(os.environ["HOME"])
     (home / "plain").mkdir(parents=True, exist_ok=True)
     (home / "code").mkdir(parents=True, exist_ok=True)
     (home / "code" / "pyproject.toml").write_text('[project]\nname = "demo"\n', encoding="utf-8")
@@ -176,7 +214,7 @@ def _write_snapshot(out: Path, prompts: dict[str, dict[str, str]], tools_by_surf
     manifest: dict[str, dict] = {}
     for surface, tiers in prompts.items():
         text = "\n\n".join(f"===== {tier} =====\n{tiers[tier]}" for tier in ("stable", "context", "volatile"))
-        (out / "prompts" / f"{surface}.txt").write_text(text + "\n", encoding="utf-8")
+        (out / "prompts" / f"{surface}.txt").write_text(text + "\n", encoding="utf-8", newline="\n")
         tools = tools_by_surface[surface]
         manifest[surface] = {
             "prompt_tokens": {tier: len(tiers[tier]) // CHARS_PER_TOKEN for tier in tiers},
@@ -187,17 +225,19 @@ def _write_snapshot(out: Path, prompts: dict[str, dict[str, str]], tools_by_surf
         variants = {s: json.dumps(t[name], indent=2, sort_keys=True, ensure_ascii=False) + "\n"
                     for s, t in tools_by_surface.items() if name in t}
         common = Counter(variants.values()).most_common(1)[0][0]
-        (out / "tools" / f"{name}.json").write_text(common, encoding="utf-8")
+        (out / "tools" / f"{name}.json").write_text(common, encoding="utf-8", newline="\n")
         for surface, text in variants.items():
             if text != common:
-                (out / "tools" / f"{name}.{surface}.json").write_text(text, encoding="utf-8")
-    (out / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                (out / "tools" / f"{name}.{surface}.json").write_text(text, encoding="utf-8", newline="\n")
+    (out / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def render(out: Path) -> int:
     """Render into *out* from a fresh child process and home, so nothing from the caller's
     environment, config or imported modules reaches the bytes."""
-    with tempfile.TemporaryDirectory(prefix="prompt-surface-") as tmp:
+    # ``ignore_cleanup_errors``: a Windows render leaves the child's cwd inside the temp home, so
+    # the final rmdir can fail after the snapshot is already written. Losing a temp dir is harmless.
+    with tempfile.TemporaryDirectory(prefix="prompt-surface-", ignore_cleanup_errors=True) as tmp:
         home = Path(tmp) / "home"
         home.mkdir()
         staging = Path(tmp) / "out"
@@ -209,6 +249,16 @@ def render(out: Path) -> int:
         for key in ("HERMES_RUNTIME_DIR", "SYSTEMROOT"):
             if os.environ.get(key):
                 env[key] = os.environ[key]
+        if os.name == "nt":
+            # Windows resolves the home directory from USERPROFILE, never from HOME: without these
+            # the child cannot find a home at all ("Could not determine home directory") and renders
+            # nothing. Point them at the same pinned home so the render stays hermetic.
+            env.update({
+                "USERPROFILE": str(home), "HOMEDRIVE": home.drive,
+                "HOMEPATH": str(home)[len(home.drive):],
+                "APPDATA": str(home / "AppData" / "Roaming"),
+                "LOCALAPPDATA": str(home / "AppData" / "Local"),
+            })
         proc = subprocess.run(
             [sys.executable, str(Path(__file__).resolve()), "_child", str(staging)],
             env=env, cwd=tmp, capture_output=True, text=True, encoding="utf-8", timeout=600, check=False,
@@ -343,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "_child":
         return _render_child(args.out)
     text = summarize(args.base, args.head)
-    args.output.write_text(text, encoding="utf-8")
+    args.output.write_text(text, encoding="utf-8", newline="\n")
     print("prompt surface: changed" if text else "prompt surface: unchanged")
     return 0
 

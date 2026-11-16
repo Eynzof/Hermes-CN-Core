@@ -239,10 +239,8 @@ SHELL_PROPERTY = {
     "type": "string",
     "enum": list(MODES),
     "description": (
-        "Shell mode for THIS command (local backend): 'bash' runs POSIX bash (Git Bash on "
-        "Windows, where native POSIX commands are auto-translated), 'pwsh' runs PowerShell "
-        "(PowerShell 7 when installed, else Windows PowerShell 5.1 with PowerShell 7 syntax "
-        "auto-down-levelled). Omit to use the configured default. A mode this host cannot "
-        "run returns an error instead of running another shell."
+        "Shell mode for THIS command (local backend): 'bash' (POSIX/Git Bash) or 'pwsh' "
+        "(PowerShell 7, else 5.1 with 7-syntax down-levelled). Omit for the configured "
+        "default; a mode this host cannot run errors instead of running another shell."
     ),
 }

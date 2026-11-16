@@ -242,10 +242,7 @@ def _locate(probes: ShellProbes, mode: str) -> Tuple[str, str, str]:
     return (
         "",
         "",
-        (
-            "PowerShell is not installed (pwsh is not on PATH); bash is the only "
-            "shell mode this host can run"
-        ),
+        "PowerShell is not installed (pwsh is not on PATH)",
     )
 
 
@@ -358,24 +355,21 @@ def describe_modes(probes: Optional[ShellProbes] = None) -> str:
 
     if len(available) == len(MODES):
         pieces.append(
-            'Both shell modes are available on this host: `shell="bash"` runs POSIX '
-            "syntax through Git Bash (native POSIX commands are auto-translated), "
-            '`shell="pwsh"` runs PowerShell (PowerShell 7 when installed, otherwise '
-            "Windows PowerShell 5.1 with PowerShell 7 syntax auto-down-levelled)."
+            'Both modes work here: `shell="bash"` (POSIX via Git Bash, native commands '
+            'auto-translated) and `shell="pwsh"` (PowerShell 7, else 5.1 with 7-syntax '
+            "auto-down-levelled)."
         )
     elif available == [MODE_BASH]:
         pieces.append(
-            'Only `shell="bash"` (POSIX bash) is available on this host — PowerShell '
-            f"is not installed ({found[MODE_PWSH][1]}). PowerShell mode is disabled: "
-            '`shell="pwsh"` returns an error instead of running your command, so write '
-            "every command in POSIX bash syntax."
+            'Only `shell="bash"` (POSIX) works on this host: '
+            f'{found[MODE_PWSH][1]}. PowerShell mode is disabled — `shell="pwsh"` returns '
+            'an error instead of running your command, so write POSIX bash syntax.'
         )
     elif available == [MODE_PWSH]:
         pieces.append(
-            'Only `shell="pwsh"` (PowerShell) is available on this host — bash mode is '
-            f'disabled because {found[MODE_BASH][1]}. `shell="bash"` returns an error '
-            "instead of running your command, so write every command in PowerShell "
-            "syntax rather than POSIX bash syntax."
+            'Only `shell="pwsh"` (PowerShell) works on this host — bash mode is disabled: '
+            f'{found[MODE_BASH][1]}. `shell="bash"` returns an error instead of running '
+            'your command, so write PowerShell syntax.'
         )
     else:  # pragma: no cover - no host has zero shells; the guard keeps the text total
         pieces.append(

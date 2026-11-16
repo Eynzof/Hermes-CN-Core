@@ -919,19 +919,16 @@ def browser_exec(code: str, session: str = "", timeout_s: int = _DEFAULT_TIMEOUT
 
 
 _HEADER_BASE = (
-    "Drive a real browser for JS pages, logins, forms and clicks (Browser Use CLI). `code` runs as full "
-    "Python (stdlib available); print(...) any data you need back. Start `code` with a one-line "
-    "comment describing the step for the user in plain language, max 60 chars "
-    "(e.g. `# Searching Amazon for paper towels`) — the UI shows it as the step label.\n\n"
-    "STATE: the browser session and workspace persist across calls; Python variables do NOT (fresh "
-    "interpreter each call). The workspace dir is $BH_AGENT_WORKSPACE (also `workspace` in every result); "
-    "functions defined in agent_helpers.py there are auto-imported into every call. For multi-item tasks "
-    "('all N products / every entry'), append each batch to a JSON/CSV file in the workspace, then read it "
-    "back and aggregate in code — dedupe/count/sort with Python, not in your head — and verify the "
-    "collected count against what was asked before answering.\n\n"
-    "Batch each sub-procedure (navigate, wait, extract, act) into one call, but for long extractions "
-    "prefer several medium calls that append to workspace files over "
-    "one giant call, so progress survives timeouts."
+    "Drive a real browser for JS pages, logins, forms and clicks (Browser Use CLI). `code` is full Python; "
+    "print(...) anything you need back. Lead `code` with a one-line comment naming the step for the user "
+    "(max 60 chars, e.g. `# Searching Amazon for paper towels`) — the UI shows it as the step label.\n\n"
+    "The browser session and workspace persist across calls; Python variables do not (fresh interpreter each "
+    "call). The workspace is $BH_AGENT_WORKSPACE (`workspace` in every result); functions defined in its "
+    "agent_helpers.py are auto-imported. For multi-item tasks ('all N products'), append each batch to a "
+    "JSON/CSV file there and aggregate in code — dedupe/count/sort in Python, not in your head — then check "
+    "the count against what was asked.\n\n"
+    "Batch each sub-procedure (navigate, wait, extract, act) into one call; for long extractions prefer "
+    "several medium calls that append to workspace files, so progress survives timeouts."
 )
 
 _HEADER_VISION = (
@@ -968,16 +965,15 @@ _HEADER_LIGHTPANDA = (
 # ``browser-use skill`` fetch (uncontrolled third-party text in every schema: version
 # drift, supply-chain exposure, byte-unstable prompt). A/B benchmarked ~equal.
 _HELPERS_DIGEST = (
-    "\n\nHELPERS (pre-imported): new_tab(url) opens/navigates (use for the FIRST navigation), goto_url(url) "
-    "navigates the current tab, wait_for_load() after navigation, page_info() summarizes the current page "
-    "state, js(expr) evaluates a JS expression and returns its value (js('document.title'); wrap function "
-    "bodies as js('(() => {...})()') — a bare '() => {...}' returns the function itself, uncalled), "
-    "fill_input(selector, text) types into inputs, click_at_xy(x, y) clicks viewport coordinates, "
-    "capture_screenshot() saves and prints a screenshot path, cdp('Domain.method', **kwargs) is raw CDP — "
-    "cdp('Accessibility.getFullAXTree')['nodes'] lists every element's role/name/backendDOMNodeId (filter "
-    "in Python before printing; it is thousands of nodes), then cdp('DOM.getBoxModel', backendNodeId=n) "
-    "gives click coordinates. ensure_real_tab() recovers from a stale/internal tab. Login walls: never guess "
-    "credentials; see the vault note below if present, otherwise stop and ask the user."
+    "\n\nHELPERS (pre-imported): new_tab(url) opens the first tab, goto_url(url) navigates the current one, "
+    "wait_for_load() after navigation, page_info() summarizes the page, js(expr) evaluates JS and returns "
+    "its value (wrap function bodies as js('(() => {...})()') — a bare arrow returns the function, uncalled), "
+    "fill_input(selector, text), click_at_xy(x, y), capture_screenshot() saves and prints a path, and "
+    "cdp('Domain.method', **kwargs) is raw CDP: cdp('Accessibility.getFullAXTree')['nodes'] lists every "
+    "element's role/name/backendDOMNodeId (thousands of nodes — filter in Python before printing), then "
+    "cdp('DOM.getBoxModel', backendNodeId=n) gives click coordinates. ensure_real_tab() recovers a "
+    "stale/internal tab. Login walls: never guess credentials — use the vault note below if present, "
+    "otherwise stop and ask the user."
 )
 
 

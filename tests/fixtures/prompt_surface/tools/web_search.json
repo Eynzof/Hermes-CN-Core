@@ -11,7 +11,7 @@
         "type": "integer"
       },
       "query": {
-        "description": "The search query to look up on the web. You may include backend-supported operators such as site:example.com, filetype:pdf, intitle:word, -term, or \"exact phrase\".",
+        "description": "The search query. May include backend-supported operators: site:example.com, filetype:pdf, intitle:word, -term, or \"exact phrase\".",
         "type": "string"
       }
     },

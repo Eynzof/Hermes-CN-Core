@@ -24,7 +24,7 @@ _TIMESTAMP_PREFIX_RE = re.compile(
     r"(?P<dow>[A-Z][a-z]{2}) "
     r"(?P<date>\d{4}-\d{2}-\d{2}) "
     r"(?P<time>\d{2}:\d{2}:\d{2})"
-    r"(?: (?P<tz>[A-Za-z0-9_+\-/:]+))?"
+    r"(?: (?P<tz>[\w+\-/: ]+))?"
     r"|(?P<iso>\d{4}-\d{2}-\d{2}T[^\]]+)"
     r")\]\s*"
 )

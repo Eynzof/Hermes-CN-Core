@@ -119,6 +119,8 @@ def test_install_ps1_repository_stage_recovers_from_autostash_conflict(
         [
             POWERSHELL,
             "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
             "-File",
             str(INSTALL_PS1),
             "-Stage",

@@ -338,3 +338,14 @@ def test_compaction_summary_stays_unstamped_across_real_prune(tmp_path):
         store.close_all_db_handles()
     assert pruned
     assert first[0]["content"] == replay[0]["content"] == summary["content"]
+
+
+@pytest.mark.parametrize("zone_name", ["中国标准时间", "China Standard Time", "UTC+08:00"])
+def test_localized_timezone_prefix_is_not_duplicated_on_replay(zone_name):
+    from datetime import timedelta
+
+    zone = timezone(timedelta(hours=8), name=zone_name)
+    timestamp = 1_000_000_000.0
+    first = render_user_content_with_timestamp("中文消息", timestamp, tz=zone)
+    assert zone_name in first
+    assert render_user_content_with_timestamp(first, timestamp + 3600, tz=zone) == first

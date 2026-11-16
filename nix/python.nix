@@ -105,6 +105,13 @@ let
           wheel = [ ];
         };
       });
+      # The build-system package set also needs PyYAML from source on 3.15.
+      pyyaml = prev.pyyaml.overrideAttrs (old: {
+        nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ final.resolveBuildSystem {
+          setuptools = [ ];
+          cython = [ ];
+        };
+      });
       # The locked sdist has no build-system metadata; setup.py imports
       # setuptools and uses CFFI to compile the bundled libolm.
       python-olm = prev.python-olm.overrideAttrs (old: {

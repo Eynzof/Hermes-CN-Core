@@ -2,7 +2,12 @@ import { host } from '@hermes/plugin-sdk'
 import { useEffect, useRef, useState } from 'react'
 
 import type { GroupChatRoom } from './group-chat'
-import { groupComposerDraftKey, groupComposerDraftSnapshot, migrateGroupComposerDraft, updateGroupComposerDraft } from './group-panes'
+import {
+  groupComposerDraftKey,
+  groupComposerDraftSnapshot,
+  migrateGroupComposerDraft,
+  updateGroupComposerDraft
+} from './group-panes'
 import type { GroupComposerDraft, GroupDraftSetter } from './group-panes'
 import { botsText } from './i18n'
 import type { Attachment } from './types'
@@ -172,6 +177,18 @@ export function useGroupComposerDraft(group: string, room: GroupChatRoom) {
     }
   }, [composerKey, group])
 
-
-  return { composerKey, composerKeyRef, draft, replyDrafts, replyThread, pendingImages, setDraft, setReplyDrafts, setReplyThread, setPendingImages, setComposerDraft, updateComposerDraft }
+  return {
+    composerKey,
+    composerKeyRef,
+    draft,
+    replyDrafts,
+    replyThread,
+    pendingImages,
+    setDraft,
+    setReplyDrafts,
+    setReplyThread,
+    setPendingImages,
+    setComposerDraft,
+    updateComposerDraft
+  }
 }

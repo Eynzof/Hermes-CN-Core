@@ -1176,11 +1176,11 @@ def _iter_top_level_shell_segments(command: str):
     start = 0
     for kind, i, j, quote in _scan_shell(command, comments=True):
         if kind == "comment" or (kind == "char" and quote is None and command[i] in ";&|\n"):
-            if start < i:
-                yield command[start:i]
+            if start < i and (segment := command[start:i]).strip():
+                yield segment
             start = j
-    if start < len(command):
-        yield command[start:]
+    if start < len(command) and (segment := command[start:]).strip():
+        yield segment
 
 
 def _interpreter_exec_flag(family: str, args: list[str]) -> str | None:
@@ -1283,9 +1283,11 @@ def _execution_flag_findings(command: str):
     for segment in _iter_top_level_shell_segments(command):
         for start, _, word in _iter_shell_command_word_spans(segment):
             executable = _deobfuscate_shell_word_for_detection(word)
-            tokens = _shell_segment_tokens(segment, start)
             executable_name = os.path.basename(executable).lower()
             family = _interpreter_family(executable)
+            if family is None and executable_name not in _SHELL_NAMES and executable_name not in _READ_TOOL_EXEC_FLAGS:
+                continue
+            tokens = _shell_segment_tokens(segment, start)
             if tokens is None:
                 if family is not None or executable_name in _READ_TOOL_EXEC_FLAGS:
                     yield (_MALFORMED_EXEC_DESCRIPTION, None)
@@ -1355,6 +1357,10 @@ def _skip_shell_whitespace(command: str, pos: int) -> int:
 
 def _read_shell_word(command: str, pos: int) -> tuple[int, int, str]:
     """Read one shell word without executing expansions."""
+    return _parser_budget.memo(_scan_shell_word, command, pos)
+
+
+def _scan_shell_word(command: str, pos: int) -> tuple[int, int, str]:
     start = end = _skip_shell_whitespace(command, pos)
     for kind, i, j, quote in _scan_shell(command, start, subst="u", brace=True):
         if kind == "char" and quote is None and (command[i].isspace() or command[i] in ";&|<>()"):
@@ -1517,6 +1523,10 @@ def _mask_quoted_newlines_span(command: str, start: int, end: int) -> str:
 
 def _iter_shell_command_word_spans(command: str):
     """Yield command-position words that may be executable names."""
+    yield from _parser_budget.memo_iter(_shell_command_word_spans, command)
+
+
+def _shell_command_word_spans(command: str):
     for pos in _iter_shell_command_starts(command):
         wrapper, positionals = None, 0
         options, skip_arg = True, False
@@ -1683,7 +1693,7 @@ def _command_detection_variants(command: str, eval_depth: int = 0, capped: list[
         # command-start-anchored rm floor needs a marked copy of the flattened path too. Mark on the RAW
         # command (faithful quote state, see `faithful` below), then flatten.
         marked_win = _normalize_command_for_detection(
-            _mark_command_starts(_mask_quoted_newlines(command), marker=" \n").replace("\\", "/"))
+            _mark_command_starts(masked, marker=" \n").replace("\\", "/"))
         if fresh(marked_win):
             yield marked_win
     # Program-bearing options are parsed in their owning command's context; surfacing only the payload lets the
@@ -1721,7 +1731,7 @@ def _command_detection_variants(command: str, eval_depth: int = 0, capped: list[
     # quote, no start was marked, and the hardline floor let it through. Mark starts on the RAW
     # command (only quoted newlines masked), then normalize; the leading space keeps the marker
     # from being eaten as a `\<newline>` continuation when the preceding text ends in a backslash.
-    faithful = _normalize_command_for_detection(_mark_command_starts(_mask_quoted_newlines(command), marker=" \n"))
+    faithful = _normalize_command_for_detection(_mark_command_starts(masked, marker=" \n"))
     if fresh(faithful):
         yield faithful
     # An escaped separator is literal text inside its word (`git push -o ci\;skip -f`), but

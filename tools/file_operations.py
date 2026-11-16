@@ -252,7 +252,7 @@ def _decode_edit_bytes(data: bytes) -> str:
 # --- Binary-content identification -------------------------------------------
 
 from tools.file_operations_binary import (
-    identify_binary_bytes, describe_binary_file,
+    _MAGIC_SIGNATURES, identify_binary_bytes, describe_binary_file,
 )
 
 
@@ -876,7 +876,7 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
                 return ExecuteResult(stdout="\n".join(names), exit_code=0)
             except OSError:
                 return ExecuteResult(stdout="", exit_code=1)
-        return self._exec(f"ls -1 {self._escape_shell_arg(dir_path)} 2>/dev/null | head -50")
+        return self._exec(f"ls -1 -- {self._escape_shell_arg(dir_path)} 2>/dev/null | head -50")
 
     def _prim_mkdirs(self, parent: str) -> "ExecuteResult":
         """Create ``parent`` and ancestors (POSIX: ``mkdir -p``)."""
@@ -1508,7 +1508,7 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
             read_output, offset=offset, end_line=end_line, total_lines=total_lines,
             file_size=file_size,
             file_ends_with_newline=(last_byte == b"\n") if file_size else None)
-        result._snapshot = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns, digest.digest())
+        result._snapshot = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, digest.digest())
         return result
 
     @staticmethod

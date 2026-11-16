@@ -42,7 +42,7 @@ class ProcessOwnershipMixin:
             proc = spawn_owned(argv, purpose="terminal-background", **popen_kwargs)
             session._owned_pgid = proc.pid
             return proc
-        # A forwarder: spawn_local passes stdin=DEVNULL in popen_kwargs.
+        # noqa: subprocess-stdin — a forwarder: spawn_local passes stdin=DEVNULL in popen_kwargs
         return subprocess.Popen(argv, start_new_session=True, **popen_kwargs)  # detached-spawn: ok — see _owns_job
 
     def _own_pty_job(self, session: Any, pty_proc: Any) -> None:

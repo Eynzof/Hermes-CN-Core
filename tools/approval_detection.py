@@ -1346,10 +1346,11 @@ def _nested_payloads(source: str, eval_depth: int, capped: list[str] | None):
         capped.append(source)
 
 
+_SHELL_WHITESPACE_RE = re.compile(r"\s*")
+
+
 def _skip_shell_whitespace(command: str, pos: int) -> int:
-    while pos < len(command) and command[pos].isspace():
-        pos += 1
-    return pos
+    return _SHELL_WHITESPACE_RE.match(command, pos).end()
 
 
 def _read_shell_word(command: str, pos: int) -> tuple[int, int, str]:
@@ -1655,7 +1656,8 @@ def _command_detection_variants(command: str, eval_depth: int = 0, capped: list[
     # afterwards could swallow a REAL unquoted newline separator. The raw command carries faithful quote state
     # once $'...' is rewritten as plain single quotes (`$'\''` otherwise desyncs every quote-aware scanner).
     command = expand_ansi_c_quotes(command)
-    normalized = _normalize_command_for_detection(_mask_quoted_newlines(command))
+    masked = _mask_quoted_newlines(command)
+    normalized = _normalize_command_for_detection(masked)
     # Quote-aware grep parsing hides only structurally identified pattern operands; malformed or
     # ambiguous input stays byte-for-byte intact.
     grep_safe, _ = _grep_safe_detection_variant(normalized)
@@ -1703,7 +1705,9 @@ def _command_detection_variants(command: str, eval_depth: int = 0, capped: list[
     # Payloads parsed from NORMALIZED text lost their escapes before their own quote expansion ran
     # (`bash -c "$'\\x72\\x6d' -rf /"` reached the patterns as `$'x72x6d'`). Parse the raw argument
     # too and treat it as new shell input; each payload is shorter than its source, so recursion ends.
-    for payload, payload_depth in _nested_payloads(_mask_quoted_newlines(command), eval_depth, capped):
+    # The normalized walk already consumed identical raw text, including its nested payloads.
+    raw_payloads = _nested_payloads(masked, eval_depth, capped) if masked != normalized else ()
+    for payload, payload_depth in raw_payloads:
         if payload != command:
             for variant in _command_detection_variants(payload, payload_depth, capped):
                 if fresh(variant):

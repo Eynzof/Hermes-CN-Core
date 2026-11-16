@@ -1242,7 +1242,8 @@ def repair_tool_arg_keys(
         properties = (schema.get("parameters") or {}).get("properties")
         # Handler-accepted keys the schema does not advertise are "already ok"
         # too; treating them as drift renames them onto a lookalike field.
-        extra_keys = TOOL_ACCEPTED_EXTRA_KEYS.get(tool_name, frozenset())
+        entry = registry.get_entry(tool_name)
+        extra_keys = TOOL_ACCEPTED_EXTRA_KEYS.get(tool_name, frozenset()) | (entry.compat_args if entry else frozenset())
 
     if not properties:
         return args

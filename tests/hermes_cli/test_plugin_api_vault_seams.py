@@ -10,7 +10,6 @@ warning, registers through the real ``PluginContext``, and is driven by the vaul
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -18,7 +17,6 @@ import pytest
 import hermes_yaml as yaml
 from hermes_cli.plugin_validate import validate_plugin_dir
 
-_GUIDE = Path(__file__).resolve().parents[2] / "website/docs/developer-guide/browser-vault-plugin.md"
 
 
 def _private_warnings(plugin: Path) -> list[str]:
@@ -41,15 +39,6 @@ def _plugin(root: Path, files: dict[str, str]) -> Path:
 ])
 def test_plugin_importing_the_vault_seam_gets_no_private_import_warning(tmp_path, module, name):
     plugin = _plugin(tmp_path / "vaultplug", {"backend.py": f"from {module} import {name}\n"})
-
-    assert _private_warnings(plugin) == []
-
-
-def test_browser_vault_guide_examples_validate_clean(tmp_path):
-    """A plugin that copies the guide's code blocks verbatim gets no private-import warning."""
-    blocks = re.findall(r"```python\n(.*?)```", _GUIDE.read_text(encoding="utf-8"), re.DOTALL)
-    assert any("LoginBackend" in b for b in blocks) and any("BrowserPageBackend" in b for b in blocks)
-    plugin = _plugin(tmp_path / "guidecopy", {f"example_{i}.py": b for i, b in enumerate(blocks)})
 
     assert _private_warnings(plugin) == []
 

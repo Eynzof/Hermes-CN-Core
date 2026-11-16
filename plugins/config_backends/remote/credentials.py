@@ -84,14 +84,9 @@ def _bind_owner_secret_scope(home: Path):
     profile A resolving B's token must route on B's override. Terminal config and secret sources
     are not loaded here: both read the profile's config, which this token is used to fetch.
     """
-    from agent.runtime_scope import bind_state, scope_for_profile
-    from agent.secret_scope import is_multiplex_active
-    if not is_multiplex_active():
-        # Single-profile auth retains ambient credentials and does not load config or secrets.
-        from hermes_scope import push_state
-        return push_state(scope=scope_for_profile(home), home=str(home))
-    from tui_gateway.launch_profile_policy import owner_secret_scope
-    return bind_state(scope_for_profile(home), secrets=owner_secret_scope(home), terminal=False)
+    from agent.secret_scope import bind_profile_credentials
+
+    return bind_profile_credentials(home, preserve_ambient=True)
 
 
 def _idp_token() -> str:

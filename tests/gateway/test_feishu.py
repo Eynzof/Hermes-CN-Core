@@ -897,7 +897,7 @@ class TestAdapterBehavior(unittest.TestCase):
         adapter._resolve_sender_profile = AsyncMock(
             return_value={"user_id": "u_human", "user_name": "Human", "user_id_alt": None}
         )
-        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat"})
+        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat", "type": "group"})
         return adapter
 
     @patch.dict(os.environ, {}, clear=True)
@@ -917,7 +917,7 @@ class TestAdapterBehavior(unittest.TestCase):
         )
         adapter._handle_message_with_guards.assert_not_awaited()
 
-    @patch.dict(os.environ, {}, clear=True)
+    @patch.dict(os.environ, {"FEISHU_GROUP_POLICY": "open"}, clear=True)
     def test_reaction_on_our_own_bot_message_is_routed(self):
         adapter = self._build_reaction_adapter(msg_sender_id="cli_self_app")
 
@@ -4867,7 +4867,7 @@ class TestFeishuProcessInboundMessage(unittest.TestCase):
         adapter._bot_name = "Hermes"
         adapter._download_feishu_message_resources = AsyncMock(return_value=([], []))
         adapter._fetch_message_text = AsyncMock(return_value=None)
-        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat"})
+        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat", "type": "group"})
         adapter._resolve_sender_profile = AsyncMock(
             return_value={"user_id": "u1", "user_name": "Alice", "user_id_alt": None}
         )
@@ -5252,7 +5252,7 @@ class TestFeishuMentionEndToEnd(unittest.TestCase):
         adapter._bot_name = "Hermes"
         adapter._download_feishu_message_resources = AsyncMock(return_value=([], []))
         adapter._fetch_message_text = AsyncMock(return_value=None)
-        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat"})
+        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat", "type": "group"})
         adapter._resolve_sender_profile = AsyncMock(
             return_value={"user_id": "u1", "user_name": "Alice", "user_id_alt": None}
         )

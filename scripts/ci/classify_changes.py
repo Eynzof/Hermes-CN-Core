@@ -460,6 +460,8 @@ _E2E_LANES: dict[str, tuple[str, ...]] = {
         "tests/gateway/test_native_reply_crash_recovery.py",
     ),
     "e2e_upgrade": (
+        "tui_gateway/__init__.py",
+        "tui_gateway/launch_profile_policy.py",
         *_PY_TEST_HARNESS,
         *_DEP_MANIFESTS,
         "tests/e2e/core/upgrade/",

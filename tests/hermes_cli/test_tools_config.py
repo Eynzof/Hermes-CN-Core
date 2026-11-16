@@ -93,8 +93,9 @@ def test_null_platform_toolsets_fall_back_to_platform_default():
     assert enabled == default_enabled
 
 
-def test_explicit_empty_platform_toolsets_merge_no_mcp_servers():
+def test_explicit_empty_platform_toolsets_merge_no_mcp_servers(monkeypatch):
     """An explicitly saved empty list means zero toolsets and no MCP merge."""
+    monkeypatch.setattr("hermes_cli.tools_config._get_plugin_toolset_keys", lambda: set())
     config = {
         "mcp_servers": {"claudius": {"url": "http://x"}, "evil": {"url": "http://y"}},
         "platform_toolsets": {"cli": []},
@@ -106,9 +107,10 @@ def test_explicit_empty_platform_toolsets_merge_no_mcp_servers():
     assert _get_platform_tools(config, "cli") == set()
 
 
-def test_explicit_empty_gateway_platform_toolsets_keep_mcp_controls():
+def test_explicit_empty_gateway_platform_toolsets_keep_mcp_controls(monkeypatch):
     """Only the explicit empty list is zero: an absent key still gets every enabled server, a named
     server still narrows to itself, and a non-empty list still inherits the enabled servers."""
+    monkeypatch.setattr("hermes_cli.tools_config._get_plugin_toolset_keys", lambda: set())
     servers = {"alpha": {"url": "http://x"}, "beta": {"url": "http://y"}}
 
     assert _get_platform_tools({"mcp_servers": servers, "platform_toolsets": {"email": []}}, "email") == set()

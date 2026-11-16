@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from importlib.machinery import ModuleSpec
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -21,8 +22,8 @@ import pytest
 
 def _install_telegram_mock(monkeypatch: pytest.MonkeyPatch, bot_factory: MagicMock) -> None:
     parse_mode = SimpleNamespace(MARKDOWN_V2="MarkdownV2", HTML="HTML")
-    constants_mod = SimpleNamespace(ParseMode=parse_mode)
-    telegram_mod = SimpleNamespace(
+    constants_mod = SimpleNamespace(ParseMode=parse_mode, __spec__=ModuleSpec("telegram.constants", loader=None))
+    telegram_mod = SimpleNamespace(__spec__=ModuleSpec("telegram", loader=None, is_package=True),
         Bot=bot_factory,
         MessageEntity=lambda **_kw: SimpleNamespace(**_kw),
         constants=constants_mod,

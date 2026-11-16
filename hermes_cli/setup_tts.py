@@ -171,7 +171,8 @@ def _tts_local_install_step(selected: str) -> str:
     module, name, lines, question, installer = _TTS_LOCAL_PROVIDERS[selected]
     if not extra_supported(selected):
         _setup.print_warning(
-            f"{name} is not supported by this Python/platform. "
+            f"{name} is unavailable on Python {sys.version_info.major}.{sys.version_info.minor} "
+            "on this platform (not supported by its dependencies). "
             "Your provider selection is saved, but speech requires a supported engine.")
         return selected
     if _setup._module_installed(module):

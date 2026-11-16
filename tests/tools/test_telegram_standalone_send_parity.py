@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from importlib.machinery import ModuleSpec
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -41,8 +42,8 @@ def _html_5xx(status: int, phrase: str) -> NetworkError:
 
 def _install_telegram_mock(monkeypatch: pytest.MonkeyPatch, bot) -> None:
     parse_mode = SimpleNamespace(MARKDOWN_V2="MarkdownV2", HTML="HTML")
-    constants_mod = SimpleNamespace(ParseMode=parse_mode)
-    telegram_mod = SimpleNamespace(Bot=MagicMock(return_value=bot), MessageEntity=lambda **kw: SimpleNamespace(**kw),
+    constants_mod = SimpleNamespace(ParseMode=parse_mode, __spec__=ModuleSpec("telegram.constants", loader=None))
+    telegram_mod = SimpleNamespace(__spec__=ModuleSpec("telegram", loader=None, is_package=True), Bot=MagicMock(return_value=bot), MessageEntity=lambda **kw: SimpleNamespace(**kw),
                                    InputMediaPhoto=lambda **kw: SimpleNamespace(**kw), constants=constants_mod)
     monkeypatch.setitem(sys.modules, "telegram", telegram_mod)
     monkeypatch.setitem(sys.modules, "telegram.constants", constants_mod)

@@ -20,6 +20,7 @@ def _point_db(monkeypatch, tmp_path):
     """Point the incident store at a throwaway executions.db (same file shape
     the scheduler uses). ``cron.executions.EXECUTIONS_FILE`` stays None so the
     incident store falls back to its own override."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     monkeypatch.setattr(incidents, "EXECUTIONS_FILE", tmp_path / "cron" / "executions.db")
     return incidents
 

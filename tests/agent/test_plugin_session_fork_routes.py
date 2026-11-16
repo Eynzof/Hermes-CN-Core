@@ -164,11 +164,11 @@ def test_a_prebuilt_job_cannot_reach_a_route_served_before_the_registry(forks, p
         assert f"{name} was denied" in denied[f"{path}-{i}"], denied
 
 
-@pytest.mark.parametrize(("path", "context_route"), [("sequential", "context"), ("concurrent", "plugin")])
+@pytest.mark.parametrize(("path", "context_route"), [("sequential", "context"), ("concurrent", "context")])
 def test_unfenced_the_same_calls_reach_the_route_the_predicate_names(probe, path, context_route):
     """Control for the test above: outside a fork the same dispatcher sends the connector name to the
     connector and the memory name to the memory provider on both paths, and the context-engine name
-    to the context engine on the sequential path (the concurrent path hands it to the registry)."""
+    to the context engine on both paths."""
     fork = _dispatcher(probe.seen)
     getattr(fork, f"_execute_tool_calls_{path}")(_calls(path), [], "task-1")
     assert sorted(probe.seen) == sorted([("plugin", "cw_offer"), ("connector", CONNECTOR), ("memory", MEMORY),

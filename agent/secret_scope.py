@@ -522,3 +522,18 @@ def refresh_installed_secret_scope(hermes_home: Path) -> bool:
     for name in [n for n in scope if n not in rebuilt]:
         scope.pop(name, None)
     return True
+
+
+def bind_profile_credentials(home: Path, *, preserve_ambient: bool = False):
+    """Bind a profile for config-backend authentication without reading its config.
+
+    Config fetch/migration cannot initialize terminal policy: it needs that same
+    config. Single-profile authentication may retain its ambient credentials.
+    """
+    from agent.runtime_scope import bind_state, scope_for_profile
+    from hermes_scope import push_state
+    from tui_gateway.launch_profile_policy import owner_secret_scope
+
+    if preserve_ambient and not is_multiplex_active():
+        return push_state(scope=scope_for_profile(home), home=str(home))
+    return bind_state(scope_for_profile(home), secrets=owner_secret_scope(home), terminal=False)

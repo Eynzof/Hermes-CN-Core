@@ -124,9 +124,10 @@ class TestMissingProviderKeyBlocks:
         assert "[blocked_config]" in error
         assert "blocked" in output.lower() or "BLOCKED" in output
 
-    def test_single_alert_across_two_ticks_and_blocked_status(self, tmp_path):
+    def test_single_alert_across_two_ticks_and_blocked_status(self, tmp_path, monkeypatch):
         """Two ticks of a blocked job through run_one_job deliver exactly ONE
         alert and persist last_status='blocked_config'."""
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         job = _job(failure_deliver="slack:alerts")
         deliveries = []
 
@@ -253,9 +254,10 @@ class TestHealthyJobUnaffected:
 
 
 class TestOptOut:
-    def test_preflight_false_restores_old_behavior(self, tmp_path):
+    def test_preflight_false_restores_old_behavior(self, tmp_path, monkeypatch):
         """cron.preflight: false → job proceeds to resolution and fails the
         old way (error status, re-alerts every tick, no blocked_config)."""
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         (tmp_path / "config.yaml").write_text(
             "cron:\n  preflight: false\n", encoding="utf-8"
         )

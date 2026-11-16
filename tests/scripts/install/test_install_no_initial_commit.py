@@ -42,10 +42,8 @@ def _extract_no_commit_guard() -> str:
     """Pull the clone_repo() guard that drops a commit-less checkout."""
     text = INSTALL_SH.read_text()
     m = re.search(
-        r'if \[ -e "\$INSTALL_DIR/\.git" \] && ! git -C "\$INSTALL_DIR" '
-        r"rev-parse --verify HEAD.*?\n    fi",
-        text,
-        re.DOTALL,
+        r'    local ceiling\n.*?rev-parse --verify HEAD.*?\n    fi',
+        text, re.DOTALL,
     )
     assert m is not None, "no-commit guard not found in install.sh clone_repo()"
     return m.group(0)
@@ -55,7 +53,7 @@ def _run_guard(install_dir: Path) -> None:
     script = (
         "log_warn() { echo \"WARN: $*\"; }\n"
         f"INSTALL_DIR={shlex.quote(str(install_dir))}\n"
-        f"{block}\n"
+        f"probe_guard() {{\n{block}\n}}\nprobe_guard\n"
     )
     res = subprocess.run(["bash", "-c", script], check=False, capture_output=True, text=True)
     assert res.returncode == 0, res.stderr

@@ -132,8 +132,9 @@ def test_detached_worker_teardown_waits_for_future():
         future, fake_db, agent, "detached-worker", "detached worker", "cron_detached-worker") is False
 
 
-def test_dispatch_guard_releases_after_sessiondb_finalization_hang(tmp_path):
+def test_dispatch_guard_releases_after_sessiondb_finalization_hang(tmp_path, monkeypatch):
     """A second scheduler tick can fire the same job after cleanup times out."""
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     import cron.scheduler as sched
 
     release = threading.Event()

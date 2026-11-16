@@ -108,23 +108,43 @@ def test_explicit_timezone_parsing_preserves_wall_time(text):
     assert coerce_message_timestamp(text, tz=BERLIN) == expected
 
 
+@pytest.fixture
+def legacy_windows_clock(monkeypatch):
+    """Exercise the range-error path even when the current Python supports pre-epoch dates."""
+    import errno
+
+    class LimitedDatetime(datetime):
+        def astimezone(self, tz=None):
+            if self.year < 1970:
+                raise OSError(errno.EINVAL, "pre-epoch local time")
+            return super().astimezone(tz)
+
+        @classmethod
+        def fromtimestamp(cls, value, tz=None):
+            if value < 0:
+                raise OSError(errno.EINVAL, "pre-epoch timestamp")
+            return super().fromtimestamp(value, tz)
+
+    monkeypatch.setattr(message_timestamps, "datetime", LimitedDatetime)
+
+
 @pytest.mark.platforms("windows")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows' pre-epoch range limit")
-def test_unsupported_local_iso_is_uninterpretable_instead_of_raising():
+def test_unsupported_local_iso_is_uninterpretable_instead_of_raising(legacy_windows_clock):
     assert coerce_message_timestamp("1969-06-01T12:00:00") is None
 
 
 @pytest.mark.platforms("windows")
 @pytest.mark.parametrize("epoch", [float("nan"), float("inf"), -1.0])
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows' pre-epoch range limit")
-def test_unrenderable_epoch_preserves_the_message_body(epoch):
+def test_unrenderable_epoch_preserves_the_message_body(epoch, legacy_windows_clock):
     assert format_message_timestamp(epoch) == ""
     assert render_user_content_with_timestamp("hello", epoch) == "hello"
 
 
 @pytest.mark.platforms("windows")
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows' pre-epoch range limit")
-def test_unsupported_embedded_time_keeps_metadata_fallback():
+def test_unsupported_embedded_time_keeps_metadata_fallback(legacy_windows_clock):
     content = "[Sun 1969-06-01 12:00:00] hello"
 
     assert render_user_content_with_timestamp(content, 1_000_000_000.0) == (
@@ -135,7 +155,7 @@ def test_unsupported_embedded_time_keeps_metadata_fallback():
 @pytest.mark.platforms("windows")
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows' pre-epoch range limit")
-def test_unsupported_embedded_time_does_not_abort_history(enabled):
+def test_unsupported_embedded_time_does_not_abort_history(enabled, legacy_windows_clock):
     from gateway.run import _build_gateway_agent_history
 
     content = "[Sun 1969-06-01 12:00:00] hello"

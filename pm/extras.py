@@ -217,23 +217,30 @@ def install_hint(extra: str) -> str:
     return f"hermes pm install --extra {extra}"
 
 
+def extra_unavailable_reason(extra: str) -> str | None:
+    """Explain a closed Python/platform gate without attempting an installation."""
+    if extra_supported(extra):
+        return None
+    import sys
+
+    marker = _platform_gates().get(extra, "")
+    return (f"extra {extra!r} is not supported on this platform "
+            f"(Python {sys.version_info.major}.{sys.version_info.minor}; requires {marker!r}); "
+            "choose a supported provider or engine")
+
+
 def ensure_import(extra: str) -> None:
     """Make an extra available: no-op when the anchor imports, otherwise
     sync the venv with the extra enabled. Raises InstallError on failure
     — including when a platform gate excludes this machine."""
     if available(extra):
         return
-    if not extra_supported(extra):
-        from pm.package import InstallError
-
-        marker = _platform_gates().get(extra, "")
-        raise InstallError(
-            "venv",
-            f"extra {extra!r} is not supported on this platform "
-            f"(gate: {marker!r}); the adapter degrades without it",
-        )
     import sys
     from pm.package import InstallError
+
+    reason = extra_unavailable_reason(extra)
+    if reason:
+        raise InstallError("venv", reason)
 
     # prompt_toolkit already owns stdin during a CLI turn; never read from it.
     app_running = False

@@ -215,7 +215,12 @@ def _select_builtin_engine(provider: str) -> tuple:
     entry = _BUILTIN_DISPATCH.get(provider)
     if entry is not None:
         available, _label, _generator, missing_error = entry
-        return provider, (_error_json(missing_error) if available is not None and not available() else None)
+        if available is not None and not available():
+            from pm.extras import extra_unavailable_reason
+
+            extra = _PM_FEATURE_ALIASES.get(f"tts.{provider}", provider)
+            return provider, _error_json(extra_unavailable_reason(extra) or missing_error)
+        return provider, None
     if _importable(_import_edge_tts):
         return provider, None  # Edge default; the reported provider stays as configured
     if _check_neutts_available():

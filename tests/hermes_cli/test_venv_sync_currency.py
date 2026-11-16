@@ -154,6 +154,10 @@ def test_a_vanished_dependency_environment_is_reported_not_resilently_resynced(a
     monkeypatch.delattr(pm, "sync_venv", raising=False)
     root, _home = admission_env
     core = root / 'core'
+    pyproject = core / 'pyproject.toml'
+    pyproject.write_text(pyproject.read_text(encoding='utf-8') + '[project.optional-dependencies]\nall = []\n',
+                         encoding='utf-8')
+    subprocess.run(['uv', 'lock', '--offline'], cwd=core, check=True, capture_output=True, timeout=120)
     assert venv_sync.sync(core) == {'state': 'synced', 'ok': True}
     environment = selected_venv(core)
     marker = environment / 'pyvenv.cfg'

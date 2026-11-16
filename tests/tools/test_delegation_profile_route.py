@@ -240,8 +240,8 @@ def test_profile_child_lease_and_schema_retry_run_inside_the_target_profile(two_
     assert _snapshot() == {"home": str(launch), "secret": "launch-secret", "model": "launch-model"}
 
 
-@pytest.mark.parametrize("failing", ["agent.secret_scope.set_secret_scope",
-                                     "tools.terminal_scope.install_profile_terminal_scope"])
+@pytest.mark.parametrize("failing", ["tui_gateway.launch_profile_policy.owner_secret_scope",
+                                     "tools.terminal_scope.prepare_profile_terminal_scope"])
 def test_profile_scope_that_fails_to_enter_leaves_the_parent_in_its_own_profile(two_profiles, failing):
     """A step of the scope binding that raises unwinds the steps already bound: the parent never stays
     inside the child's profile (home override, secret scope, multiplex flag)."""

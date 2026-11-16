@@ -112,7 +112,7 @@ def test_install_sh_repository_stage_recovers_from_autostash_conflict(
     reason="needs git and PowerShell",
 )
 def test_install_ps1_repository_stage_recovers_from_autostash_conflict(
-    tmp_path: Path,
+    tmp_path: Path, pinned_git_store: Path,
 ) -> None:
     managed = _make_conflicted_managed_checkout(tmp_path)
     result = subprocess.run(
@@ -130,6 +130,7 @@ def test_install_ps1_repository_stage_recovers_from_autostash_conflict(
             str(tmp_path / "hermes-home"),
         ],
         check=False, cwd=tmp_path,
+        env=dict(os.environ, HERMES_RUNTIME_DIR=str(pinned_git_store)),
         capture_output=True,
         text=True,
     )

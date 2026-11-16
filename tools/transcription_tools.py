@@ -179,8 +179,11 @@ def _detect_local_backend() -> Optional[str]:
 def _resolve_explicit_local() -> str:
     backend = _detect_local_backend()
     if not backend:
-        logger.warning("STT provider 'local' configured but unavailable "
-                       "(install faster-whisper or set HERMES_LOCAL_STT_COMMAND)")
+        from pm.extras import extra_unavailable_reason
+
+        reason = extra_unavailable_reason("stt-whisper")
+        logger.warning("STT provider 'local' unavailable: %s", reason or
+                       "install faster-whisper or set HERMES_LOCAL_STT_COMMAND")
     return backend or "none"
 
 
@@ -369,6 +372,11 @@ def _transcribe_local(
     file_path: str, model_name: str, *, language: Optional[str] = None, prompt: Optional[str] = None
 ) -> dict[str, Any]:
     """Transcribe using faster-whisper (local, free)."""
+    from pm.extras import extra_unavailable_reason
+
+    reason = extra_unavailable_reason("stt-whisper")
+    if not _HAS_FASTER_WHISPER and reason:
+        return _error_result(reason)
     if not _HAS_FASTER_WHISPER and not _try_lazy_install_stt():
         return _error_result("faster-whisper not installed")
     try:

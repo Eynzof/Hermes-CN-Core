@@ -15,6 +15,7 @@ from tools import transcription_tools
 @pytest.fixture
 def no_faster_whisper(monkeypatch):
     """A machine without faster-whisper or a whisper CLI, recording install attempts."""
+    monkeypatch.setattr("pm.extras.extra_supported", lambda _: True)
     attempts: list[int] = []
     monkeypatch.setattr(transcription_tools, "_HAS_FASTER_WHISPER", False)
     monkeypatch.setattr(transcription_tools, "_has_local_command", lambda: False)
@@ -36,3 +37,12 @@ def test_transcription_is_what_installs(no_faster_whisper):
     assert attempts == [1], "the action path lost its on-demand install"
     assert result["success"] is False
     assert "faster-whisper not installed" in result["error"]
+
+
+def test_unsupported_local_stt_is_explicit_and_does_not_install(no_faster_whisper, monkeypatch):
+    tools, attempts = no_faster_whisper
+    monkeypatch.setattr("pm.extras.extra_supported", lambda _: False)
+    result = tools._transcribe_local("/tmp/absent.wav", "base")
+    assert result["success"] is False
+    assert "not supported" in result["error"] and "Python" in result["error"]
+    assert attempts == []

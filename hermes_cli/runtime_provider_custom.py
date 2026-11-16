@@ -989,7 +989,7 @@ def _resolve_named_custom_runtime(*, requested_provider: str, explicit_api_key: 
     # secretless entry still owes the inline key, so it is the last named-candidate rung.
     inline_key = next((c for c in _inline_model_api_key_candidates(
         requested_provider=requested_provider, base_url=base_url,
-        include_implicit_env=not entry_declares_credential(custom_provider)) if rp.has_usable_secret(c)), "")
+        include_implicit_env=False) if rp.has_usable_secret(c)), "")
     api_key: Any = explicit_key if rp.has_usable_secret(explicit_key) else (
         _entry_credential(rp, custom_provider, str(custom_provider.get("name", requested_provider) or "custom"))
         or inline_key

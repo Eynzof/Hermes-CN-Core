@@ -30,9 +30,7 @@ _PLACEHOLDER = re.compile(r"(?<![\w.])(?:\.\.\.|…)(?![\w.])")
 
 
 def _plugin_docs() -> list[Path]:
-    docs = _ROOT / "website" / "docs"
-    return [*sorted((docs / "developer-guide").rglob("*.md*")),
-            *sorted((docs / "user-guide" / "features").glob("plugins*.md")), _ROOT / "plugins" / "AGENTS.md"]
+    return [_ROOT / "plugins" / "AGENTS.md"]
 
 
 def _fences(markdown: str, offset: int = 0):

@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import orjson
-from agent.re_compat import re
 import time
 import unicodedata
 from dataclasses import dataclass, field
@@ -38,6 +37,7 @@ _checkout_root = _Path(__file__).resolve().parents[3]
 if str(_checkout_root) not in sys.path:
     sys.path.append(str(_checkout_root))
 
+from agent.re_compat import re
 from agent.compression_marker import ELISION_MARKER_MAX_LEN, elide
 from agent.i18n import t
 from agent.retry_utils import parse_retry_after_seconds

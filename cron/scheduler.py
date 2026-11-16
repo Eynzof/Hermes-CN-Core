@@ -12,7 +12,6 @@ import json
 import orjson
 import logging
 import os
-from agent.re_compat import re
 import subprocess
 import sys
 import threading
@@ -40,6 +39,7 @@ _checkout_root = Path(__file__).resolve().parent.parent
 if str(_checkout_root) not in sys.path:
     sys.path.append(str(_checkout_root))
 
+from agent.re_compat import re
 from cron.worker_bootstrap import WORKER_MARKER, finish_worker_boot
 from hermes_constants import get_hermes_home, hermes_home_key
 from hermes_cli.observability.shared_metrics_gateway import note_cron_execution, note_cron_skipped

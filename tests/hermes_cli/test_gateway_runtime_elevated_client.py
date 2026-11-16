@@ -67,9 +67,10 @@ def test_an_elevated_client_without_a_split_token_still_starts(tmp_path, monkeyp
     monkeypatch.setattr(hermes_dir_acl, "process_elevation_type", lambda: hermes_dir_acl.TOKEN_ELEVATION_TYPE_DEFAULT)
     monkeypatch.setattr(start, "start_gateway_job", lambda *a, **k: None)  # macOS: the direct spawn, too
     spawned = []
-    monkeypatch.setattr(start.subprocess, "Popen", lambda *a, **k: spawned.append(a) or object())
+    monkeypatch.setattr(start.subprocess, "Popen", lambda *a, **k: spawned.append((a, k)) or object())
     start.spawn_unmanaged_gateway(tmp_path / "profile", deadline=time.monotonic() + 5)
-    assert len(spawned) == 1
+    daemons = [args for args, kwargs in spawned if kwargs.get("env", {}).get("HERMES_GATEWAY_DETACHED") == "1"]
+    assert len(daemons) == 1
 
 
 @pytest.mark.platforms("windows")

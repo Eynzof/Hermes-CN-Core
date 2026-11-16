@@ -966,4 +966,5 @@ registry.register(
         args, task_id=kw.get("task_id"), session_id=kw.get("session_id")),
     # The flat single-op shape old transcripts replay, and the batch's top-level default name.
     compat_args=("action", "name", "content", "category", "file_path", "file_content", "old_string",
-                 "new_string", "replace_all", "absorbed_into"))
+                 "new_string", "replace_all", "absorbed_into"),
+    self_checked_args=("operations",))

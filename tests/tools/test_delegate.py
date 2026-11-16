@@ -60,14 +60,6 @@ def _make_mock_parent(depth=0):
     parent.thinking_callback = None
     return parent
 
-class TestDelegateRequirements(unittest.TestCase):
-
-
-
-    def test_empty_context_ignored(self):
-        prompt = _build_child_system_prompt("Do something", "  ")
-        self.assertNotIn("CONTEXT", prompt)
-
 class TestStripBlockedTools(unittest.TestCase):
     def test_removes_blocked_toolsets(self):
         result = _strip_blocked_tools(["terminal", "file", "delegation", "clarify", "memory", "code_execution"])
@@ -2714,7 +2706,7 @@ class TestOrchestratorRoleBehavior(unittest.TestCase):
         """With max_spawn_depth=2 and child_depth=1, the orchestrator's
         own children would be at depth 2 (the floor) → must be leaves."""
         prompt = _build_child_system_prompt(
-            "Survey", role="orchestrator",
+            role="orchestrator",
             max_spawn_depth=2, child_depth=1,
         )
         self.assertIn("MUST be leaves", prompt)

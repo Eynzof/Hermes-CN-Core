@@ -78,3 +78,8 @@ def test_dispatched_child_prompt_matches_depth_capability(
         else:
             assert "children can themselves delegate because depth remains" in prompt
             assert "orchestrators or leaves" not in prompt
+
+
+def test_empty_task_context_is_ignored():
+    from tools.delegate_tool_progress import child_task_message
+    assert child_task_message("Do something", "  ") == "Do something"

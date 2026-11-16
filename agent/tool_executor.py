@@ -8,7 +8,7 @@ observe → commit → project pipeline so the tool-result wire shape is produce
 
 from __future__ import annotations
 
-from agent.tool_executor_tool_search import _unwrap_tool_search_call
+from agent.tool_executor_tool_search import _unwrap_tool_search_call, _tool_search_scoped_names
 
 import concurrent.futures
 import contextlib

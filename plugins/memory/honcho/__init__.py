@@ -26,6 +26,7 @@ from plugins.memory.honcho.client import HonchoClientConfig, resolve_config_path
 from plugins.memory.honcho.client import _host_block, _HostLookup
 from plugins.memory.honcho.client import join_plugin_threads, spawn_context_thread
 from plugins.memory.honcho.dialectic import DialecticMixin
+from plugins.memory.honcho.config_storage import ConfigStorageMixin
 from plugins.memory.honcho.session_peers import assistant_peer_id_for, sanitize_peer_id
 from plugins.memory.honcho.session_context import usable_honcho_summary
 from plugins.memory.honcho.tool_schemas import ALL_TOOL_SCHEMAS
@@ -110,7 +111,7 @@ _CONTEXT_SECTIONS = (
 _PREWARM_QUERY = "Summarize what you know about this user. Focus on preferences, current projects, and working style."
 
 
-class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
+class HonchoMemoryProvider(ConfigStorageMixin, DialecticMixin, MemoryProvider):
     """Honcho AI-native memory with dialectic Q&A and persistent user modeling."""
 
     def backup_paths(self) -> list[str]:

@@ -76,7 +76,7 @@ def test_declared_extra_gates_match_dependency_selection():
         ("android", "Android", "aarch64"),
     ]
     for system, platform_system, machine in targets:
-        for python in ("3.12", "3.13", "3.14"):
+        for python in ("3.12", "3.13", "3.14", "3.15"):
             environment = {**default_environment(), "sys_platform": system,
                            "platform_system": platform_system, "platform_machine": machine,
                            "python_version": python, "python_full_version": python + ".0"}
@@ -87,6 +87,20 @@ def test_declared_extra_gates_match_dependency_selection():
                                               importable=lambda _: False) == selected, (
                     extra, system, machine, python,
                 )
+
+
+@pytest.mark.parametrize("extra", ["stt-whisper", "piper", "kittentts", "wake-sherpa"])
+def test_local_voice_engines_are_unavailable_on_python315(extra, monkeypatch, synced):
+    from packaging.markers import default_environment
+
+    monkeypatch.setattr(extras, "_PLATFORM_GATES", None)
+    monkeypatch.setattr(extras, "_importable", lambda _: False)
+    environment = {**default_environment(), "python_version": "3.15", "python_full_version": "3.15.0"}
+    assert not extras.extra_supported(extra, environment=environment)
+    if sys.version_info >= (3, 15):
+        with pytest.raises(pm.InstallError, match="Python 3.15"):
+            extras.ensure_import(extra)
+        assert synced == []
 
 
 def test_faster_whisper_targets_are_gated(monkeypatch):
@@ -108,7 +122,7 @@ def test_faster_whisper_targets_are_gated(monkeypatch):
                       "platform_machine": "x86_64", "os_name": "posix"},
     }
     supported = {
-        target: extras.extra_supported("stt-whisper", environment=environment,
+        target: extras.extra_supported("stt-whisper", environment={**environment, "python_version": "3.14"},
                                        importable=lambda _: False)
         for target, environment in targets.items()
     }

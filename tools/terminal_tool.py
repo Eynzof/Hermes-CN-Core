@@ -2153,5 +2153,5 @@ registry.register(
     # [CN-fork] P-058: the description follows the shell the terminal will run in.
     dynamic_schema_overrides=_build_dynamic_terminal_description,
     # ``code`` is the wrong-tool guard (points at execute_code); the other two are the legacy notify interface.
-    compat_args=("code", "notify_on_complete", "watch_patterns"),
+    compat_args=("code", "notify_on_complete", "watch_patterns", "token_kill", "max_lines"),
 )

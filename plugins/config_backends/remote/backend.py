@@ -417,14 +417,13 @@ class RemoteBackend:
         """Run the migrations from schema *current* over a private copy of *doc* and return it.
         Nothing is published: only this thread sees the copy while the steps run (:class:`_Private`)."""
         from hermes_cli.config_migrations import run_migrations
-        from agent.runtime_scope import bind_state, scope_for_profile
-        from tui_gateway.launch_profile_policy import owner_secret_scope
+        from agent.secret_scope import bind_profile_credentials
         m = _Private(st=st, doc=copy.deepcopy(doc), serial=next(_PRIVATE_SERIAL))
         m.doc["_config_version"] = current
         private_token = _PRIVATE.set(m)
         try:
             # Reading terminal config here would recurse into the migration being prepared.
-            with bind_state(scope_for_profile(st.home), secrets=owner_secret_scope(st.home), terminal=False):
+            with bind_profile_credentials(st.home):
                 # config_only: a read (or a refused write's check) must change no local file (D12).
                 run_migrations(current, {"env_added": [], "config_added": [], "warnings": []}, True, config_only=True,
                                stop_at_failure=False)

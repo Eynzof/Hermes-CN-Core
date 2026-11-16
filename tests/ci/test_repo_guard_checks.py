@@ -195,10 +195,10 @@ def _module_with_payload() -> tuple[str, str]:
 FORWARD = "from new.pkg.mod import *  # moved to new/pkg/mod.py\n"
 
 
-def test_supply_chain_scan_passes_a_moved_file_whose_old_path_keeps_a_forwarding_file(repo, step):
+def test_supply_chain_scan_requires_review_when_a_payload_moves_to_another_path(repo, step):
     module, _ = _module_with_payload()
     base = commit(repo, {"pkg/mod.py": module})
-    assert _scan_pr(repo, step, base, {"new/pkg/mod.py": module, "pkg/mod.py": FORWARD}) == "false"
+    assert _scan_pr(repo, step, base, {"new/pkg/mod.py": module, "pkg/mod.py": FORWARD}) == "true"
 
 
 def test_supply_chain_scan_flags_a_payload_line_added_to_a_moved_or_new_file(repo, step):

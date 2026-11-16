@@ -23,7 +23,26 @@ from hermes_cli import desktop_release_holders, main_desktop
 
 pytestmark = pytest.mark.platforms("windows")
 
-_HELPER = "import sys, time\nprint('ready', flush=True)\ntime.sleep(300)\n"
+_HELPER = "import os, time\nprint(os.getpid(), flush=True)\ntime.sleep(300)\n"
+
+
+def _start_helper(script: Path, cwd: Path) -> tuple[subprocess.Popen, list[psutil.Process]]:
+    helper = subprocess.Popen(
+        [sys.executable, str(script)], cwd=cwd, stdout=subprocess.PIPE, text=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    # The interpreter reports its own identity after opening its cwd handle. A recursive
+    # process-tree snapshot may also contain unrelated Windows helpers; only our launcher
+    # and the interpreter running this script are part of the fixture.
+    worker_pid = int(helper.stdout.readline().strip())
+    return helper, [psutil.Process(pid) for pid in dict.fromkeys((helper.pid, worker_pid))]
+
+
+def _stop_helper(helper: subprocess.Popen, tree: list[psutil.Process]) -> None:
+    for proc in reversed(tree):
+        with contextlib.suppress(psutil.NoSuchProcess):
+            proc.kill()
+    helper.wait(10)
 
 
 @pytest.fixture
@@ -38,18 +57,11 @@ def swap_fixture(tmp_path, monkeypatch):
     monkeypatch.setattr(main_desktop, "_DESKTOP_SWAP_RENAME_RETRY_DELAYS_S", (0.2,))
     script = tmp_path / "foreign_helper.py"
     script.write_text(_HELPER, encoding="utf-8")
-    helper = subprocess.Popen(
-        [sys.executable, str(script)], cwd=live_root, stdout=subprocess.PIPE, text=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
-    # The child opens its cwd handle during its own startup: wait for it before asserting the lock.
-    assert helper.stdout.readline().strip() == "ready"
+    helper, tree = _start_helper(script, live_root)
     try:
-        yield desktop_dir, staging, live_root, helper
+        yield desktop_dir, staging, live_root, helper, tree
     finally:
-        if helper.poll() is None:
-            helper.kill()
-            helper.wait(10)
+        _stop_helper(helper, tree)
 
 
 def _promote(desktop_dir: Path, staging: Path) -> tuple[Path | None, str]:
@@ -60,7 +72,7 @@ def _promote(desktop_dir: Path, staging: Path) -> tuple[Path | None, str]:
 
 
 def test_blocked_swap_names_the_foreign_holder_and_leaves_it_running(swap_fixture, capsys):
-    desktop_dir, staging, live_root, helper = swap_fixture
+    desktop_dir, staging, live_root, helper, _tree = swap_fixture
 
     promoted, error = _promote(desktop_dir, staging)
 
@@ -72,10 +84,9 @@ def test_blocked_swap_names_the_foreign_holder_and_leaves_it_running(swap_fixtur
     assert (live_root / "Hermes.exe").read_text(encoding="utf-8") == "old"
 
 
-def _consent_for_run(desktop_dir: Path, helper, run_id: str) -> tuple[Path, list]:
+def _consent_for_run(desktop_dir: Path, tree, run_id: str) -> tuple[Path, list]:
     # The venv python.exe may be a launcher with the real interpreter as its child, both inside
     # the folder; the Desktop consents to every process the failure named, so this does too.
-    tree = [psutil.Process(helper.pid), *psutil.Process(helper.pid).children(recursive=True)]
     consent = desktop_dir / "release" / ".close-holders-consent.json"
     seen = [{"pid": p.pid, "start_time": p.create_time(), "exe": p.exe()} for p in tree]
     consent.write_text(json.dumps({"written_at": time.time(), "run_id": run_id,
@@ -85,8 +96,8 @@ def _consent_for_run(desktop_dir: Path, helper, run_id: str) -> tuple[Path, list
 
 def test_a_consent_given_for_another_run_closes_nothing_and_is_used_up(swap_fixture, monkeypatch):
     """Review N1: a gateway /update (or any swap not started by the consented retry) never closes."""
-    desktop_dir, staging, live_root, helper = swap_fixture
-    consent, _tree = _consent_for_run(desktop_dir, helper, "desktop-retry-1")
+    desktop_dir, staging, live_root, helper, tree = swap_fixture
+    consent, _tree = _consent_for_run(desktop_dir, tree, "desktop-retry-1")
     monkeypatch.setenv("HERMES_UPDATE_CORRELATION_ID", "gateway-update-7")
 
     promoted, error = _promote(desktop_dir, staging)
@@ -98,8 +109,8 @@ def test_a_consent_given_for_another_run_closes_nothing_and_is_used_up(swap_fixt
 
 
 def test_consented_retry_closes_exactly_the_holder_and_promotes(swap_fixture, capsys, monkeypatch):
-    desktop_dir, staging, live_root, helper = swap_fixture
-    consent, tree = _consent_for_run(desktop_dir, helper, "desktop-retry-1")
+    desktop_dir, staging, live_root, helper, tree = swap_fixture
+    consent, tree = _consent_for_run(desktop_dir, tree, "desktop-retry-1")
     monkeypatch.setenv("HERMES_UPDATE_CORRELATION_ID", "desktop-retry-1")  # windows.ps1 exports its run id
 
     promoted, error = _promote(desktop_dir, staging)
@@ -117,15 +128,11 @@ def test_a_partial_close_reports_only_the_holder_still_in_the_way(swap_fixture, 
     """The consented holder closes but a protected one keeps the folder: the machine lines
     windows.ps1 hands the Desktop must name only the protected one, or the next dialog offers
     to close a program that already exited."""
-    desktop_dir, staging, live_root, helper = swap_fixture
-    _consent, closed_tree = _consent_for_run(desktop_dir, helper, "desktop-retry-1")
-    protected = subprocess.Popen(
-        [sys.executable, str(tmp_path / "foreign_helper.py")], cwd=live_root, stdout=subprocess.PIPE,
-        text=True, encoding="utf-8", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
+    desktop_dir, staging, live_root, helper, tree = swap_fixture
+    _consent, closed_tree = _consent_for_run(desktop_dir, tree, "desktop-retry-1")
+    protected, protected_tree = _start_helper(tmp_path / "foreign_helper.py", live_root)
     try:
-        assert protected.stdout.readline().strip() == "ready"
-        protected_pids = {protected.pid, *(p.pid for p in psutil.Process(protected.pid).children(recursive=True))}
+        protected_pids = {p.pid for p in protected_tree}
         real_exe = desktop_release_holders._exe_or_empty
         # What psutil answers for a protected process (elevated, another user's): no program path.
         monkeypatch.setattr(desktop_release_holders, "_exe_or_empty",
@@ -142,27 +149,19 @@ def test_a_partial_close_reports_only_the_holder_still_in_the_way(swap_fixture, 
         assert not reported & {p.pid for p in closed_tree}, f"an exited holder was reported again: {reported}"
         assert (live_root / "Hermes.exe").read_text(encoding="utf-8") == "old"
     finally:
-        for proc in [*psutil.Process(protected.pid).children(recursive=True), psutil.Process(protected.pid)]:
-            proc.kill()
-        protected.wait(10)
+        _stop_helper(protected, protected_tree)
 
 
 def test_a_program_in_a_sibling_unpacked_folder_is_neither_named_nor_closed(swap_fixture, tmp_path, capsys, monkeypatch):
     """Review fold 1: only release/win-unpacked is renamed. A program whose working folder is a
     sibling (a stale win-arm64-unpacked) does not block it, so even a consent naming it must not
     close it, and the failure lines must not offer it."""
-    desktop_dir, staging, live_root, helper = swap_fixture
+    desktop_dir, staging, live_root, helper, tree = swap_fixture
     sibling_dir = live_root.parent / "win-arm64-unpacked"
     sibling_dir.mkdir()
-    sibling_tree: list = []
-    sibling = subprocess.Popen(
-        [sys.executable, str(tmp_path / "foreign_helper.py")], cwd=sibling_dir, stdout=subprocess.PIPE,
-        text=True, encoding="utf-8", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
+    sibling, sibling_tree = _start_helper(tmp_path / "foreign_helper.py", sibling_dir)
     try:
-        assert sibling.stdout.readline().strip() == "ready"
-        sibling_tree.extend([psutil.Process(sibling.pid), *psutil.Process(sibling.pid).children(recursive=True)])
-        consent, tree = _consent_for_run(desktop_dir, helper, "desktop-retry-1")
+        consent, tree = _consent_for_run(desktop_dir, tree, "desktop-retry-1")
         seen = json.loads(consent.read_text(encoding="utf-8"))
         seen["holders"] += [{"pid": p.pid, "start_time": p.create_time(), "exe": p.exe()} for p in sibling_tree]
         consent.write_text(json.dumps(seen), encoding="utf-8")
@@ -176,7 +175,4 @@ def test_a_program_in_a_sibling_unpacked_folder_is_neither_named_nor_closed(swap
         assert all(p.is_running() for p in sibling_tree), "closed a program that never held the renamed folder"
         assert f"pid {sibling.pid}" not in capsys.readouterr().out
     finally:
-        for proc in sibling_tree:
-            with contextlib.suppress(psutil.NoSuchProcess):
-                proc.kill()
-        sibling.wait(10)
+        _stop_helper(sibling, sibling_tree)

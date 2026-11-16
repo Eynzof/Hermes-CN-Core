@@ -39,6 +39,8 @@ from tools.environments.local_pythonpath import (
     _build_hermes_repo_root_aliases, _strip_hermes_owned_pythonpath_and_runtime_markers)
 from tools.environments.process_pwsh import pwsh_transform
 from tools.environments.pwsh_fix import fix_pwsh_command
+from tools.environments import local_shell_mode as _shell_mode
+from tools.environments.shell_modes import resolve_shell_for_mode, shell_type_mode
 from tools.environments.windows_env import refresh_env_from_registry
 from tools.environments.local_gitbash_probe import ( _bash_probe_details_cache, _bash_starts, _git_bash_aslr_help, _looks_like_msys_spawn_failure, _mandatory_aslr_enabled)
 from hermes_cli._startup_fast import project_root_str
@@ -2001,12 +2003,26 @@ class LocalEnvironment(BaseEnvironment):
         declared = (n for n in _home_declared_key_env() if _SHELL_ENV_NAME_RE.fullmatch(n))
         return tuple(sorted({*super()._snapshot_excluded_passthrough_names(), *session_env_names(), *declared}))
 
-    def __init__(self, cwd: str = "", timeout: int = 60, env: dict | None = None, persistent: bool = True):
+    def __init__(self, cwd: str = "", timeout: int = 60, env: dict | None = None, persistent: bool = True,
+                 shell_mode: str | None = None):
         super().__init__(cwd=_resolve_local_initial_cwd(cwd), timeout=timeout, env=env, persist_env=persistent)
         # [CN-fork P-058] Windows shell resolution: an explicit `terminal.shell`
         # wins, otherwise git-bash (when a working install exists) → pwsh →
         # Windows PowerShell 5.1. POSIX hosts always resolve bash.
-        self._shell_type, self._shell_path = _resolve_shell()
+        # [CN-fork P-073] ``shell_mode`` pins one mode explicitly (the terminal
+        # tool's per-call `shell=` override); it resolves strictly and raises
+        # ShellModeUnavailable when the host cannot run it, instead of quietly
+        # running the other shell under the caller's syntax.
+        if shell_mode is None:
+            self._shell_type, self._shell_path = _resolve_shell()
+        else:
+            self._shell_type, self._shell_path = resolve_shell_for_mode(shell_mode)
+        #: Mode the environment runs by default; a per-call override lands in
+        #: ``_shell_profiles`` so one env serves both shells in one session.
+        self.shell_mode = shell_type_mode(self._shell_type)
+        self._shell_profiles: dict[str, tuple[str, str]] = {
+            self.shell_mode: (self._shell_type, self._shell_path)
+        }
         # [CN-fork P-042] persistent PowerShell session (opt-in, Windows only).
         # Bash sessions skip this fast path: the resolver functions below
         # return False unless shell_type is "powershell"/"pwsh".
@@ -2017,6 +2033,16 @@ class LocalEnvironment(BaseEnvironment):
         # PowerShell-only by design — bash sessions skip it (False).
         self._cmd_fast_path = _resolve_cmd_fast_path(self._shell_type)
         self.init_session()
+
+    # --- [CN-fork P-073] per-call shell mode (see local_shell_mode) ---
+
+    def _effective_shell(self) -> tuple[str, str]:
+        """``(shell_type, shell_path)`` for the command in flight (P-073)."""
+        return _shell_mode.effective_shell(self)
+
+    def _effective_shell_type(self) -> str:
+        """The shell type (``bash`` / ``pwsh`` / ``powershell``) in effect now."""
+        return _shell_mode.effective_shell_type(self)
 
     def get_temp_dir(self) -> str:
         """Shell-safe writable temp dir. Precedence: ``TERMINAL_TEMP_DIR``, TMPDIR/TMP/TEMP
@@ -2084,14 +2110,17 @@ class LocalEnvironment(BaseEnvironment):
 
         _PS_MAX_CMDLINE = 30000
         _tmp_ps1 = None
+        # [CN-fork P-073] the binary of the mode in effect, not the env default:
+        # a `shell="pwsh"` call inside a git-bash environment spawns pwsh.
+        shell_path = self._effective_shell()[1]
         if len(cmd_string) > _PS_MAX_CMDLINE:
             fd, tmp_path = tempfile.mkstemp(suffix=".ps1", prefix="hermes_cmd_")
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(cmd_string)
             _tmp_ps1 = tmp_path
-            args = [self._shell_path, "-NoP", "-NonI", "-Exec", "Bypass", "-NoL", "-File", tmp_path]
+            args = [shell_path, "-NoP", "-NonI", "-Exec", "Bypass", "-NoL", "-File", tmp_path]
         else:
-            args = [self._shell_path, "-NoP", "-NonI", "-Exec", "Bypass", "-NoL", "-C", cmd_string]
+            args = [shell_path, "-NoP", "-NonI", "-Exec", "Bypass", "-NoL", "-C", cmd_string]
         run_env = _make_run_env(self.env)
         safe_cwd = _resolve_safe_cwd(self.cwd)
         if safe_cwd != self.cwd:
@@ -2186,7 +2215,9 @@ class LocalEnvironment(BaseEnvironment):
         # the user's command.  When running PowerShell 7 (``pwsh``) natively,
         # skip the transform entirely — PS7 supports all modern operators
         # natively.
-        if self._shell_type != "pwsh":
+        # [CN-fork P-073] down-level against the mode in effect: an override to
+        # Windows PowerShell 5.1 must translate even when the env default is PS7.
+        if self._effective_shell_type() != "pwsh":
             command, transform_warnings = pwsh_transform(command)
             pwsh_warnings.extend(transform_warnings)
         self._pwsh_warnings = pwsh_warnings
@@ -2266,7 +2297,7 @@ class LocalEnvironment(BaseEnvironment):
             elif fix.changed:
                 command = fix.command
                 pwsh_warnings.append(fix.warning)
-        if self._shell_type != "pwsh":
+        if self._effective_shell_type() != "pwsh":
             command, transform_warnings = pwsh_transform(command)
             pwsh_warnings.extend(transform_warnings)
         self._pwsh_warnings = pwsh_warnings
@@ -2319,7 +2350,7 @@ class LocalEnvironment(BaseEnvironment):
             refresh_env_from_registry()
             run_env = _make_run_env(self.env)
             session = PowerShellSession(
-                shell_path=self._shell_path,
+                shell_path=self._effective_shell()[1],
                 cwd=_resolve_safe_cwd(self.cwd),
                 env=run_env,
                 default_timeout=float(self.timeout),
@@ -2496,76 +2527,22 @@ class LocalEnvironment(BaseEnvironment):
         wait_for_pattern: str | None = None,
         promote_callback=None,
         yield_handler=None,
+        shell_mode: str | None = None,
     ) -> dict:
         """Execute a command via the fastest eligible path (P-042).
 
-        Order: the persistent PowerShell session (opt-in, warm ~1-5ms) → the
-        opt-in cmd.exe fast path for trivial builtins (spawn ~10-20ms) → the
-        unchanged spawn-per-call path in :meth:`BaseEnvironment.execute`.  Both
-        fast paths are OFF by default and fall through to spawn on anything they
-        can't serve (stdin present, non-PowerShell shell, ineligible command).
-
-        ``yield_handler`` (upstream's mid-command handoff: a user message arriving
-        while a foreground command runs hands the live process to the handler
-        instead of killing it) is served by the spawn path only, so either fast
-        path declines when one is supplied — the fork's overrides must accept every
-        kwarg ``terminal_tool`` passes, or the whole local backend raises TypeError.
+        [CN-fork P-073] ``shell_mode`` runs THIS command under ``bash`` or ``pwsh``
+        regardless of the environment's own shell (the terminal tool's per-call
+        ``shell=``).  The fast-path ladder and the mode bookkeeping live in
+        :mod:`tools.environments.local_shell_mode`; ``yield_handler`` is upstream's
+        mid-command handoff, served by the spawn path only.
         """
-        if (
-            self._pwsh_session_reuse
-            and yield_handler is None
-            and stdin_data is None
-            and not bounded_capture
-            and self._shell_type in ("powershell", "pwsh")
-        ):
-            try:
-                return self._execute_via_session(
-                    command,
-                    cwd,
-                    timeout=timeout,
-                    rewrite_compound_background=rewrite_compound_background,
-                )
-            except _SessionFallback as exc:
-                logger.info(
-                    "PowerShell session fast path declined (%s); using spawn.", exc
-                )
-            except Exception as exc:  # noqa: BLE001 - never let the fast path
-                # wedge the tool; the spawn path is the safety net.
-                logger.warning(
-                    "PowerShell session execute failed (%s); using spawn.",
-                    exc,
-                    exc_info=True,
-                )
-        # [CN-fork P-042 #3] cmd.exe fast path (opt-in, spawn-model) — considered
-        # only when the session path didn't serve the call.  Narrow eligibility
-        # keeps behaviour identical to PowerShell; anything else falls through.
-        if (
-            self._cmd_fast_path
-            and yield_handler is None
-            and stdin_data is None
-            and not bounded_capture
-            and self._shell_type in ("powershell", "pwsh")
-            and _cmd_fast_path_eligible(command)
-        ):
-            try:
-                return self._execute_via_cmd(command, cwd, timeout=timeout)
-            except _SessionFallback as exc:
-                logger.info("cmd fast path declined (%s); using spawn.", exc)
-            except Exception as exc:  # noqa: BLE001 - safety net is the spawn path
-                logger.warning(
-                    "cmd fast path failed (%s); using spawn.", exc, exc_info=True
-                )
-        return super().execute(
-            command,
-            cwd,
-            timeout=timeout,
-            stdin_data=stdin_data,
+        return _shell_mode.execute(
+            self, command, cwd, timeout=timeout, stdin_data=stdin_data,
             rewrite_compound_background=rewrite_compound_background,
-            bounded_capture=bounded_capture,
-            output_callback=output_callback,
-            wait_for_pattern=wait_for_pattern,
-            promote_callback=promote_callback,
-            yield_handler=yield_handler,
+            bounded_capture=bounded_capture, output_callback=output_callback,
+            wait_for_pattern=wait_for_pattern, promote_callback=promote_callback,
+            yield_handler=yield_handler, shell_mode=shell_mode,
         )
 
     def init_session(self):
@@ -2649,13 +2626,16 @@ class LocalEnvironment(BaseEnvironment):
         otherwise spawns the resolved bash. On Windows that is the Git Bash
         discovered at environment init (``self._shell_path``), so ``init_session``
         and ``execute`` agree on one binary; ``_find_bash_posix()`` stays the
-        POSIX-only fallback.
+        POSIX-only fallback.  [CN-fork P-073] "the active shell" is the shell
+        MODE in scope, so a ``shell="bash"`` call inside a PowerShell environment
+        spawns Git Bash for that command.
         """
-        if getattr(self, "_shell_type", "bash") in ("powershell", "pwsh"):
+        shell_type, shell_path = self._effective_shell()
+        if shell_type in ("powershell", "pwsh"):
             return self._run_powershell(
                 cmd_string, login=login, timeout=timeout, stdin_data=stdin_data
             )
-        bash = self._shell_path or _find_bash_posix()
+        bash = shell_path or _find_bash_posix()
         run_env = _make_run_env(self.env)
         # Login invocations (init_session's env snapshot) source the user's rc /
         # custom init files so nvm/asdf/pyenv land on PATH in the snapshot; then the
@@ -2717,7 +2697,7 @@ class LocalEnvironment(BaseEnvironment):
         method (it probes ``_run_bash`` directly), so the fallback functions
         cannot leak into the env snapshot.
         """
-        if self._shell_type in ("powershell", "pwsh"):
+        if self._effective_shell_type() in ("powershell", "pwsh"):
             return self._wrap_command_powershell(command, cwd)
         # [CN-fork P-052] bash_fix is win32-only by design: it rewrites native POSIX
         # command words (``open``, ``rev``, ``wget``, …) to Git Bash compatible
@@ -2746,7 +2726,7 @@ class LocalEnvironment(BaseEnvironment):
             # keeps real MSYS2 installs untouched.  The prefix runs AFTER the
             # snapshot source inside the eval, so children still see the empty
             # value even if the snapshot exports MSYSTEM=MINGW64.
-            command = _with_msystem_neutralized(command, self._shell_path)
+            command = _with_msystem_neutralized(command, self._effective_shell()[1])
         return super()._wrap_command(command, cwd)
 
     def _wait_for_process(self, proc, *args, **kwargs) -> dict:
@@ -2801,7 +2781,7 @@ class LocalEnvironment(BaseEnvironment):
         try:
             with open(self._cwd_file, encoding="utf-8-sig", errors="replace") as f:
                 cwd_path = f.read().strip()
-            if _IS_WINDOWS and self._shell_type not in ("powershell", "pwsh"):
+            if _IS_WINDOWS and self._effective_shell_type() not in ("powershell", "pwsh"):
                 cwd_path = _msys_to_windows_path(cwd_path)
             if cwd_path and os.path.isdir(cwd_path):
                 self.cwd = cwd_path
@@ -2838,7 +2818,7 @@ class LocalEnvironment(BaseEnvironment):
         if self.cwd != prev_cwd:
             normalized = (
                 _msys_to_windows_path(self.cwd)
-                if _IS_WINDOWS and getattr(self, "_shell_type", "bash") not in ("powershell", "pwsh")
+                if _IS_WINDOWS and self._effective_shell_type() not in ("powershell", "pwsh")
                 else self.cwd
             )
             if normalized and os.path.isdir(normalized):

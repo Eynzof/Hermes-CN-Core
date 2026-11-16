@@ -31,17 +31,19 @@ _IS_LINUX = is_linux()
 from tools.environments.sandbox_scope import hosted_scope, producer_fields
 from tools.environments.local import (
     _append_dropped_path_entries,
-    _build_bash_background_script,
-    _build_powershell_background_script,
     _find_shell,
-    _resolve_safe_cwd,
     _resolve_shell,
+    _resolve_safe_cwd,
     _sanitize_subprocess_env,
     _terminal_env,
-    _windows_to_msys_path,
     routed_terminal_base,
 )
 from hermes_cli._subprocess_compat import windows_hide_flags
+# [CN-fork P-073] a per-call shell mode picks the argv a background worker gets.
+from tools.environments.shell_modes import shell_for_spawn as _shell_for_spawn
+from tools.process_registry_shell import windows_spawn_argv as _windows_spawn_argv
+
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, NamedTuple, Optional
 
@@ -1157,7 +1159,8 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
         return tempfile.gettempdir()
 
     def _scope_argv(self, session: ProcessSession, safe_command: str, unit_suffix: str, label: str,
-                    cwd_file: str | None = None) -> list[str]:
+                    cwd_file: str | None = None,
+                      shell: tuple[str, str] | None = None) -> list[str]:
         """Login-shell argv for *safe_command* (parity with LocalEnvironment: rc files
         sourced, user tools on PATH), wrapped in a transient systemd scope when we are
         the supervised gateway (own cgroup: an OOM kills only the worker, not the
@@ -1170,29 +1173,9 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
         spawn never depends on git-bash being installed.
         """
         if _IS_WINDOWS:
-            shell_type, shell_path = _resolve_shell()
-            if shell_type == "bash":
-                script = _build_bash_background_script(
-                    command=safe_command,
-                    cwd=_windows_to_msys_path(session.cwd),
-                    cwd_file=_windows_to_msys_path(cwd_file) if cwd_file else None,
-                )
-                return [shell_path, "-lc", script]
-            script = _build_powershell_background_script(
-                command=safe_command,
-                cwd=session.cwd,
-                shell_type=shell_type,
-                cwd_file=cwd_file,
-            )
-            return [
-                shell_path,
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                script,
-            ]
+            # [CN-fork P-073] the caller's per-call shell mode wins over the session
+            # default; the argv spelling lives in process_registry_shell.
+            return _windows_spawn_argv(shell, session, safe_command, cwd_file, resolve=_resolve_shell)
         argv = [_find_shell(), "-lic", f"set +m; {safe_command}"]
         # This applies to both pipe mode and the PTY path above. See #70716.
         in_supervised_gateway = _IS_LINUX and _is_supervised_gateway_process()
@@ -1232,7 +1215,8 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
         self._write_checkpoint()
 
     def _spawn_local_pty(self, session: ProcessSession, safe_command: str, env_vars: dict,
-                         cwd_file: str | None = None) -> ProcessSession:
+                         cwd_file: str | None = None,
+ shell_mode: str | None = None) -> ProcessSession:
         """PTY spawn for interactive CLI tools (Codex, Claude Code, REPLs).
         Raises ImportError when no PTY backend is installed and re-raises any spawn
         failure; ``spawn_local`` falls back to pipe mode in both cases."""
@@ -1240,7 +1224,8 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
             from winpty import PtyProcess as _PtyProcessCls
         else:
             from ptyprocess import PtyProcess as _PtyProcessCls
-        pty_argv = self._scope_argv(session, safe_command, session.id, "PTY", cwd_file=cwd_file)
+        pty_argv = self._scope_argv(session, safe_command, session.id, "PTY", cwd_file=cwd_file,
+ shell=_shell_for_spawn(shell_mode))
         pty_env = self._spawn_env(env_vars)
         if session.systemd_unit:
             pty_env = systemd_user_bus_env(pty_env)
@@ -1260,7 +1245,7 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
         self, command: str, cwd: str | None = None, task_id: str = "", session_key: str = "",
         env_vars: dict | None = None, use_pty: bool = False, owner_task_id: str = "",
         persist_on_release: bool = False, cwd_file: str | None = None,
-        restore_login_path: bool = False) -> ProcessSession:
+        restore_login_path: bool = False, shell_mode: str | None = None) -> ProcessSession:
         """Spawn a background process locally (TERMINAL_ENV=local; other backends: spawn_via_env()).
         ``use_pty`` asks ptyprocess/pywinpty for a pseudo-terminal; on failure: pipe + ``pty_fallback``.
         ``persist_on_release``: no agent kill sweeps (#41225); ``restore_login_path``: re-add reset PATH dirs (#56634).
@@ -1281,7 +1266,8 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
         log = worker_output_log(session.id)
         if use_pty and log is None:
             try:
-                return self._spawn_local_pty(session, safe_command, env_vars, cwd_file=cwd_file)
+                return self._spawn_local_pty(session, safe_command, env_vars, cwd_file=cwd_file,
+                                              shell_mode=shell_mode)
             except ImportError:
                 session.pty_fallback = "the PTY library (ptyprocess/pywinpty) is not installed"
                 logger.warning("ptyprocess not installed, falling back to pipe mode")
@@ -1300,7 +1286,8 @@ class ProcessRegistry(ProcessTerminationMixin, ProcessCheckpointMixin, ProcessOu
         _popen_kwargs = {"creationflags": windows_hide_flags()} if _IS_WINDOWS else {}
         unit_suffix = f"{session.id}-pipe-fallback" if pty_scope_attempted else session.id
         spawn_argv = self._scope_argv(session, record_exit_command(log, safe_command) if log else safe_command,
-                                      unit_suffix, "Local", cwd_file=cwd_file)
+                                      unit_suffix, "Local", cwd_file=cwd_file,
+ shell=_shell_for_spawn(shell_mode))
         spawn_env = self._spawn_env(env_vars)
         if session.systemd_unit:
             spawn_env = systemd_user_bus_env(spawn_env)

@@ -1,24 +1,22 @@
-"""Tests for the runtime-adaptive terminal-tool description (powershell vs bash).
+"""The terminal tool's runtime-adaptive description and `shell` enum.
 
-Covers the two helpers for Windows PowerShell support in
-``tools/terminal_tool.py``:
+``_detect_shell_for_description`` and ``_build_dynamic_terminal_description`` in
+``tools/terminal_tool.py`` translate "what can this host run?" into the sentence
+the model reads and into the ``shell`` enum it may choose from.
 
-* ``_detect_shell_for_description`` — picks ``"powershell"`` or ``"bash"`` based on
-  platform + ``HERMES_SHELL_TYPE`` + PATH lookup for ``powershell``/``powershell.exe``.
-  ``@lru_cache``-d, so the suite clears the cache around every case.
-* ``_build_dynamic_terminal_description`` — rewrites the LLM-facing tool
-  description so its platform sentence and forbidden-command references match
-  the shell actually in use.
-
-All cases mock ``platform.system`` and ``shutil.which`` so they run
-identically on Linux CI (where the real platform is never Windows).
+Host shape arrives as a :class:`tools.environments.shell_modes.ShellProbes` value
+(platform as data), so the Windows shapes are covered on any CI host without
+patching ``platform.system`` or pretending ``shutil.which`` is something else.
+The host-native arms exercise the real probes.
 """
 
-import os
-from unittest import mock
+from __future__ import annotations
+
+import json
 
 import pytest
 
+from tools.environments import shell_modes as sm
 from tools.registry import registry
 from tools.terminal_tool import (
     TERMINAL_TOOL_DESCRIPTION,
@@ -26,275 +24,218 @@ from tools.terminal_tool import (
     _detect_shell_for_description,
 )
 
-DETECT = "tools.terminal_tool._detect_shell_for_description"
-SHUTIL_WHICH = "shutil.which"
-SYSTEM = "platform.system"
+GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
+PWSH7 = r"C:\Program Files\PowerShell\7\pwsh.exe"
+PS51 = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+POSIX_BASH = "/usr/bin/bash"
+
+
+def _probes(
+    *, windows: bool, bash: str | None = None, pwsh: str | None = None
+) -> sm.ShellProbes:
+    return sm.ShellProbes(
+        is_windows=windows,
+        find_bash=lambda **_: bash,
+        find_bash_posix=lambda: bash or POSIX_BASH,
+        find_pwsh=lambda: pwsh,
+        find_powershell=lambda: PS51 if windows else "powershell",
+    )
+
+
+WINDOWS_BOTH = _probes(windows=True, bash=GIT_BASH, pwsh=PWSH7)
+WINDOWS_PWSH_ONLY = _probes(windows=True, bash=None, pwsh=PWSH7)
+WINDOWS_PS51_ONLY = _probes(windows=True, bash=None, pwsh=None)
+POSIX_BASH_ONLY = _probes(windows=False, bash=POSIX_BASH, pwsh=None)
+POSIX_BOTH = _probes(windows=False, bash=POSIX_BASH, pwsh="/usr/bin/pwsh")
 
 
 @pytest.fixture(autouse=True)
-def _clear_detect_cache():
-    """``_detect_shell_for_description`` is lru_cached — reset around each test."""
-    _detect_shell_for_description.cache_clear()
+def _reset(monkeypatch):
+    sm.clear_cache()
+    monkeypatch.delenv("HERMES_SHELL_TYPE", raising=False)
     yield
-    _detect_shell_for_description.cache_clear()
-
-
-def _shell_type_env(value):
-    """Patch HERMES_SHELL_TYPE; ``None`` removes it (exercise the default)."""
-    env = dict(os.environ)
-    env.pop("HERMES_SHELL_TYPE", None)
-    if value is not None:
-        env["HERMES_SHELL_TYPE"] = value
-    return mock.patch.dict(os.environ, env, clear=True)
-
-
-# shutil.which matchers ------------------------------------------------
-def _which_matcher(wanted: str | None):
-    """Return a ``shutil.which`` side-effect that matches only *wanted*."""
-    def _which(exe):
-        if exe == wanted or exe == f"{wanted}.exe":
-            return fr"C:\Windows\System32\WindowsPowerShell\v1.0\{wanted}.exe"
-        return None
-    return _which
+    sm.clear_cache()
 
 
 # --------------------------------------------------------------------------- #
-# _detect_shell_for_description
+# _detect_shell_for_description — the shell a call WITHOUT `shell=` runs
 # --------------------------------------------------------------------------- #
+def test_detect_windows_with_git_bash_is_bash():
+    assert _detect_shell_for_description(WINDOWS_BOTH) == "bash"
 
 
-def test_detect_non_windows_is_bash():
-    with mock.patch(SYSTEM, return_value="Linux"), mock.patch(SHUTIL_WHICH) as fp:
-        assert _detect_shell_for_description() == "bash"
-        fp.assert_not_called()  # never probe off Windows
+def test_detect_windows_without_git_bash_is_pwsh7_when_installed():
+    assert _detect_shell_for_description(WINDOWS_PWSH_ONLY) == "pwsh"
 
 
-def test_detect_macos_is_bash():
-    with mock.patch(SYSTEM, return_value="Darwin"):
-        assert _detect_shell_for_description() == "bash"
+def test_detect_windows_without_git_bash_or_pwsh7_is_windows_powershell():
+    assert _detect_shell_for_description(WINDOWS_PS51_ONLY) == "powershell"
 
 
-
-def test_detect_windows_explicit_bash_returns_bash_when_found():
-    # bash mode with a usable Git Bash → the description reports "bash" so
-    # the model emits POSIX syntax into the shell it will actually run.
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("bash"), mock.patch(
-        "tools.environments.local._IS_WINDOWS", True
-    ), mock.patch(
-        "tools.environments.local._find_bash",
-        return_value=r"C:\Program Files\Git\bin\bash.exe",
-    ), mock.patch("tools.environments.local._bash_starts", return_value=True):
-        assert _detect_shell_for_description() == "bash"
+def test_detect_posix_is_bash():
+    assert _detect_shell_for_description(POSIX_BASH_ONLY) == "bash"
 
 
-def test_detect_windows_explicit_bash_returns_powershell_when_bash_unavailable():
-    # bash on Windows with no usable Git Bash → the terminal falls back to
-    # PowerShell (_resolve_shell), so the description reports "powershell".
-    # _find_bash is mocked to raise (deterministic on hosts where a real Git
-    # Bash exists); shutil.which must never be probed on this path.
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("bash"), mock.patch(
-        "tools.environments.local._IS_WINDOWS", True
-    ), mock.patch(
-        "tools.environments.local._find_bash",
-        side_effect=RuntimeError("Git Bash is not found on this system."),
-    ), mock.patch(SHUTIL_WHICH) as fp:
-        assert _detect_shell_for_description() == "powershell"
-
-        fp.assert_not_called()
+def test_configured_pwsh_mode_is_reported_when_the_host_can_run_it(monkeypatch):
+    monkeypatch.setenv("HERMES_SHELL_TYPE", "pwsh")
+    assert _detect_shell_for_description(WINDOWS_BOTH) == "pwsh"
 
 
-def test_detect_windows_auto_with_powershell_available():
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("auto"), mock.patch(
-        SHUTIL_WHICH, side_effect=_which_matcher("powershell")
-    ), mock.patch(
-        "tools.environments.local._find_bash", side_effect=lambda **kw: None
-    ), mock.patch(
-        "tools.environments.local._find_pwsh", return_value=None
-    ):
-        assert _detect_shell_for_description() == "powershell"
+def test_configured_bash_mode_that_cannot_run_reports_the_shell_that_will_run(
+    monkeypatch,
+):
+    """`terminal.shell: bash` on a host without Git Bash runs PowerShell — say so."""
+    monkeypatch.setenv("HERMES_SHELL_TYPE", "bash")
+    assert _detect_shell_for_description(WINDOWS_PWSH_ONLY) == "pwsh"
 
 
-def test_detect_windows_auto_pwsh_available_returns_pwsh():
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("auto"), mock.patch(
-        "tools.environments.local._find_bash", side_effect=lambda **kw: None
-    ), mock.patch(
-        "tools.environments.local._find_pwsh", return_value=r"C:\Program Files\PowerShell\7\pwsh.exe"
-    ):
-        assert _detect_shell_for_description() == "pwsh"
+def test_unknown_configured_mode_does_not_raise():
+    """A typo'd config value must not break schema assembly."""
+    import os
 
-
-def test_detect_windows_auto_pwsh_unavailable_returns_powershell():
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("auto"), mock.patch(
-        "tools.environments.local._find_bash", side_effect=lambda **kw: None
-    ), mock.patch(
-        "tools.environments.local._find_pwsh", return_value=None
-    ), mock.patch(
-        SHUTIL_WHICH, return_value=None
-    ):
-        assert _detect_shell_for_description() == "powershell"
-
-
-def test_detect_windows_default_unset_behaves_as_auto():
-    # HERMES_SHELL_TYPE unset → defaults to "auto" → git-bash probed, then
-    # powershell when neither bash nor pwsh is available.
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env(None), mock.patch(
-        SHUTIL_WHICH, side_effect=_which_matcher("powershell")
-    ), mock.patch(
-        "tools.environments.local._find_bash", side_effect=lambda **kw: None
-    ), mock.patch(
-        "tools.environments.local._find_pwsh", return_value=None
-    ):
-        assert _detect_shell_for_description() == "powershell"
-
-
-def test_detect_windows_auto_git_bash_available_returns_bash():
-    # auto + working git-bash → "bash", even when pwsh is available.
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("auto"), mock.patch(
-        "tools.environments.local._find_bash",
-        side_effect=lambda **kw: r"C:\Program Files\Git\bin\bash.exe",
-    ), mock.patch(
-        "tools.environments.local._find_pwsh", return_value=r"C:\Program Files\PowerShell\7\pwsh.exe"
-    ):
-        assert _detect_shell_for_description() == "bash"
-
-
-def test_detect_windows_explicit_pwsh_reports_pwsh_if_available():
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("pwsh"), mock.patch(
-        "tools.environments.local._find_pwsh", return_value=r"C:\pwsh\pwsh.exe"
-    ):
-        assert _detect_shell_for_description() == "pwsh"
-
-
-def test_detect_windows_explicit_powershell_reports_powershell_even_if_missing():
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("powershell"), mock.patch(
-        SHUTIL_WHICH, return_value=None
-    ), mock.patch(
-        "tools.environments.local._find_pwsh", return_value=None
-    ):
-        assert _detect_shell_for_description() == "powershell"
-
-
-def test_detect_windows_powershell_alias_available():
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("powershell"), mock.patch(
-        SHUTIL_WHICH, side_effect=_which_matcher("powershell")
-    ), mock.patch(
-        "tools.environments.local._find_pwsh", return_value=None
-    ):
-        assert _detect_shell_for_description() == "powershell"
-
-
-def test_detect_windows_unknown_shell_type_is_powershell():
-
-    # Any non-bash shell type on Windows → powershell (unknown types are
-    # treated like auto and resolve through the PowerShell chain).
-
-    with mock.patch(SYSTEM, return_value="Windows"), _shell_type_env("fish"), mock.patch(SHUTIL_WHICH) as fp, mock.patch(
-        "tools.environments.local._find_bash", side_effect=lambda **kw: None
-    ), mock.patch(
-        "tools.environments.local._find_pwsh", return_value=None
-    ):
-        assert _detect_shell_for_description() == "powershell"
-        fp.assert_not_called()
-
-
-def test_detect_is_cached_until_cleared():
-    # _detect_shell_for_description is @lru_cache-d and decides purely from
-    # platform.system() + HERMES_SHELL_TYPE (no PATH probe), so observe caching
-    # via the number of platform.system() calls.
-    with mock.patch(SYSTEM, return_value="Windows") as sysm, _shell_type_env("auto"), mock.patch(
-        "tools.environments.local._find_bash", side_effect=lambda **kw: None
-    ), mock.patch(
-        "tools.environments.local._find_pwsh", return_value=None
-    ):
-        assert _detect_shell_for_description() == "powershell"
-        assert _detect_shell_for_description() == "powershell"
-        assert sysm.call_count == 1  # second call served from lru_cache
-        _detect_shell_for_description.cache_clear()
-        assert _detect_shell_for_description() == "powershell"
-        assert sysm.call_count == 2  # re-evaluated after cache_clear
+    old = os.environ.get("HERMES_SHELL_TYPE")
+    os.environ["HERMES_SHELL_TYPE"] = "fish"
+    try:
+        assert _detect_shell_for_description(WINDOWS_BOTH) in (
+            "bash",
+            "pwsh",
+            "powershell",
+        )
+    finally:
+        if old is None:
+            os.environ.pop("HERMES_SHELL_TYPE", None)
+        else:
+            os.environ["HERMES_SHELL_TYPE"] = old
 
 
 # --------------------------------------------------------------------------- #
-# _build_dynamic_terminal_description
+# _build_dynamic_terminal_description — sentence + `shell` enum
 # --------------------------------------------------------------------------- #
+def test_build_names_both_modes_and_keeps_them_in_the_enum():
+    out = _build_dynamic_terminal_description(WINDOWS_BOTH)
+    desc = out["description"]
+    assert 'shell="bash"' in desc and 'shell="pwsh"' in desc
+    assert out["parameters"]["properties"]["shell"]["enum"] == [
+        sm.MODE_BASH,
+        sm.MODE_PWSH,
+    ]
 
 
-def test_build_returns_description_dict():
-    with mock.patch(DETECT, return_value="bash"), mock.patch(SYSTEM, return_value="Linux"):
-        out = _build_dynamic_terminal_description()
-    assert isinstance(out, dict)
-    assert set(out) == {"description"}
-    assert isinstance(out["description"], str) and out["description"]
+def test_build_windows_without_git_bash_drops_bash_from_the_enum():
+    out = _build_dynamic_terminal_description(WINDOWS_PWSH_ONLY)
+    desc = out["description"]
+    assert out["parameters"]["properties"]["shell"]["enum"] == [sm.MODE_PWSH]
+    assert "bash mode is disabled" in desc
+    assert "Git Bash" in desc  # the reason, so the model knows how to enable it
+
+
+def test_build_posix_without_powershell_drops_pwsh_from_the_enum():
+    out = _build_dynamic_terminal_description(POSIX_BASH_ONLY)
+    desc = out["description"]
+    assert out["parameters"]["properties"]["shell"]["enum"] == [sm.MODE_BASH]
+    assert 'Only `shell="bash"`' in desc
+    assert "PowerShell mode is disabled" in desc
 
 
 def test_build_powershell_uses_powershell_sentence_and_cmdlet_refs():
-    with mock.patch(DETECT, return_value="powershell"), mock.patch(SYSTEM, return_value="Windows"):
-        desc = _build_dynamic_terminal_description()["description"]
+    desc = _build_dynamic_terminal_description(WINDOWS_PS51_ONLY)["description"]
     assert "Windows PowerShell environment" in desc
-    # powershell-adapted forbidden-command references applied …
     assert "Do NOT use Get-Content/cat/type (use read_file)" in desc
     assert "Select-String/findstr (use search_files)" in desc
     assert "Out-Host -Paging" in desc
-    # … and the Linux/bash-only phrasings are gone.
     assert "Do NOT use cat/head/tail (use read_file)" not in desc
     assert "Execute shell commands on a Linux environment." not in desc
 
 
 def test_build_pwsh_uses_pwsh_sentence():
-    with mock.patch(DETECT, return_value="pwsh"), mock.patch(SYSTEM, return_value="Windows"):
-        desc = _build_dynamic_terminal_description()["description"]
+    desc = _build_dynamic_terminal_description(WINDOWS_PWSH_ONLY)["description"]
     assert "PowerShell 7 (pwsh)" in desc
-    # pwsh still gets cmdlet-adapted references
     assert "Do NOT use Get-Content/cat/type (use read_file)" in desc
-    assert "Select-String/findstr (use search_files)" in desc
-    assert "Out-Host -Paging" in desc
 
 
-def test_build_non_windows_leaves_linux_references_intact():
-    with mock.patch(DETECT, return_value="bash"), mock.patch(SYSTEM, return_value="Linux"):
-        desc = _build_dynamic_terminal_description()["description"]
+def test_build_posix_bash_keeps_linux_references():
+    desc = _build_dynamic_terminal_description(POSIX_BASH_ONLY)["description"]
     assert "Linux environment" in desc
     assert "Do NOT use cat/head/tail (use read_file)" in desc
-    # no powershell cmdlet substitutions on the bash/Linux path
     assert "Get-Content/cat/type" not in desc
 
 
 def test_build_windows_bash_uses_git_bash_sentence():
-    # git-bash default on Windows: the platform sentence must say Git
-    # Bash/MSYS, not mislead with "Linux environment".
-    with mock.patch(DETECT, return_value="bash"), mock.patch(SYSTEM, return_value="Windows"):
-        desc = _build_dynamic_terminal_description()["description"]
+    desc = _build_dynamic_terminal_description(WINDOWS_BOTH)["description"]
     assert "bash (Git Bash / MSYS) environment on Windows" in desc
     assert "Linux environment" not in desc
-    # bash syntax references stay intact (correct for git-bash)
     assert "Do NOT use cat/head/tail (use read_file)" in desc
     assert "Get-Content/cat/type" not in desc
 
 
-def test_static_description_contains_phrases_the_powershell_path_rewrites():
-    # Guard against the static description drifting out from under the
-    # str.replace() calls in _build_dynamic_terminal_description (a silent
-    # no-op rewrite would otherwise pass the powershell test above only by luck).
+def test_static_description_contains_phrases_the_dynamic_path_rewrites():
+    # The dynamic build is a set of str.replace() calls; if the static text drifts
+    # they become silent no-ops and the model sees the Linux phrasing on Windows.
     for phrase in (
         "Execute shell commands on a Linux environment.",
+        "The host OS, shell, and terminal backend are stated in your environment section",
         "Do NOT use cat/head/tail (use read_file)",
         "grep/rg/find/ls (use search_files)",
+        "sed/awk (use patch)",
+        "echo/heredoc file creation (use write_file)",
         "Pipe git output to cat if it might page.",
     ):
         assert phrase in TERMINAL_TOOL_DESCRIPTION
 
 
-# --------------------------------------------------------------------------- #
-# registry integration
-# --------------------------------------------------------------------------- #
+def test_build_keeps_the_schema_serializable_for_api_calls():
+    """The override replaces `parameters` wholesale — it must stay valid JSON schema."""
+    out = _build_dynamic_terminal_description(WINDOWS_PWSH_ONLY)
+    json.dumps(out)
+    assert out["parameters"]["type"] == "object"
+    assert "command" in out["parameters"]["properties"]
+    assert out["parameters"]["required"] == ["command"]
 
 
+# --------------------------------------------------------------------------- #
+# Host-native arms: the real probes on the machine running the suite
+# --------------------------------------------------------------------------- #
+@pytest.mark.platforms("windows")
+def test_windows_host_description_matches_its_own_availability():
+    out = _build_dynamic_terminal_description()
+    available = sm.available_modes()
+    assert out["parameters"]["properties"]["shell"]["enum"] == [
+        m for m in sm.MODES if m in available
+    ]
+    # PowerShell mode is always runnable on Windows (5.1 ships with the OS).
+    assert sm.MODE_PWSH in available
+    assert "Windows" in out["description"]
+
+
+@pytest.mark.platforms("posix")
+def test_posix_host_offers_bash_and_says_so():
+    out = _build_dynamic_terminal_description()
+    assert sm.MODE_BASH in sm.available_modes()
+    assert out["parameters"]["properties"]["shell"]["enum"][0] == sm.MODE_BASH
+
+
+# --------------------------------------------------------------------------- #
+# Registry integration
+# --------------------------------------------------------------------------- #
 def test_terminal_registered_with_dynamic_override():
     entry = registry.get_entry("terminal")
     assert entry is not None
     # Compare against the function on the CURRENT module object, not the one
-    # imported at this file's collection time: an earlier test may have
-    # reloaded tools.terminal_tool (importlib.reload), which re-registers the
-    # entry with the reloaded function and orphans our stale reference.
+    # imported at this file's collection time: an earlier test may have reloaded
+    # tools.terminal_tool (importlib.reload), which re-registers the entry.
     import tools.terminal_tool as live_terminal_tool
-    assert entry.dynamic_schema_overrides is live_terminal_tool._build_dynamic_terminal_description
+
+    assert (
+        entry.dynamic_schema_overrides
+        is live_terminal_tool._build_dynamic_terminal_description
+    )
+
+
+def test_registry_schema_carries_the_shell_parameter():
+    definitions = registry.get_definitions({"terminal"})
+    schema = next(
+        d["function"] for d in definitions if d["function"]["name"] == "terminal"
+    )
+    shell_spec = schema["parameters"]["properties"]["shell"]
+    assert shell_spec["type"] == "string"
+    assert set(shell_spec["enum"]) <= set(sm.MODES)

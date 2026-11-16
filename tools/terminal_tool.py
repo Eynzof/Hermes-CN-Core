@@ -19,11 +19,9 @@ import/patch target): ``terminal_tool_config`` (TERMINAL_* reads, ``_quiet``),
 ``terminal_tool_result`` (foreground result post-processing).
 """
 
-import functools
 import json
 import logging
 import os
-import platform
 import sys
 import time
 import threading
@@ -198,137 +196,22 @@ Persist: background=true, persist_on_release=true keeps the job alive across age
 """
 
 
-# [CN-fork] P-058: shell-aware tool description. Upstream states the host OS, shell and
-# backend in the environment section; the fork additionally rewrites the platform sentence
-# and the forbidden-command examples to the shell the terminal actually runs
-# (git-bash → pwsh → powershell), so the model never emits PowerShell cmdlets into a
-# git-bash session (or POSIX syntax into PowerShell).
-@functools.lru_cache(maxsize=1)
-def _detect_shell_for_description() -> str:
-    """Detect shell type for description purposes.
+# [CN-fork] P-058/P-073: the description and the `shell` enum follow what this host can
+# run. The logic lives in `tools/terminal_tool_shell_mode` (one topical sibling); these
+# names are re-exported here so `tools.terminal_tool.<name>` stays the import/patch target.
+from tools.terminal_tool_shell_mode import (
+    SHELL_PROPERTY,
+    build_dynamic_description as _build_dynamic_terminal_description,
+    detect_shell_for_description as _detect_shell_for_description,
+    interactive_shell_command as _interactive_shell_command,
+    resolve_shell_mode as _resolve_shell_mode,
+    shell_probes as _shell_probes,
+)
 
-    Returns ``"pwsh"``, ``"powershell"``, or ``"bash"``.
+# Kept addressable on this module for callers/tests that probe the description
+# (same facade contract as the other terminal_tool_* companions).
+_SHELL_MODE_FACADE = (_detect_shell_for_description, _shell_probes)
 
-    Mirrors ``_resolve_shell()`` in ``tools/environments/local.py``:
-
-    - Non-Windows: returns ``"bash"``.
-    - ``HERMES_SHELL_TYPE=bash`` (explicit): returns ``"bash"`` only when
-      a usable Git Bash was found (discovery + ``_bash_starts()`` smoke
-      test) — otherwise the terminal falls back to PowerShell, so
-      ``"powershell"`` is reported.
-    - ``auto``/unset (default): git-bash if a working install exists
-      (``_find_bash(raise_if_missing=False)`` — discovery + smoke test),
-      else PowerShell 7 (``pwsh``), else Windows PowerShell 5.1.
-    - ``pwsh`` / ``powershell`` (explicit): PowerShell only — never git-bash.
-    - Unknown values: treated as ``auto`` (the description path must not
-      raise; ``_resolve_shell()`` still raises for unknown values at
-      execution time).
-
-    Cached via ``@lru_cache`` so repeated calls are essentially free.
-    """
-    if platform.system() != "Windows":
-        return "bash"
-
-    shell_type = os.environ.get("HERMES_SHELL_TYPE", "auto").strip().lower() or "auto"
-
-    if shell_type == "bash":
-        # bash mode: describe the shell the terminal actually runs.  Git
-        # Bash present and usable → "bash"; missing/broken → _resolve_shell()
-        # falls back to PowerShell, so describe that instead.  The probe is
-        # gated on the real OS flag (_IS_WINDOWS) so a mocked
-        # platform.system() in tests never triggers an actual bash search.
-        try:
-            from tools.environments.local import _IS_WINDOWS, _bash_starts, _find_bash
-            if _IS_WINDOWS:
-                bash_path = _find_bash()
-                if bash_path and _bash_starts(bash_path):
-                    return "bash"
-        except Exception:
-            pass
-        return "powershell"
-
-    if shell_type in ("pwsh", "powershell"):
-        # Explicit PowerShell: probe pwsh (PowerShell 7), never git-bash.
-        try:
-            from tools.environments.local import _find_pwsh
-
-            if _find_pwsh():
-                return "pwsh"
-        except Exception:
-            pass
-        return "powershell"
-
-    # auto / unset / unknown → git-bash-first default, mirroring
-    # ``_resolve_shell()`` (bash → pwsh → powershell).
-    try:
-        from tools.environments.local import _find_bash, _find_pwsh
-
-        if _find_bash(raise_if_missing=False):
-            return "bash"
-        if _find_pwsh():
-            return "pwsh"
-    except Exception:
-        pass
-
-    # Fallback to Windows PowerShell 5.1
-    return "powershell"
-
-
-def _build_dynamic_terminal_description() -> dict:
-    """Return dynamic schema overrides reflecting the actual shell in use.
-
-    Called lazily each time ``registry.get_definitions()`` assembles the
-    terminal tool schema, so the description always matches the shell
-    the agent will actually execute against.
-    """
-    shell_type = _detect_shell_for_description()
-
-    if shell_type == "pwsh":
-        platform_env = "Execute powershell commands in a PowerShell 7 (pwsh) environment"
-    elif shell_type == "powershell":
-        platform_env = "Execute powershell commands on a Windows PowerShell environment"
-    elif platform.system() == "Windows":
-        # git-bash default on Windows — "Linux environment" would mislead the
-        # model about where commands run.
-        platform_env = "Execute shell commands in a bash (Git Bash / MSYS) environment on Windows"
-    else:
-        platform_env = "Execute shell commands on a Linux environment"
-
-    # Replace the static platform sentence with the real platform/shell one.
-    new_description = TERMINAL_TOOL_DESCRIPTION.replace(
-        "Execute shell commands on a Linux environment.",
-        platform_env + "."
-    )
-
-    # ------------------------------------------------------------------
-    # For PowerShell (both pwsh and powershell.exe), also adapt
-    # Linux/bash-specific command references so the agent sees cmdlets it
-    # might actually be tempted to misuse. The core guidance ("use agent
-    # tools instead of shell commands") stays the same; only the example
-    # commands change.
-    if shell_type in ("powershell", "pwsh"):
-        new_description = new_description.replace(
-            "Do NOT use cat/head/tail (use read_file)",
-            "Do NOT use Get-Content/cat/type (use read_file)",
-        )
-        new_description = new_description.replace(
-            "grep/rg/find/ls (use search_files)",
-            "Select-String/findstr (use search_files)",
-        )
-        new_description = new_description.replace(
-            "sed/awk (use patch)",
-            "Set-Content/Out-File (use patch)",
-        )
-        new_description = new_description.replace(
-            "echo/heredoc file creation (use write_file)",
-            "echo/Set-Content/Out-File file creation (use write_file)",
-        )
-        new_description = new_description.replace(
-            "Pipe git output to cat if it might page.",
-            "Pipe git output to Out-Host -Paging if it might page.",
-        )
-
-    return {"description": new_description}
 
 # Environment lifecycle state.
 _active_environments: dict[str, Any] = {}
@@ -1315,29 +1198,6 @@ def _normalize_terminal_mode(
     return background, interactive
 
 
-def _interactive_shell_command() -> str:
-    """Return the shell command that starts a persistent interactive session.
-
-    Used when ``terminal(mode='interactive')`` is called without an explicit
-    command — the model can also pass its own REPL (e.g. ``python``).
-    """
-    import sys
-
-    if sys.platform == "win32":
-        try:
-            from tools.environments.local import _resolve_shell
-
-            shell_type, _ = _resolve_shell()
-        except Exception:
-            shell_type = "powershell"
-        if shell_type == "bash":
-            return "bash -i"
-        if shell_type == "pwsh":
-            return "pwsh -NoLogo -NoExit"
-        return "powershell -NoLogo -NoExit"
-    return "bash -i"
-
-
 def _continue_background_session(
     process_id: str,
     command: str,
@@ -1498,6 +1358,9 @@ class _ExecPlan:
     # Set when a foreground `cmd &` (the trailing `&` its only backgrounding) is run as
     # terminal(command="cmd", background=true) instead of being refused: the command to run.
     auto_background_command: Optional[str] = None
+    # [CN-fork] P-073: shell mode this call runs under ("bash"/"pwsh"), or None for the
+    # environment's configured default. Validated against what this host can run.
+    shell_mode: Optional[str] = None
 
 
 _PROMOTED_NOTE = (
@@ -1512,7 +1375,7 @@ def _plan_execution(
     command: Any, *, task_id: Optional[str], timeout: Optional[int],
     background: bool, _host_local: bool,
     interactive: bool = False, promote_on_timeout: bool = False,
-    wait_for_pattern: Optional[str] = None,
+    wait_for_pattern: Optional[str] = None, shell: Optional[str] = None,
 ) -> _ExecPlan:
     """Resolve backend, env-cache key, image, cwd and timeout for one call.
 
@@ -1618,6 +1481,7 @@ def _plan_execution(
         config=config, env_type=env_type, effective_task_id=effective_task_id,
         image=image, cwd=cwd, host_cwd=host_cwd, effective_timeout=timeout or config["timeout"],
         promoted_from_foreground_timeout=promoted, auto_background_command=auto_bg,
+        shell_mode=_resolve_shell_mode(shell, env_type),
     )
 
 
@@ -1799,9 +1663,13 @@ def _run_foreground(
             # internal env.execute() consumers stay unbounded.
             execute_kwargs = dict(
                 timeout=effective_timeout, cwd=command_cwd, bounded_capture=True,
-                **_yield_kwargs(command, env_type=env_type, cwd=command_cwd, effective_task_id=eff,
-                                task_id=task_id, session_key=session_key),
-            )
+                  **_yield_kwargs(command, env_type=env_type, cwd=command_cwd, effective_task_id=eff,
+                                  task_id=task_id, session_key=session_key),
+              )
+            # [CN-fork] P-073: the per-call shell mode reaches the local
+            # backend only; other backends have no host shell to switch.
+            if plan.shell_mode and env_type == "local":
+                execute_kwargs["shell_mode"] = plan.shell_mode
             # [CN-fork] P-061/P-054: live-output hooks (registry warm-up + the
             # tool_call_id-keyed desktop output sink).
             if adopt_session is not None:
@@ -1991,6 +1859,7 @@ def terminal_tool(
     wait_for_pattern: Optional[str] = None,
     inactivity_timeout: Optional[int] = None,
     process_id: Optional[str] = None,
+    shell: Optional[str] = None,
 ) -> str:
     """Execute *command* in the configured terminal environment; returns a JSON string.
 
@@ -2043,7 +1912,7 @@ def terminal_tool(
             background, interactive = _normalize_terminal_mode(mode, interactive, background)
         # Interactive mode may omit `command` — default to a persistent shell.
         if command is None and interactive:
-            command = _interactive_shell_command()
+            command = _interactive_shell_command(shell)
         if interactive:
             # Persistent shell/REPL: force background + PTY so stdin stays open
             # for later continuation (terminal(command=..., process_id=<session_id>)).
@@ -2064,7 +1933,7 @@ def terminal_tool(
         plan = _plan_execution(
             command, task_id=task_id, timeout=timeout, background=background, _host_local=_host_local,
             interactive=interactive, promote_on_timeout=promote_on_timeout,
-            wait_for_pattern=wait_for_pattern,
+            wait_for_pattern=wait_for_pattern, shell=shell,
         )
         auto_bg = getattr(plan, "auto_background_command", None)
         if auto_bg is not None:
@@ -2143,6 +2012,7 @@ def terminal_tool(
                     heartbeat_seconds=heartbeat,
                     persist_on_release=persist_on_release,
                     auto_backgrounded=auto_bg is not None and plan.promoted_from_foreground_timeout is None,
+                    shell_mode=plan.shell_mode,
                 )
                 if plan.promoted_from_foreground_timeout is not None:
                     result = _with_promoted_note(result, plan.promoted_from_foreground_timeout)
@@ -2194,6 +2064,8 @@ TERMINAL_SCHEMA = {
                 "type": "string",
                 "description": "The shell command to execute. Optional when mode='interactive' (defaults to a persistent shell session)."
             },
+            # --- [CN-fork] P-073: per-call shell mode (local backend) ---
+            "shell": SHELL_PROPERTY,
             # --- [CN-fork] P-061: mode / interactive / session continuation ---
             "mode": {
                 "type": "string",
@@ -2357,6 +2229,7 @@ def _handle_terminal(args, **kw):
         wait_for_pattern=args.get("wait_for_pattern"),
         inactivity_timeout=args.get("inactivity_timeout"),
         process_id=args.get("process_id"),
+        shell=args.get("shell"),
     )
 
 

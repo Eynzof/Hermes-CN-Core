@@ -14,6 +14,7 @@ The consolidated repository guard keeps both blocking supply-chain patterns and 
 
 | ID | Target file | What it does | Why we need it | Upstream status |
 |---|---|---|---|---|
+| **P-073** | `tools/environments/shell_modes.py` (new), `tools/environments/local_shell_mode.py` (new), `tools/terminal_tool_shell_mode.py` (new), `tools/process_registry_shell.py` (new), `tools/environments/local.py`, `tools/terminal_tool.py`, `tools/terminal_tool_background.py`, `tools/process_registry.py`, `tests/tools/test_shell_modes.py` (new), `tests/tools/test_terminal_shell_mode.py` (new), `tests/tools/test_terminal_dynamic_description.py` | **Both shells, one terminal tool.** `terminal(shell="bash"|"pwsh")` runs a single command under Git Bash (native POSIX syntax always translated by `bash_fix`) or PowerShell (7 when installed, else 5.1 with PS7 syntax always down-levelled by `pwsh_fix`/`pwsh_transform`), and a mode the host cannot run is REFUSED with an actionable error instead of silently running the other shell. | Windows users switch between POSIX build scripts and PowerShell tooling in one session; the old surface made that a config-only, session-wide choice, and `terminal.shell: bash` on a box without Git for Windows silently ran PowerShell (POSIX syntax in the wrong shell). | Worth upstreaming — a per-call shell is generic, and the availability-aware schema text is the difference between a retry and a wasted turn |
 | **P-071** | `pm/lock.json`, `pm/pyproject.toml`, `pm/uv.lock`, `pm/package.py`, `pm/store.py`, `.github/workflows/release-runtime.yml`, `tests/pm/test_tree_digest_links.py`, `tests/pm/test_store_extract.py`, `MAINTAINING.md` | **The PM toolchain moves to CPython 3.15.2** — `pm/lock.json`'s `python` pin goes `3.14.9+20261021` → `3.15.2+20261110` across all eight python-build-standalone targets (hashes from the release's own `SHA256SUMS`, re-checked against the downloaded win32-x64 archive, and every locked URL round-trips through `Python.fetch_url`), plus `pm/pyproject.toml` `requires-python` `>=3.14,<3.15` → `>=3.15,<3.16` and a re-resolved `pm/uv.lock` (`==3.15.*`). `linux-arm64-bionic` keeps its Termux `python_3.14.6-1` deb: a separate supplier's manual pin, and `Python.main_bin_rel` follows it. Two 3.15 side effects are handled here: `_tree_digest` folds a Windows separator out of link target text (3.15 normalises tarfile symlink targets, which would have invalidated every recorded store digest), and the symlink regression test compares link targets as paths. | `uv run hermes` on 3.15.2 ran against a dependency generation PM had built with 3.14.9, so the tree's compiled modules could not load (`orjson.cp314-win_amd64.pyd` → `ModuleNotFoundError: No module named 'orjson.orjson'`). P-070 turned that from a crash into a refusal, but the install itself was still on the old interpreter — every `uv run` warned and skipped PM's generation. Pinning 3.15.2 puts the launcher, the generation, the docker image and the sealed runtime P-068 left behind on one interpreter; the artifact's SQLite is 3.53.1 with FTS5/FTS3/FTS4/RTREE/MATH, i.e. still past the 3.51.3 WAL-reset gate and the `release-runtime.yml` contract. | Fork release-timing policy, the toolchain half of P-068: upstream pins one interpreter line per release and never runs a checkout against another. |
 | **P-070** | `pm/environments.py`, `hermes_cli/config.py`, `tests/pm/test_runtime_selection.py`, `tests/pm/test_lease_reselection.py`, `tests/pm/test_runtime_boot_gc.py`, `tests/hermes_cli/test_config_lkg_backup.py` | **A dependency environment built for another interpreter is never activated** — `activate_dependencies` compares `pyvenv.cfg`'s recorded version with the running `sys.version_info[:2]` (new `environment_matches_interpreter`) and, on a positive mismatch, keeps the booting interpreter's own packages instead of selecting the tree, after one warning that names both versions and the two ways out -- launch with the install's own interpreter, or move PM's pinned Python. Unknown versions (a hand-built venv that records none) keep the old behaviour. `_last_known_good_fallback` no longer re-imports `moa_config` outside a guard, so the module that broke the load cannot break the recovery. | `uv run hermes` on 3.15.2 died with `ModuleNotFoundError: No module named 'orjson.orjson'`: the committed generation was built by the pinned 3.14.9 store Python, so its `orjson.cp314-win_amd64.pyd` cannot load into 3.15 *and* the tree's pure-Python copies shadow the interpreter's own correct ones — the exact mixed-ABI failure `committed_venv`'s docstring describes, which activation simply never applied to a committed generation. Because the config loader imported `moa_config` a second time inside its own fallback, the half-working environment escalated from "last-known-good config" to a crash at `hermes chat`. | Generic hardening of a shared boot path: upstream installs one interpreter per release, so it never sees the skew, but refusing the mix is what `committed_venv` already promises. |
 | **P-069** | `hermes_cli/console_engine.py`, `tests/hermes_cli/test_console_engine.py` | **One state.db writer per process** — `_session_db(read_only=False)` takes `hermes_state_registry.acquire()` and releases it in a `finally` (`release_or_close`, which falls back to a plain close when the handle is not registry-managed) instead of minting a bare `SessionDB()`. Reads keep attaching their own `read_only=True` handle, unchanged. `_session_db` became a `@contextlib.contextmanager`, so every `with _session_db() as db:` call site is untouched. | The console runs *inside* the dashboard process. #90837 made the writer one-per-path and #100896 stopped reads from adding a second one, but the mutating path (`sessions rename`, `sessions optimize`, `sessions repair`) still opened its own writer connection, write lock, token-writer thread and close-time WAL checkpoint on the same file — the duplicate `hermes_state_readpool._HANDLES_PER_PATH_WARN` warns about, and the one lifecycle the registry exists to serialize. With no other holder the refcount is the sole reference, so a standalone console behaves exactly as before. `hermes_cli/sessions_cmd.py` keeps its bare one-shot opens on purpose: separate short-lived CLI processes with no in-process peer to share with. | Generic and upstream-worthy: the console-side half of #90837. |
@@ -1318,3 +1319,68 @@ Windows platform now requires PowerShell 7 (`pwsh`) or Windows PowerShell (syste
 **Tested.** `tests/tools/test_terminal_process_llm_ergonomics.py` (new, 23 tests): pattern wait (matched-while-running / exited-without-match / invalid regex), inactivity early-return + pattern default cap, `since_chars` new-output-only, `read_log` export (`output_path` + `'auto'`) and truncation metadata, `poll(offset)` + `exit_code_meaning` + truncation, adopt flow end-to-end (real Popen: timeout-promote keeps the process alive and killable; pattern-promote; no-callback still kills at 124), mode normalization, interactive shell command, live session continuation (real subprocess: sends `hello` to stdin, returns only the new output), continuation error paths, and schema-surface assertions. Full `tests/tools` terminal/process/base sweep + `tests/gateway` process/terminal/watcher sweep + `tests/run_agent/test_repair_tool_arg_keys.py` pass (507 + 152 + 53); `ruff check .` clean. The only failures in the sweep are pre-existing on this checkout (temp-dir junction `cwd_echo`, `test_teams` collection, browser-path termux, order-dependent spill/wake-word flakes) — verified identical with the patch stashed.
 
 **Should we upstream?** Yes for the generic parts: blocking pattern waits, inactivity early-return, `since_chars` cursors, background `output_path` export + truncation metadata, poll offset reads, promotion (local-backend-first), unified `elapsed_seconds`/`exit_code_meaning`/`hint` metadata, and the schema aliases are all backend-agnostic. The naming (`mode`, `process_id`, `block`) is just sugar over existing params. Related: P-049 (rtk/post-processing pipeline), P-013 (arg-key repair), P-047/P-054 (delegation observability).
+
+P-073: per-call shell mode — `terminal(shell="bash" | "pwsh")` on one host
+
+**Symptom / need.** The terminal tool ran exactly ONE shell per session, chosen by `terminal.shell`
+→ `HERMES_SHELL_TYPE`. Two consequences bit on Windows: (1) a session that needed both a POSIX build
+script and a PowerShell tool had no way to ask for the other shell, and (2) `terminal.shell: bash`
+on a machine without Git for Windows silently executed the command under PowerShell, so a POSIX
+command either failed confusingly or, worse, half-ran with different semantics (P-054's graceful
+degrade). The Linux mirror case — `terminal.shell: pwsh` on a host without PowerShell — silently ran
+bash. The tool description also had no way to say "this mode does not exist here".
+
+**What was implemented.**
+
+1. **`tools/environments/shell_modes.py` (new).** One source of truth for the two modes: alias
+   normalization (`PowerShell`, `ps7`, `git-bash`, …), availability probing through a
+   `ShellProbes` value (host facts as DATA, so the rules are testable without faking an OS),
+   `resolve_shell_for_mode(mode)` returning `(shell_type, shell_path)` — `bash`, `pwsh`, or
+   `powershell` for the 5.1 chain — and `ShellModeUnavailable` carrying the reason plus the modes
+   that ARE available. `describe_modes()` renders the schema sentence.
+2. **`tools/environments/local.py`.** `LocalEnvironment.__init__(shell_mode=...)` pins a mode
+   strictly; `execute(shell_mode=...)` runs ONE command under another mode via a ContextVar scope
+   (`run_bounded_sync` copies the context into its deadline worker, so the spawn sees it too). Both
+   shells share the environment: one cwd, one snapshot, and a per-mode binary cache
+   (`_shell_profiles`). `_wrap_command`, `_run_bash`, `_run_powershell`, `_wrap_command_powershell*`,
+   `_get_pwsh_session`, `_update_cwd` and `_extract_cwd_from_output` all read the EFFECTIVE shell,
+   so bash mode always runs `fix_bash_command` and a PowerShell 5.1 mode always runs
+   `fix_pwsh_command` + `pwsh_transform`. The opt-in pwsh-session / cmd.exe fast paths are skipped
+   while an override is in scope (they are bound to the binary the environment started with).
+3. **`tools/terminal_tool.py`.** `TERMINAL_SCHEMA` gains `shell` (`enum: bash|pwsh`); the dynamic
+   schema override narrows that enum to the modes this host can run and rewrites the description to
+   say which one is DISABLED and that asking for it errors. `_plan_execution(..., shell=...)`
+   validates it (`_resolve_shell_mode`): unknown spelling → error listing the valid modes; a mode
+   the host cannot run → error naming the missing install, the available modes, and how to retry;
+   a non-local backend → error (the sandbox owns its shell). `plan.shell_mode` reaches the local
+   `execute()` and the background spawn; `mode='interactive'` picks its REPL from the same mode.
+   `_detect_shell_for_description()` now reports what a call WITHOUT `shell=` will really run.
+4. **`tools/terminal_tool_background.py` / `tools/process_registry.py`.** `spawn_local(...,
+   shell_mode=...)` → `_shell_for_spawn` → `_scope_argv(..., shell=...)`, so
+   `terminal(shell="bash", background=true)` builds `bash -lc <wrapper>` even when the environment
+   resolved PowerShell.
+
+**Deliberate non-changes.** `_resolve_shell()` keeps its bash → pwsh → powershell preference chain
+and its tolerant fallback for `auto` (P-050/P-054 behavior); only an EXPLICIT request for a mode the
+host cannot run is an error. POSIX hosts still default to bash. `auto`/unset `shell=` is byte-for-byte
+the previous behavior. No new env var, no config key: the mode is a tool argument.
+
+**Tested.** `tests/tools/test_shell_modes.py` (new, 34 tests: normalization, the four host shapes with
+fake probes, the strict `ShellModeUnavailable` contract, description text, scope semantics),
+`tests/tools/test_terminal_shell_mode.py` (new, 22 tests: unknown/blank/alias handling, "no Git Bash →
+bash mode errors and the command does not run", "no PowerShell → pwsh mode errors", the non-local
+backend refusal, `shell_mode` reaching `env.execute`, `_shell_for_spawn`/`_scope_argv`, and
+host-native E2E — one session running `x=abc; echo "bash:${x:1}"` in bash mode (`bash:bc`) and
+`Write-Output ('ps:' + (2+2))` in pwsh mode (`ps:4`), a bash_fix-only `rev` fallback, and a
+PS7-only `&&` command on the real Windows PowerShell 5.1), and
+`tests/tools/test_terminal_dynamic_description.py` (rewritten: probe-driven description + `shell`
+enum, no `platform.system` patching). The new code sits in topical siblings —
+`tools/environments/local_shell_mode.py` (mode scope + fast-path ladder),
+`tools/terminal_tool_shell_mode.py` (description/schema/validation) and
+`tools/process_registry_shell.py` (background argv) — so none of `local.py`,
+`terminal_tool.py` or `process_registry.py` grew (all three are over the 2,000-line target
+and the code-health ratchet only lets them shrink).
+
+**Should we upstream?** Yes. A per-call shell mode is generic, the availability probe is what stops
+a schema promising a shell that does not exist, and the strict error is strictly better than
+P-054's silent degrade — which stays available for `auto`.

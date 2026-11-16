@@ -185,6 +185,7 @@ class TestTextToSpeechToolWithPiper:
         def raise_import():
             raise ImportError("No module named 'piper'")
 
+        monkeypatch.setattr("pm.extras.extra_supported", lambda _: True)
         monkeypatch.setattr(tts_tool, "_import_piper", raise_import)
 
         cfg = {"provider": "piper"}
@@ -221,3 +222,11 @@ class TestCheckTtsRequirementsPiper:
 
         monkeypatch.setattr(tts_tool, "_check_piper_available", lambda: True)
         assert check_tts_requirements() is True
+
+
+def test_unsupported_piper_explains_runtime_without_installing(monkeypatch):
+    monkeypatch.setattr("pm.extras.extra_supported", lambda _: False)
+    monkeypatch.setattr(tts_tool, "_import_piper", lambda: (_ for _ in ()).throw(ImportError("unavailable")))
+    provider, error = tts_tool._select_builtin_engine("piper")
+    assert provider == "piper"
+    assert "not supported" in error and "Python" in error

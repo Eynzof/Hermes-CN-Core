@@ -30,7 +30,7 @@ def test_import_time_trace(timing_context, perf_output_dir):
     cmd = [sys.executable, "-X", "importtime", "-c", "from run_agent import AIAgent"]
 
     with timing_context.measure("import_cascade"):
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=60)
 
     total_ms = timing_context.summary().get("import_cascade", {}).get("total_ms", 0)
     trace_path = perf_output_dir / "raw" / "import_timing.log"
@@ -105,7 +105,7 @@ def test_import_time_lazy(timing_context):
     with timing_context.measure("import_lazy"):
         result = subprocess.run(
             [sys.executable, "-c", _LAZY_IMPORT_PROBE],
-            capture_output=True, text=True, timeout=120, cwd=str(PROJECT_ROOT),
+            check=False, capture_output=True, text=True, timeout=120, cwd=str(PROJECT_ROOT),
         )
     assert result.returncode == 0, f"probe failed:\n{result.stderr[-2000:]}"
     lines = [ln for ln in result.stdout.splitlines() if ln.startswith("RESULT ")]
@@ -173,7 +173,7 @@ def test_agent_init_minimal_config(timing_context):
     with patch("run_agent.OpenAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         with timing_context.measure("init_agent_minimal"):
-            agent = AIAgent(
+            _agent = AIAgent(
                 base_url="http://localhost:9999/v1", api_key="sk-test-mock-key",
                 model="test/mock-model", max_iterations=2, quiet_mode=True,
                 skip_context_files=True, skip_memory=True, enabled_toolsets=[],
@@ -192,7 +192,7 @@ def test_get_tool_definitions_timing(timing_context):
     with timing_context.measure("get_tool_definitions_first"):
         tools = get_tool_definitions()
     with timing_context.measure("get_tool_definitions_cached"):
-        tools2 = get_tool_definitions()
+        _tools2 = get_tool_definitions()
 
     summary = timing_context.summary()
     first_ms = summary.get("get_tool_definitions_first", {}).get("total_ms", 0)
@@ -226,7 +226,7 @@ def test_session_db_connection_timing(timing_context, tmp_path):
 
     with timing_context.measure("session_db_connect"):
         # SessionDB connects on init
-        db = SessionDB(db_path=db_path)
+        _db = SessionDB(db_path=db_path)
 
     total_ms = timing_context.summary().get("session_db_connect", {}).get("total_ms", 0)
     print(f"\n  Session DB init: {total_ms:.1f}ms")

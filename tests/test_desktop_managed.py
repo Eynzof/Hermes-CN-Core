@@ -48,9 +48,9 @@ def test_cmd_dashboard_claims_when_not_desktop_managed(monkeypatch):
 
     is_managed = os.environ.get("HERMES_DESKTOP_MANAGED") == "1"
     if is_managed:
-        port_locks = []
+        _port_locks = []
     else:
-        port_locks = mock_claim_port_set(_compute_well_known_ports(9120))
+        _port_locks = mock_claim_port_set(_compute_well_known_ports(9120))
 
     assert call_count == 1, "claim_port_set should be called exactly once"
     assert captured_ports == [9120, 8644, 8645]

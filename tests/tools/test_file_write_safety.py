@@ -5,6 +5,7 @@ Based on PR #1085 by ismoilh (salvaged).
 
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -845,6 +846,33 @@ class TestProtectedInstructionFiles:
         assert not res.get("error"), res
         assert approvals["calls"] == []
 
+    def test_instruction_files_in_real_hermes_home_are_gated(
+        self, tmp_path, approvals, monkeypatch
+    ):
+        """#92146: the home exemption must not skip the basename / extra-pattern
+        match. The LIVE SOUL.md / AGENTS.md and operator-listed cron scripts in the
+        home steer the agent; denied writes stay unwritten."""
+        import tools.file_tools_write_guards as ft
+        fake_home = tmp_path / ".hermes"
+        (fake_home / "scripts").mkdir(parents=True)
+        monkeypatch.setattr(
+            ft, "_get_real_hermes_home", lambda: str(fake_home.resolve())
+        )
+        monkeypatch.setattr(
+            ft, "_protected_instruction_config", lambda: (True, ["*.py"])
+        )
+        approvals["answer"] = "deny"
+        for target in (fake_home / "SOUL.md", fake_home / "AGENTS.md",
+                       fake_home / "scripts" / "prerun.py"):
+            res = self._write(target)
+            assert res.get("error") and "BLOCKED" in res["error"], target
+            assert not target.exists()
+        assert len(approvals["calls"]) == 3
+        # Ordinary home files remain out of this gate.
+        res = self._write(fake_home / "state.json", "{}")
+        assert not res.get("error"), res
+        assert len(approvals["calls"]) == 3
+
     # ---- patch tool -----------------------------------------------------
 
     def test_patch_replace_mode_is_gated(self, tmp_path, approvals):
@@ -962,6 +990,125 @@ class TestProtectedInstructionFiles:
 
         assert rendered["choices"] == ["once", "deny"]
 
+    # ---- Desktop vocabulary: approve / deny (#190) -----------------------
+    @contextmanager
+    def _gateway_answers(self, session_key, *answers):
+        """Real gateway round-trip: answer each prompt with the next word in *answers*
+        (the last one repeats; no words at all leaves every prompt unanswered)."""
+        import tools.approval as A
+        from tools import approval_context
+
+        prompts, queue = [], list(answers)
+
+        def notify(approval_data):
+            prompts.append(approval_data)
+            if queue:
+                A.resolve_gateway_approval(
+                    session_key, queue.pop(0) if len(queue) > 1 else queue[0])
+
+        token = approval_context.set_current_session_key(session_key)
+        A.register_gateway_notify(session_key, notify)
+        try:
+            yield prompts
+        finally:
+            A.unregister_gateway_notify(session_key)
+            approval_context.reset_current_session_key(token)
+
+    def test_desktop_approve_choice_grants_the_write(self, tmp_path):
+        """Regression for #190: Desktop ``approval.respond`` answers ``"approve"`` /
+        ``"deny"`` (hermes-api.ts), not the scope words. ``"approve"`` missed the grant
+        whitelist and fell into the deny branch, so the user who clicked 允许执行 was
+        logged as refusing and no protected file could ever be written.
+        """
+        target = tmp_path / "AGENTS.md"
+        with self._gateway_answers("protected-files-desktop-approve", "approve") as prompts:
+            res = self._write(target, "desktop approved")
+        assert not res.get("error"), res
+        assert target.read_text(encoding="utf-8") == "desktop approved"
+        assert len(prompts) == 1
+        # Still one operation only: the card offers no scope this gate discards.
+        assert prompts[0].get("allow_session") is False
+        assert prompts[0].get("allow_permanent") is False
+
+    @pytest.mark.parametrize("choice", ["once", "session", "always", "approve"])
+    def test_grant_words_cover_one_operation_only(self, tmp_path, choice):
+        """``once`` / ``session`` / ``always`` keep granting (nothing is persisted for this
+        gate either way), and the Desktop's ``approve`` joins them as a ONE-TIME grant:
+        the next write prompts again and no scope is remembered."""
+        import tools.approval as A
+
+        session_key = f"protected-files-one-op-{choice}"
+        target = tmp_path / "AGENTS.md"
+        with self._gateway_answers(session_key, choice, "deny") as prompts:
+            first = self._write(target, "first")
+            second = self._write(target, "second")
+        assert not first.get("error"), first
+        assert "BLOCKED" in second.get("error", ""), "the second write must re-prompt"
+        assert len(prompts) == 2
+        assert A.is_approved(session_key, "protected_instruction_file") is False
+        assert target.read_text(encoding="utf-8") == "first"
+
+    def test_gateway_deny_choice_still_denies(self, tmp_path):
+        target = tmp_path / "AGENTS.md"
+        with self._gateway_answers("protected-files-desktop-deny", "deny"):
+            res = self._write(target)
+        assert "BLOCKED" in res.get("error", ""), res
+        assert "was denied by the user" in res["error"]
+        assert not target.exists()
+
+    @pytest.mark.parametrize("answer,label", [("yep", "'yep'"), ("", "<no choice>")],
+                             ids=["unknown_word", "empty_choice"])
+    def test_unknown_choice_is_a_protocol_error_not_a_user_denial(self, tmp_path, answer, label):
+        """An unrecognized (or empty) resolved choice grants nothing, and says so:
+        reporting it as "the user denied" (as #190 did for ``approve``) buries the
+        protocol mismatch in the log."""
+        target = tmp_path / "AGENTS.md"
+        with self._gateway_answers("protected-files-unknown", answer):
+            res = self._write(target)
+        assert "BLOCKED" in res.get("error", ""), res
+        assert "unrecognized approval choice" in res["error"]
+        assert label in res["error"], "the offending answer must be named"
+        assert "NOT a decision by the user" in res["error"]
+        assert "denied by the user" not in res["error"]
+        assert not target.exists()
+
+    def test_unresolved_prompt_reports_timeout_not_denial(self, tmp_path, monkeypatch):
+        """No answer fails closed with its own wording — silence is neither consent nor a
+        user refusal."""
+        from tools import approval_context
+
+        monkeypatch.setattr(approval_context, "_get_approval_timeout", lambda: 0)
+        target = tmp_path / "AGENTS.md"
+        with self._gateway_answers("protected-files-unresolved") as prompts:
+            res = self._write(target)
+        assert len(prompts) == 1
+        assert "timed out without a user response" in res.get("error", ""), res
+        assert "denied by the user" not in res["error"]
+        assert not target.exists()
+
+    def test_cli_callback_speaking_the_desktop_word_is_accepted(
+        self, tmp_path, approvals
+    ):
+        """Normalization lives in the gate, not in one transport: a callback or plugin
+        transport that answers with the Desktop vocabulary grants the same one operation
+        (case/whitespace tolerant, like every other surface)."""
+        approvals["answer"] = " Approve "
+        target = tmp_path / "SOUL.md"
+        res = self._write(target, "cli approved")
+        assert not res.get("error"), res
+        assert target.read_text(encoding="utf-8") == "cli approved"
+        assert len(approvals["calls"]) == 1
+
+    def test_cli_callback_unknown_answer_is_a_protocol_error(
+        self, tmp_path, approvals
+    ):
+        approvals["answer"] = "maybe"
+        target = tmp_path / "SOUL.md"
+        res = self._write(target)
+        assert "unrecognized approval choice" in res.get("error", ""), res
+        assert "denied by the user" not in res["error"]
+        assert not target.exists()
+
 
 class TestProfileHomeExemptsHermesRoot:
     """issue #60: under ``hermes -p <name>`` (``HERMES_HOME=<root>/profiles/<name>``)
@@ -1020,8 +1167,11 @@ class TestProfileHomeExemptsHermesRoot:
         token = set_hermes_home_override(str(profile))
         try:
             assert os.path.realpath(str(root)) in ft._hermes_exempt_homes()
-            for name in ("LEDGER.md", "MEMORY.md", "SOUL.md", "AGENTS.md"):
+            for name in ("LEDGER.md", "MEMORY.md", "USER.md"):
                 assert ft._protected_instruction_reason(str(root / name)) is None, name
+            # The root's own instruction files stay gated (#92146).
+            for name in ("SOUL.md", "AGENTS.md"):
+                assert ft._protected_instruction_reason(str(root / name)) == name
             res = self._write(root / "LEDGER.md", "caliber fixed")
         finally:
             reset_hermes_home_override(token)
@@ -1122,3 +1272,25 @@ class TestMultiplexProfileWriteGuardsAreProfileScoped:
             reset_hermes_home_override(tok)
         assert err is not None
         assert "Refusing to write to Hermes config file" in err
+
+
+def test_config_hard_block_follows_file_identity_not_spelling(tmp_path):
+    """A second name for config.yaml (a differently-cased spelling on a case-insensitive
+    filesystem, or here a hard link) is still the config file (#117815)."""
+    import tools.file_tools_write_guards as ft
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.yaml").write_text("approvals:\n  mode: manual\n", encoding="utf-8")
+    alias = tmp_path / "alias.yaml"
+    os.link(home / "config.yaml", alias)
+    (tmp_path / "other.yaml").write_text("x: 1\n", encoding="utf-8")
+    tok = set_hermes_home_override(str(home))
+    try:
+        err = ft._check_sensitive_path(str(alias), "default")
+        other = ft._check_sensitive_path(str(tmp_path / "other.yaml"), "default")
+    finally:
+        reset_hermes_home_override(tok)
+    assert err is not None and "Refusing to write to Hermes config file" in err
+    assert other is None

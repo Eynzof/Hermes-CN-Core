@@ -8,7 +8,7 @@ fork's bundled backends still install through :func:`_ensure_optional_deps`, whi
 
 from typing import NoReturn
 
-from hermes_cli._old_updater import in_historical_update, stop_for_relaunch
+from hermes_cli._old_updater import stop_historical_updater
 
 import configparser
 import contextlib
@@ -522,8 +522,8 @@ def _warm_installed_bytecode(specs: tuple[str, ...], target: Optional[Path]) -> 
 
 
 def _run_installer(cmd: list[str], **kw) -> subprocess.CompletedProcess:
-    # _SUBPROCESS_KW carries stdin=DEVNULL  # noqa: subprocess-stdin
-    return subprocess.run(cmd, **_SUBPROCESS_KW, creationflags=windows_hide_flags(), **kw)
+    # _SUBPROCESS_KW carries stdin=DEVNULL
+    return subprocess.run(cmd, check=False, **_SUBPROCESS_KW, creationflags=windows_hide_flags(), **kw)
 
 
 def _uv_binary() -> Optional[str]:
@@ -784,10 +784,4 @@ def install_specs(specs: list[str] | tuple[str, ...], *, timeout: int = 300,
     # Only an actual updater call stack may transfer control to the updater;
     # argv can still say "serve" or "gateway" when /update runs in-process.
     # Historical updaters also passed constraints/dry_run; accepted and ignored.
-    if in_historical_update():
-        # never returns: hands off to the takeover child and exits
-        stop_for_relaunch()
-    raise ImportError(
-        "tools.lazy_deps.install_specs is retired; runtime dependency "
-        "installation is unavailable."
-    )
+    stop_historical_updater("tools.lazy_deps.install_specs", ImportError)

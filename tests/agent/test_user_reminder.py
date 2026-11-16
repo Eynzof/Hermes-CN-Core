@@ -39,7 +39,7 @@ class TestUserReminderProvider:
         class _P(UserReminderProvider):
             def get_reminders(
                 self, agent: Any, api_call_count: int
-            ) -> List[UserReminder]:
+            ) -> list[UserReminder]:
                 return []
 
         assert _P().get_reminders(None, 0) == []

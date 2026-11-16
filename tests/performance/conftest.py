@@ -57,7 +57,7 @@ class TimingSample:
 class TimingContext:
     """Collects timing samples during a test."""
 
-    samples: List[TimingSample] = field(default_factory=list)
+    samples: list[TimingSample] = field(default_factory=list)
     _current_iteration: int = 0
     _section_entry: float = 0.0
     _section_name: str = ""
@@ -91,7 +91,7 @@ class TimingContext:
         """Advance to the next iteration counter."""
         self._current_iteration += 1
 
-    def summary(self) -> Dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
         """Aggregate timing data grouped by section name."""
         from collections import defaultdict
         grouped = defaultdict(list)
@@ -142,7 +142,7 @@ def timing_context():
     yield ctx
     # Auto-save on cleanup
     import datetime
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    _timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     test_name = os.environ.get("PYTEST_CURRENT_TEST", "unknown").split("::")[-1]
     ctx.save_raw(test_name)
 
@@ -162,7 +162,7 @@ def mock_llm_response():
     """
     def _make_response(
         content: str = "This is a mock response.",
-        tool_calls: Optional[List[Dict]] = None,
+        tool_calls: Optional[list[dict]] = None,
         finish_reason: str = "stop",
         model: str = "mock-model",
     ):
@@ -209,8 +209,8 @@ def mock_stream_chunks():
     Returns a list of dicts simulating streaming ChatCompletionChunk objects.
     """
     def _make_chunks(
-        texts: List[str] = None,
-        tool_call_deltas: List[Dict] = None,
+        texts: list[str] | None = None,
+        tool_call_deltas: list[dict] | None = None,
         finish_reason: str = "stop",
     ):
         if texts is None:
@@ -296,7 +296,7 @@ def patch_openai_client():
             mock_client = patch_openai_client(mock_response)
             # agent now uses mock_client for chat completions
     """
-    def _patch(response: Dict = None):
+    def _patch(response: dict | None = None):
         mock_client = MagicMock()
         mock_chat = MagicMock()
         mock_completions = MagicMock()
@@ -380,7 +380,7 @@ def assert_within_tolerance(actual: float, expected: float, tolerance: float = 0
     )
 
 
-def get_latest_baseline() -> Optional[Dict]:
+def get_latest_baseline() -> Optional[dict]:
     """Load the most recent baseline JSON from reports/perf/baselines/."""
     if not BASELINES_DIR.exists():
         return None
@@ -390,7 +390,7 @@ def get_latest_baseline() -> Optional[Dict]:
     return orjson.loads(baselines[-1].read_text(encoding="utf-8", errors="replace"))
 
 
-def save_baseline(test_name: str, summary: Dict):
+def save_baseline(test_name: str, summary: dict):
     """Save timing summary as a baseline for future comparison."""
     import datetime
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")

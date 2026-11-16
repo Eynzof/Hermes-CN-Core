@@ -426,10 +426,7 @@ class TestSourceRootResolution:
         root = tmp_path / "wt"
         root.mkdir()
         (root / ".git").write_text("gitdir: /somewhere/.git/worktrees/wt\n")
-        (root / "tools").mkdir()
-        fake_file = root / "tools" / "self_repo_guard.py"
-        fake_file.write_text("")
-        monkeypatch.setattr(mod, "__file__", str(fake_file))
+        monkeypatch.setattr(mod, "project_root_str", lambda: str(root))
         assert mod.get_running_source_root() == root.resolve()
 
 
@@ -451,11 +448,11 @@ class TestBlockMessageGuidance:
 
 
 
-    def test_scratch_hint_honors_hermes_home(self, repo, monkeypatch, tmp_path):
+    def test_scratch_hint_names_the_pruned_scratch_dir(self, repo, monkeypatch, tmp_path):
+        from hermes_constants import get_scratch_dir
+
         home = tmp_path / "custom" / "hermes-home"
         monkeypatch.setenv("HERMES_HOME", str(home))
         hit, msg = _detect("git rebase origin/main", repo, repo)
         assert hit is True
-        # The hint must derive the clone dir from HERMES_HOME (not ~/.hermes);
-        # built the same way the guard builds it so the check is OS-agnostic.
-        assert str(Path("/custom/hermes-home").expanduser() / "scratch") in msg
+        assert f"{get_scratch_dir(prune=False)}/<task>" in msg

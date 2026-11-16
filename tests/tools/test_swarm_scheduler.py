@@ -177,7 +177,7 @@ class TestSwarmBatchScheduler:
 
     def test_resume_spec(self):
         """Resume specs should call resume_runner."""
-        resume_called = [False]
+        _resume_called = [False]
 
         specs = [
             AgentSwarmSpec(

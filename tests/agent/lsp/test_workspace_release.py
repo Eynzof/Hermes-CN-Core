@@ -33,7 +33,7 @@ def _git(*args: str, cwd: Path) -> str:
         "GIT_CONFIG_GLOBAL": os.devnull,
     }
     res = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, encoding="utf-8",
-                         errors="replace", timeout=60, env=env)
+                         errors="replace", timeout=60, check=False, env=env)
     assert res.returncode == 0, f"git {' '.join(args)} failed: {res.stderr}"
     return res.stdout.strip()
 

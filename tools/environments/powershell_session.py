@@ -250,7 +250,7 @@ class PowerShellSession:
                 try:
                     subprocess.run(
                         ["taskkill", "/PID", str(proc.pid), "/F", "/T"],
-                        capture_output=True,
+                        check=False, capture_output=True,
                         timeout=5,
                         creationflags=_hide_flags(),
                         stdin=subprocess.DEVNULL,
@@ -275,7 +275,7 @@ class PowerShellSession:
         with self._lock:
             self._terminate_proc()
 
-    def __enter__(self) -> "PowerShellSession":
+    def __enter__(self) -> PowerShellSession:
         self.start()
         return self
 

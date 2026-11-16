@@ -30,7 +30,7 @@ def test_token_estimation_scaling(timing_context):
         messages = _build_history(num_turns)
         with timing_context.measure(f"estimate_tokens_{num_turns}turns"):
             for _ in range(5):
-                token_count = estimate_messages_tokens_rough(messages)
+                _token_count = estimate_messages_tokens_rough(messages)
 
     summary = timing_context.summary()
     for num_turns in [5, 15, 30, 50]:
@@ -50,7 +50,7 @@ def test_compression_baseline(timing_context):
     messages = _build_history(25, tokens_per_msg=400)
 
     with timing_context.measure("compression_decision"):
-        estimated_tokens = estimate_messages_tokens_rough(messages)
+        _estimated_tokens = estimate_messages_tokens_rough(messages)
 
     with timing_context.measure("compression_execute"):
         # Simulate compression by trimming old messages

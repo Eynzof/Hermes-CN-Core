@@ -20,17 +20,19 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
-      - name: Check README language links
+      # This fork keeps a single README plus the fork patch registry: the docs
+      # site, the translated READMEs and the contributor guides are deleted
+      # (scripts/upstream-deletions.txt), so a link to one of them is now a
+      # broken link rather than a translation hop.
+      - name: Check README stays self-contained
         run: |
           set -euo pipefail
-          grep -q 'README.zh-CN.md' README.md
-          grep -q 'README.md' README.zh-CN.md
           grep -q 'FORK_NOTES.md' README.md
-          grep -q 'FORK_NOTES.zh-CN.md' README.zh-CN.md
           grep -q 'scripts/install.ps1' README.md
+          ! grep -qE 'README\.(zh-CN|en|es|ur-pk)\.md|FORK_NOTES\.zh-CN\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md' README.md
 
       - name: Check for local private workspace references
         run: |
           set -euo pipefail
           ! git grep -n -I -E '青岛|极鲸|万德|wanderminds|geekbi|李嘉乐|/Users/enzo|私有项目|仅限授权使用|竞品分析' -- \
-            README.md README.zh-CN.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md FORK_NOTES.md FORK_NOTES.zh-CN.md MAINTAINING.md MAINTAINING.zh-CN.md
+            README.md SECURITY.md FORK_NOTES.md MAINTAINING.md AGENTS.md CLAUDE.md

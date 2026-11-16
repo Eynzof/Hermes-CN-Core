@@ -169,7 +169,7 @@ class OAuthCredential:
     consent_peer_name: str | None = None  # transient: set only on a fresh grant, never persisted
 
     @classmethod
-    def from_host_block(cls, block: dict[str, Any]) -> "OAuthCredential | None":
+    def from_host_block(cls, block: dict[str, Any]) -> OAuthCredential | None:
         """Build a credential from a honcho.json host block, or None if incomplete."""
         oauth, access = block.get("oauth"), block.get("apiKey")
         if not isinstance(oauth, dict) or not is_oauth_access_token(access):
@@ -184,7 +184,7 @@ class OAuthCredential:
     def from_token_response(
         cls, body: dict[str, Any], *, now: float, client_id: str, token_endpoint: str,
         scope: str = "write", token_type: str = "Bearer", what: str = "grant",
-    ) -> "OAuthCredential":
+    ) -> OAuthCredential:
         """Build a credential from an OAuth token response; ``expires_in`` is relative to ``now``."""
         access, refresh = body.get("access_token"), body.get("refresh_token")
         if not is_oauth_access_token(access) or not refresh:
@@ -408,5 +408,5 @@ def apply_token_to_client(client: Any, token: str) -> bool:
 # Names external plugins imported from this module before the Sep 2026 decomposition.
 # Internal code MUST NOT use these (scripts/check_compat_pointers.py fails CI if it does).
 # The whole block is removed by reverting the commit that added it.
-from typing import Callable  # noqa: F401,E402
+from typing import Callable
 # ---- END PLUGIN-COMPAT ----

@@ -7,6 +7,8 @@ implementation serves every environment (local, docker, ssh, modal, ...). Compan
 (LintMixin), ``file_operations_search`` (SearchMixin).
 """
 
+from tools.file_operations_json import _refuse_introduced_json_constant
+
 import base64
 import binascii
 import os
@@ -23,7 +25,7 @@ import hashlib
 import json
 import logging
 import secrets
-import unicodedata
+import time
 from abc import ABC, abstractmethod
 from typing import Optional, Dict
 from pathlib import Path
@@ -33,9 +35,11 @@ from agent.file_safety import get_write_denied_error
 from tools.file_operations_common import (
     ExecuteResult, PatchResult, ReadResult, SearchResult, WriteResult,
     _UTF8_BOM, _detect_line_ending, _has_bom, _normalize_line_endings, _strip_bom,
-    _strip_terminal_fence_leaks, normalize_read_pagination, normalize_search_pagination)
+    _strip_terminal_fence_leaks, filename_match_key, normalize_read_pagination,
+    normalize_search_pagination)
 from tools.file_operations_lint import LINTERS_INPROC, LintMixin, _FAIL_CLOSED_INPROC_EXTS
 from tools.file_operations_search import SearchMixin
+from tools import file_operations_native as _native_io
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +115,7 @@ def _get_file_lock(path: str) -> "threading.Lock":
     """
     try:
         key = os.path.normcase(os.path.abspath(path))
-    except Exception:  # noqa: BLE001 - never let path canonicalization break a write
+    except Exception:
         key = path
     return _file_lock_stripes[hash(key) % _FILE_LOCK_STRIPES]
 
@@ -247,59 +251,11 @@ def _decode_edit_bytes(data: bytes) -> str:
 
 # --- Binary-content identification -------------------------------------------
 
-_MAGIC_SIGNATURES: tuple = (
-    # (prefix bytes, human name) — ordered, first match wins. Longest
-    # prefixes for a shared first byte come first.
-    (b"\x89PNG\r\n\x1a\n", "PNG image data"),
-    (b"\xff\xd8\xff", "JPEG image data"),
-    (b"GIF87a", "GIF image data"),
-    (b"GIF89a", "GIF image data"),
-    (b"RIFF", "RIFF container (WAV/AVI/WebP family)"),
-    (b"%PDF-", "PDF document"),
-    (b"PK\x03\x04", "ZIP archive (also docx/xlsx/jar/apk)"),
-    (b"PK\x05\x06", "ZIP archive (empty)"),
-    (b"\x1f\x8b", "gzip compressed data"),
-    (b"BZh", "bzip2 compressed data"),
-    (b"\xfd7zXZ\x00", "xz compressed data"),
-    (b"7z\xbc\xaf\x27\x1c", "7-Zip archive"),
-    (b"\x7fELF", "ELF executable"),
-    (b"MZ", "Windows PE executable"),
-    (b"\xcf\xfa\xed\xfe", "Mach-O executable (64-bit)"),
-    (b"\xca\xfe\xba\xbe", "Mach-O universal binary / Java class"),
-    (b"SQLite format 3\x00", "SQLite database"),
-    (b"OggS", "Ogg container"),
-    (b"fLaC", "FLAC audio"),
-    (b"ID3", "MP3 audio (ID3 tag)"),
-    (b"\x00\x00\x00", "ISO media container (MP4/MOV family)"),  # ftyp at +4
-    (b"BM", "BMP image data"),
-    (b"II*\x00", "TIFF image data (little-endian)"),
-    (b"MM\x00*", "TIFF image data (big-endian)"),
+from tools.file_operations_binary import (
+    _MAGIC_SIGNATURES, identify_binary_bytes, describe_binary_file,
 )
 
 
-def identify_binary_bytes(sample: bytes) -> str:
-    """Best-effort human name for binary content from its magic bytes; never raises.
-    The ISO-media entry additionally requires ``ftyp`` at offset 4 (three leading
-    NULs alone are too weak a signature)."""
-    for prefix, name in _MAGIC_SIGNATURES:
-        if sample.startswith(prefix):
-            if name.startswith("ISO media") and sample[4:8] != b"ftyp":
-                continue
-            return name
-    return "unknown binary"
-
-
-def describe_binary_file(sample: Optional[bytes], file_size: int) -> str:
-    """One-line binary-file refusal naming the TYPE ("PNG image data, 4.1 KB"), so the
-    model gets what-is-this in one read instead of hunting for tools it may lack."""
-    kind = identify_binary_bytes(sample or b"")
-    if file_size >= 1024 * 1024:
-        size = f"{file_size / (1024 * 1024):.1f} MB"
-    elif file_size >= 1024:
-        size = f"{file_size / 1024:.1f} KB"
-    else:
-        size = f"{file_size} bytes"
-    return f"Binary file ({kind}, {size}) — cannot display as text."
 
 
 class FileOperations(ABC):
@@ -360,6 +316,15 @@ _READ_SENTINEL_PREFIX = "__HERMES_RF_"
 _WRITE_SENTINEL_PREFIX = "__HERMES_WF_"
 _BYTES_SENTINEL_PREFIX = "__HERMES_RB_"
 
+# read_file_raw loads the whole file into memory (no paging). Cap it so a huge
+# target - reached via the write path's per-path lock, among others - can't
+# exhaust memory; callers that need a slice should use the paginated read.
+_RAW_READ_MAX_BYTES = 50 * 1024 * 1024
+
+
+class _TooLarge(ExecuteResult):
+    """A byte-exact read refused for exceeding its cap (a read failure, never "not found")."""
+
 
 def _new_sentinel(prefix: str) -> str:
     """Per-call separator line for a compound shell probe. 128 random bits make a
@@ -377,38 +342,8 @@ def _split_segments(output: str, sentinel: str) -> list[str]:
     return output.split(sentinel + "\n")
 
 
-def _json_nonstandard_constant(text: str) -> Optional[str]:
-    """First NaN/Infinity/-Infinity in ``text`` when it is otherwise valid JSON,
-    else None. ``json.loads`` accepts these JavaScript extensions by default."""
-    if "NaN" not in text and "Infinity" not in text:
-        return None
-    found: list[str] = []
-
-    def note_constant(value: str) -> float:
-        found.append(value)
-        return float("nan")
-
-    try:
-        json.loads(_strip_bom(text)[0], parse_constant=note_constant)
-    except (ValueError, RecursionError):  # unparseable text has no constant to report
-        return None
-    return found[0] if found else None
 
 
-def _refuse_introduced_json_constant(path: str, content: str,
-                                     pre_content: Optional[str]) -> Optional[WriteResult]:
-    """Refuse a JSON write that INTRODUCES a nonstandard constant (strict JSON
-    consumers reject them). A file that already holds one keeps accepting
-    unrelated edits, which is why the lenient syntax gate can't do this check."""
-    constant = _json_nonstandard_constant(content)
-    if constant is None:
-        return None
-    if pre_content is not None and _json_nonstandard_constant(pre_content) is not None:
-        return None
-    return WriteResult(error=(
-        f"Refusing to write '{path}': candidate content uses {constant}, which is "
-        "not valid JSON. The file was NOT created or modified. Use null or a "
-        "string instead and retry."))
 
 
 class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
@@ -585,14 +520,20 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
             return None
         return self._decode_base64_sample(segments[0])
 
-    def _read_exact_bytes(self, path: str) -> tuple[Optional[bytes], Optional[ExecuteResult]]:
+    def _read_exact_bytes(self, path: str, max_bytes: Optional[int] = None,
+                          ) -> tuple[Optional[bytes], Optional[ExecuteResult]]:
         """The file's bytes exactly, for the edit paths that write back every line they did not touch.
 
         The text transport cannot carry them: it decodes with errors="replace", so a byte UTF-8 cannot
         decode comes back as U+FFFD and the edit then persists it. A native read on the local POSIX host,
         else base64 over the transport; ``(None, result)`` hands back the failed shell read for the
         caller's message. Only a regular file gets a native open (a FIFO would block this thread); the
-        rest take the shell path and its timeout, as before."""
+        rest take the shell path and its timeout, as before. Past *max_bytes* the read is refused, and
+        the native read stops one byte after it, so a file that grew past its size probe never lands
+        in memory whole."""
+        too_large = None if max_bytes is None else _TooLarge(
+            stdout=f"{path}: file is too large (over {max_bytes:,} bytes); read a range with offset/limit",
+            exit_code=1)
         if self._native_read_enabled():
             import stat as _stat
             full = path if os.path.isabs(path) else os.path.join(
@@ -606,7 +547,8 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
                 try:
                     if _stat.S_ISREG(os.fstat(fd).st_mode):
                         with open(fd, "rb", closefd=False) as fh:
-                            return fh.read(), None
+                            data = fh.read() if max_bytes is None else fh.read(max_bytes + 1)
+                        return (None, too_large) if max_bytes is not None and len(data) > max_bytes else (data, None)
                 finally:
                     os.close(fd)
             except OSError:
@@ -617,7 +559,9 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         # which the edit paths then write back. The file's own byte count travels beside it: output
         # INSIDE the fence decodes too, so only a read that matches it is ever handed to a writer.
         arg = self._escape_shell_arg(path)
-        segments, read_rc, result = self._fenced_read(f"base64 < {arg}", f"wc -c < {arg}")
+        # ``head -c`` bounds the transfer itself, so a stale size probe cannot pull the whole file.
+        segments, read_rc, result = self._fenced_read(
+            self._bounded("base64", arg, max_bytes), f"wc -c < {arg}")
         garbled = ExecuteResult(stdout=f"{path}: the backend returned a garbled byte-exact read", exit_code=1)
         if segments is None:
             # No fenced reply: the command never ran as written (a wrapper ``cd`` failed, the backend
@@ -626,16 +570,25 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         if read_rc is None:
             return None, garbled
         if read_rc == 127:  # no base64 on this backend (busybox, distroless): try the hex transport
-            return self._read_exact_bytes_hex(path)
+            data, failed = self._read_exact_bytes_hex(path, max_bytes)
+            return (None, too_large) if isinstance(failed, _TooLarge) else (data, failed)
         payload, size = segments
         if read_rc != 0:
             # stderr is merged into the fenced segment, so that segment holds base64's own diagnostic
             # ("No such file or directory", "Permission denied"): keep it for the caller's message.
             return None, self._failed_read(path, payload, read_rc)
         data = self._decode_base64_sample(payload)
+        if data is not None and max_bytes is not None and len(data) > max_bytes:
+            return None, too_large  # before the size match: a capped read is shorter than wc -c
         if data is None or not self._matches_size(data, size):  # stray output: refuse, never echo it back
             return None, garbled
         return data, None
+
+    @staticmethod
+    def _bounded(encoder: str, arg: str, max_bytes: Optional[int]) -> str:
+        """*encoder* over the file at *arg*, behind ``head -c`` one byte past *max_bytes* when there is a cap.
+        The redirect wraps the whole pipeline so a failed open still sets the read's exit status."""
+        return f"{encoder} < {arg}" if max_bytes is None else f"{{ head -c {max_bytes + 1} | {encoder}; }} < {arg}"
 
     @staticmethod
     def _failed_read(path: str, payload: str, read_rc: int) -> ExecuteResult:
@@ -643,7 +596,8 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         return ExecuteResult(stdout=_strip_terminal_fence_leaks(payload).strip() or f"{path}: exit {read_rc}",
                              exit_code=read_rc)
 
-    def _read_exact_bytes_hex(self, path: str) -> tuple[Optional[bytes], Optional[ExecuteResult]]:
+    def _read_exact_bytes_hex(self, path: str, max_bytes: Optional[int] = None,
+                              ) -> tuple[Optional[bytes], Optional[ExecuteResult]]:
         """``od`` fallback for a backend without ``base64``, fenced the same way.
 
         ``read_file_raw`` is the edit paths' source read AND, through ``_apply_add``, their
@@ -652,7 +606,8 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         present in busybox; when it is missing too the caller gets a transport error, never a
         not-found."""
         arg = self._escape_shell_arg(path)
-        segments, read_rc, result = self._fenced_read(f"od -An -v -tx1 < {arg}", f"wc -c < {arg}")
+        segments, read_rc, result = self._fenced_read(
+            self._bounded("od -An -v -tx1", arg, max_bytes), f"wc -c < {arg}")
         unavailable = ExecuteResult(
             stdout=f"{path}: this backend has neither base64 nor od, so a byte-exact read is unavailable",
             exit_code=1)
@@ -667,6 +622,8 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
             data = bytes.fromhex("".join(_strip_terminal_fence_leaks(payload).split()))
         except ValueError:
             data = None
+        if data is not None and max_bytes is not None and len(data) > max_bytes:
+            return None, _TooLarge(exit_code=1)
         if data is None or not self._matches_size(data, size):
             return None, ExecuteResult(stdout=f"{path}: the backend returned a garbled byte-exact read",
                                        exit_code=1)
@@ -919,7 +876,7 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
                 return ExecuteResult(stdout="\n".join(names), exit_code=0)
             except OSError:
                 return ExecuteResult(stdout="", exit_code=1)
-        return self._exec(f"ls -1 {self._escape_shell_arg(dir_path)} 2>/dev/null | head -50")
+        return self._exec(f"ls -1 -- {self._escape_shell_arg(dir_path)} 2>/dev/null | head -50")
 
     def _prim_mkdirs(self, parent: str) -> "ExecuteResult":
         """Create ``parent`` and ancestors (POSIX: ``mkdir -p``)."""
@@ -1060,17 +1017,11 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         return True
 
     def _is_local_env(self) -> bool:
-        """[CN-fork] P-033: True iff this FileOperations is wired to a local backend."""
-        env = getattr(self, "env", None)
-        if env is None:
-            # Defensive: some tests build ShellFileOperations via ``__new__``
-            # without going through ``__init__``, so ``self.env`` may be missing.
-            return False
-        try:
-            from tools.environments.local import LocalEnvironment
-        except Exception:  # noqa: BLE001
-            return False
-        return isinstance(env, LocalEnvironment)
+        """Whether file probes may use the host filesystem, including on Windows."""
+        from tools.environments.base import env_uses_host_filesystem
+
+        return env_uses_host_filesystem(getattr(self, "env", None))
+
     def _escape_native_tool_arg(self, arg: str) -> str:
         """Quote a path for a NATIVE Windows binary (rg, node, git ...): those don't
         understand the MSYS ``/c/...`` form and Hermes disables MSYS argument
@@ -1093,11 +1044,15 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         gives umask-default perms instead of mktemp's 0600 — not ``$(umask)``
         arithmetic (zsh parses leading-zero constants as decimal), quoted so zsh
         doesn't =word-expand. ``trap ... EXIT`` removes the temp on every failure.
+        The local POSIX backend does the same in-process (``tools.file_operations_native``).
         """
         # [CN-fork] P-033: the local Windows backend cannot run the POSIX
         # ``mktemp``/``cat``/``mv`` script under PowerShell 5.1 — write in-process.
         if self._use_inproc_io():
             return self._local_atomic_write(path, content)
+        if self._native_read_enabled():
+            error = _native_io.atomic_write(self._native_path(path), content.encode("utf-8", "surrogateescape"))
+            return ExecuteResult(stdout=error or "", exit_code=1 if error else 0)
         q_path = self._escape_shell_arg(path)
         q_parent = self._escape_shell_arg(os.path.dirname(path) or ".")
         tmpl = self._escape_shell_arg(".hermes-tmp.XXXXXX")
@@ -1443,16 +1398,20 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
             file_size=file_size, file_ends_with_newline=file_ends_with_newline)
 
     def _native_read_enabled(self) -> bool:
-        """Whether ``read_file`` and ``search_files`` may bypass the shell: only POSIX + ``LocalEnvironment``
-        (file is on this host, path already native; Windows keeps the shell path since
-        file_operations holds Git-Bash-style paths there). ``HERMES_NATIVE_FILE_READ=0``
-        turns the fast path off."""
+        """Whether ``read_file`` and ``search_files`` may bypass the shell: only POSIX + a backend whose
+        files are the host's (``uses_host_filesystem``: the file is on this host, path already native;
+        Windows keeps the shell path since file_operations holds Git-Bash-style paths there).
+        ``HERMES_NATIVE_FILE_READ=0`` turns the fast path off."""
         flag = os.environ.get("HERMES_NATIVE_FILE_READ", "1").strip().lower()
         if flag in ("0", "false", "no", "off"):
             return False
-        # Same "is this env the local host" test the LSP path uses; isinstance is
-        # microseconds and self.env is never rebound, so nothing to memoize.
+        # Same "are these the host's files" test the LSP path uses; an attribute read
+        # and self.env is never rebound, so nothing to memoize.
         return sys.platform != "win32" and self._lsp_local_only()
+
+    def _native_path(self, path: str) -> str:
+        """``path`` resolved the way the shell resolves it: against the live backend cwd."""
+        return path if os.path.isabs(path) else os.path.join(getattr(self.env, "cwd", None) or self.cwd, path)
 
     def _read_file_native(self, path: str, offset: int, limit: int) -> ReadResult:
         """``read_file`` without a shell — same contract as the shell path, byte for
@@ -1545,11 +1504,11 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         read_output = _strip_terminal_fence_leaks(
             _decode_file_bytes(raw_page) if _IS_WINDOWS
             else raw_page.decode("utf-8", errors="replace"))
-        return self._assemble_read_result(
+        result = self._assemble_read_result(
             read_output, offset=offset, end_line=end_line, total_lines=total_lines,
             file_size=file_size,
             file_ends_with_newline=(last_byte == b"\n") if file_size else None)
-        result._snapshot = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns, digest.digest())
+        result._snapshot = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, digest.digest())
         return result
 
     @staticmethod
@@ -1712,37 +1671,33 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
             file_size=file_size, truncated=truncated, hint=hint,
             truncated_lines=True if truncated_lines else None)
 
-    # Confusable characters seen in real filenames, collapsed after NFC.
-    _CONFUSABLES = (
-        ("\u202f", " "),  # narrow no-break space (macOS screenshots)
-        ("\u00a0", " "),  # no-break space
-        ("\u2019", "'"),  # right single quotation mark (Finder)
-        ("\u2018", "'"),  # left single quotation mark
-    )
-
     def _unicode_variant_match(self, path: str) -> Optional[str]:
         """On-disk spelling of a file whose name is unicode-equivalent to ``path``
-        (NFC/NFD, confusable spaces/quotes). Returns the entry only when EXACTLY one
+        (``filename_match_key``). Returns the entry only when EXACTLY one
         matches — several candidates = homoglyph collision, guessing would read the
         wrong file."""
         dir_path = os.path.dirname(path) or "."
         filename = os.path.basename(path)
         if not filename:
             return None
-
-        def _canon(name: str) -> str:
-            out = unicodedata.normalize("NFC", name)
-            for src, dst in self._CONFUSABLES:
-                out = out.replace(src, dst)
-            return out
-
-        target = _canon(filename)
-        ls_result = self._prim_list_dir(dir_path)
+        target = filename_match_key(filename)
+        # [CN-fork] P-033: list in-process on the local Windows backend; the
+        # 50-entry cap of ``_prim_list_dir`` does not bind this probe — upstream
+        # lists the WHOLE directory here so a unicode-variant match past entry
+        # 50 is still found.
+        if self._use_inproc_io():
+            try:
+                names = sorted(os.listdir(self._abs_local(dir_path)))
+                ls_result = ExecuteResult(stdout="\n".join(names), exit_code=0)
+            except OSError:
+                ls_result = ExecuteResult(stdout="", exit_code=1)
+        else:
+            ls_result = self._exec(f"ls -1 -- {self._escape_shell_arg(dir_path)} 2>/dev/null")
         if ls_result.exit_code != 0 or not ls_result.stdout.strip():
             return None
         candidates = [
             entry for entry in _strip_terminal_fence_leaks(ls_result.stdout).splitlines()
-            if entry and entry != filename and _canon(entry) == target]
+            if entry and entry != filename and filename_match_key(entry) == target]
         if len(candidates) == 1:
             return os.path.join(dir_path, candidates[0]) if dir_path != "." or "/" in path else candidates[0]
         return None
@@ -1800,9 +1755,15 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         is_binary, sample_bytes = self._detect_binary(path)
         if is_binary:
             return ReadResult(is_binary=True, file_size=file_size, error=describe_binary_file(sample_bytes, file_size))
-        data, failed = self._read_exact_bytes(path)
+        if file_size > _RAW_READ_MAX_BYTES:
+            return ReadResult(
+                file_size=file_size, _too_large=True,
+                error=(f"File is too large ({file_size:,} bytes, limit is "
+                       f"{_RAW_READ_MAX_BYTES:,}). Read a range with offset/limit instead."))
+        data, failed = self._read_exact_bytes(path, max_bytes=_RAW_READ_MAX_BYTES)
         if data is None:
-            return ReadResult(error=f"Failed to read file: {failed.stdout}")
+            return ReadResult(error=f"Failed to read file: {failed.stdout}",
+                              _too_large=isinstance(failed, _TooLarge))
         # V4A writes this back, so no display cleanup (nothing has emitted the __HERMES_FENCE_ wrapper it
         # targets since d684d7ee7e; it can only eat the file's own escape bytes), and surrogateescape
         # so write_file's encode restores any byte past the sample that UTF-8 cannot decode (#79178).
@@ -1981,6 +1942,16 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         else:
             body_mode = None
 
+        native = _native_io.probe(self._native_path(path), body_mode == "cat") if self._native_read_enabled() else None
+        if native is not None:
+            has_bom, raw = native
+            # Decoded as the shell transport decodes (errors="replace"): same pre_content either way.
+            body = raw.decode("utf-8", "replace") if raw else ""
+            if body_mode == "cat" and body:
+                pre_content = body
+            sample = pre_content or (body if body_mode == "sample" else "")
+            return has_bom, pre_content, _detect_line_ending(sample) if sample else None
+
         sentinel = _new_sentinel(_WRITE_SENTINEL_PREFIX)
         probe = self._exec(self._write_probe_cmd(path, sentinel, body_mode))
         output = probe.stdout or ""
@@ -2068,9 +2039,11 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
                         "write did not persist correctly — re-read the file "
                         "and retry."))
                 return True, None
-            hash_result = self._exec(f"sha256sum {self._escape_shell_arg(path)} 2>/dev/null")
-            if hash_result.exit_code == 0 and hash_result.stdout.strip():
+            disk_sha = _native_io.sha256_of(self._native_path(path)) if self._native_read_enabled() else None
+            hash_result = None if disk_sha else self._exec(f"sha256sum {self._escape_shell_arg(path)} 2>/dev/null")
+            if hash_result is not None and hash_result.exit_code == 0 and hash_result.stdout.strip():
                 disk_sha = hash_result.stdout.strip().split()[0]
+            if disk_sha:
                 if disk_sha != hashlib.sha256(content_bytes).hexdigest():
                     return False, WriteResult(error=(
                         f"Post-write verification failed for {path}: on-disk "
@@ -2089,11 +2062,12 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         CANDIDATE content (JSON/YAML/TOML) → one compound on-disk probe
         (pre-content when wanted, CRLF, BOM; see ``_probe_write_target``) →
         JSON NaN/Infinity refusal when the write introduces one → CRLF/BOM
-        preservation → LSP baseline snapshot → atomic write (content rides
-        stdin: no ARG_MAX limit) → sha256 verification → lint delta → LSP
-        diagnostics when syntax is clean. ``pre_content``: pre-edit content the
+        preservation → atomic write (content rides stdin: no ARG_MAX limit) →
+        sha256 verification → lint delta → LSP check when syntax is clean
+        (non-blocking; the pre-edit content is its baseline, see ``_maybe_lsp_diagnostics``). ``pre_content``: pre-edit content the
         caller already has (skips the read); BOM detection always probes disk.
         """
+        started = time.monotonic()
         path = self._expand_path(path)
         denied = get_write_denied_error(path)
         if denied:
@@ -2120,8 +2094,6 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
             content = _normalize_line_endings(content, "\r\n")
         if has_bom and not _has_bom(content):
             content = _UTF8_BOM + content
-        # Best-effort snapshot so the LSP tier reports only this edit's diagnostics.
-        self._snapshot_lsp_baseline(path)
         # ``dirs_created`` means "parent dirs ensured" (mkdir -p is folded into
         # _atomic_write; its failure surfaces as the atomic-write error below).
         dirs_created = bool(os.path.dirname(path))
@@ -2141,7 +2113,8 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         # clean (no point asking an LSP about a file that won't parse).
         lsp_diagnostics: Optional[str] = None
         if lint_result.success or lint_result.skipped:
-            lsp_diagnostics = self._maybe_lsp_diagnostics(path, pre_content=pre_content, post_content=content) or None
+            lsp_diagnostics = self._maybe_lsp_diagnostics(
+                path, pre_content=pre_content, post_content=content, started=started) or None
         return WriteResult(
             bytes_written=len(content_bytes), dirs_created=dirs_created, verified=content_verified,
             _content_sha256=hashlib.sha256(content_bytes).hexdigest(),
@@ -2211,9 +2184,10 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         raw_content = _decode_edit_bytes(data)
         content, _ = _strip_bom(raw_content)
 
-        from tools.fuzzy_match import fuzzy_find_and_replace
-        new_content, match_count, _strategy, error = fuzzy_find_and_replace(
-            content, old_string, new_string, replace_all)
+        from tools.fuzzy_match import boundary_note, fuzzy_find_and_replace
+        correction_notes = []
+        new_content, match_count, strategy, error = fuzzy_find_and_replace(
+            content, old_string, new_string, replace_all, correction_notes=correction_notes)
         if error or match_count == 0:
             return self._no_match_result(path, content, old_string, new_string, match_count, error)
         # Models send bare-LF old/new strings; normalize the substituted region to
@@ -2227,10 +2201,11 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         verify_error = self._verify_patch_persisted(path, new_content)
         if verify_error is not None:
             return verify_error
-        lint_result = self._check_lint_delta(path, pre_content=content, post_content=new_content)
+        # write_file already ran the lint delta on these bytes (pre = the raw read).
         return PatchResult(
             success=True, diff=self._unified_diff(content, new_content, path), files_modified=[path],
-            lint=lint_result.to_dict() if lint_result else None,
+            lint=write_result.lint,
+            note="\n".join(n for n in (*correction_notes, boundary_note([strategy])) if n) or None,
             # From the internal write_file call, whose baseline was the pre-patch content.
             lsp_diagnostics=write_result.lsp_diagnostics,
             _writes=[(path, hashlib.sha256(data).hexdigest(), write_result._content_sha256)])
@@ -2279,8 +2254,9 @@ class ShellFileOperations(LintMixin, SearchMixin, FileOperations):
         exclusions = self._macos_search_exclusions(path)
         if exclusions and not result.error:
             skipped = ", ".join(item.split("/")[-1] for item in exclusions)
-            result.warning = (
+            protected = (
                 "Skipped macOS protected folders during broad search to avoid "
                 f"an unattended privacy prompt: {skipped}. Search a protected "
                 "folder directly when access is intentional.")
+            result.warning = f"{result.warning} {protected}" if result.warning else protected
         return result

@@ -13,6 +13,7 @@ import asyncio
 import os
 import sys
 import tempfile
+from importlib.machinery import ModuleSpec
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -21,9 +22,9 @@ import pytest
 
 def _install_telegram_mock(monkeypatch: pytest.MonkeyPatch, bot_factory: MagicMock) -> None:
     parse_mode = SimpleNamespace(MARKDOWN_V2="MarkdownV2", HTML="HTML")
-    constants_mod = SimpleNamespace(ParseMode=parse_mode)
+    constants_mod = SimpleNamespace(ParseMode=parse_mode, __spec__=ModuleSpec("telegram.constants", loader=None))
     _MessageEntity = lambda **_kw: SimpleNamespace(**_kw)
-    telegram_mod = SimpleNamespace(
+    telegram_mod = SimpleNamespace(__spec__=ModuleSpec("telegram", loader=None, is_package=True),
         Bot=bot_factory,
         MessageEntity=_MessageEntity,
         constants=constants_mod,
@@ -65,7 +66,7 @@ def _tmpfile(suffix: str) -> str:
 
 
 def test_image_caption_rides_bubble_no_separate_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    from tools.send_message_tool import _send_telegram
+    from plugins.platforms.telegram.standalone import _send_telegram
 
     _no_proxy(monkeypatch)
     bot = _make_bot()
@@ -85,7 +86,7 @@ def test_image_caption_rides_bubble_no_separate_text(monkeypatch: pytest.MonkeyP
 
 
 def test_multi_file_keeps_separate_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    from tools.send_message_tool import _send_telegram
+    from plugins.platforms.telegram.standalone import _send_telegram
 
     _no_proxy(monkeypatch)
     bot = _make_bot()

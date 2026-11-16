@@ -1,5 +1,7 @@
 """Tests for the fuzzy matching module."""
 
+import pytest
+
 from tools.fuzzy_match import IDENTICAL_STRINGS_ERROR, fuzzy_find_and_replace
 
 
@@ -140,6 +142,33 @@ class TestIndentationPreservation:
         assert lines[0] == "    a = 1"
         assert lines[1] == ""
         assert lines[2] == "    b = 99"
+
+    @pytest.mark.parametrize("anchor_indent", ["", "    ", "\t"])
+    def test_mid_line_anchor_keeps_new_string_indentation(self, anchor_indent):
+        # Whitespace-bearing anchors match the separator after '='. Their indentation
+        # differs from that separator, so the old re-anchoring shifts continuation lines.
+        content = "def f():\n        total = compute(a,  b)\n"
+        old = anchor_indent + "compute(a, b)"
+        new = anchor_indent + "compute(\n            a, b)"
+        out, count, strategy, err = fuzzy_find_and_replace(content, old, new)
+        assert err is None and count == 1 and strategy != "exact"
+        assert out.splitlines()[-1] == new.splitlines()[-1]
+        compile(out, "<patched>", "exec")
+
+    @pytest.mark.parametrize("leading_breaks", ["\n", "\n\n", "\n \t\n", "\r\n", "\r\n\r\n"])
+    @pytest.mark.parametrize("anchor_indent", ["    ", "\t"])
+    def test_match_starting_with_line_break_is_reindented(self, leading_breaks, anchor_indent):
+        # old_string starts with the line break that ends the previous line, so the
+        # match starts at the end of a line, but every code line in it is whole.
+        line_break = "\r\n" if leading_breaks.startswith("\r\n") else "\n"
+        prefix = line_break.join(("class A:", "    def f(self):", "        x = 1"))
+        content = prefix + leading_breaks + "        return x" + line_break
+        old = leading_breaks + anchor_indent + "return x"
+        new = leading_breaks + anchor_indent + "return x + 1"
+        out, count, strategy, err = fuzzy_find_and_replace(content, old, new)
+        assert err is None and count == 1 and strategy != "exact"
+        assert out == prefix + leading_breaks + "        return x + 1" + line_break
+        compile(out, "<patched>", "exec")
 
 
 class TestReplaceAll:
@@ -509,6 +538,11 @@ class TestEscapeNormalizedNewString:
     the matched file region actually contains those control characters,
     regardless of which match strategy fired. ``\\n`` is excluded because
     newlines serialize correctly through JSON.
+
+    That evidence has to be unambiguous: a region that holds the two-character
+    escape itself, or a ``\\r`` that does not sit directly before a line break,
+    is content and is left as sent -- otherwise the bytes are rewritten
+    silently (issue #183, TestLiteralBackslashContent below).
     """
 
     def test_tab_in_new_string_unescaped_under_escape_normalized(self):
@@ -613,6 +647,146 @@ class TestEscapeNormalizedNewString:
         assert "return 2" in new
 
 
+class TestLiteralBackslashContent:
+    """Issue #183: a CRLF file puts a real CR in every multiline match region, so the
+    old evidence test ("the region contains a CR") rewrote the ``\\r`` of a Windows
+    path into a line break and returned success with damaged bytes —
+    ``tdx_local\\run_mainwave.bat`` reached the file as ``tdx_local<CR>un_mainwave.bat``.
+    A file that holds the two-character escape itself is proof the escape is content,
+    so the replacement must carry those bytes verbatim.
+    """
+
+    # A CRLF Markdown table whose cells hold literal backslash paths.
+    ROWS = (
+        "| task | script | status | marker |\r\n"
+        "|---|---|---|---|\r\n"
+        "| close | closing_pipeline\\run_closing_summary.bat | tools\\status_closing.txt | hidcl |\r\n"
+        "| main | tdx_local\\run_mainwave.bat | status_mainwave.txt | hidmw |\r\n"
+        "| s2 | closing_pipeline\\run_s2_pick.bat | status_s2.txt | hids2 |\r\n"
+    )
+
+    def test_crlf_multiline_replacement_keeps_path_backslash_r(self):
+        """The reporter's repro: old_string spans two CRLF lines (LF only), new_string
+        keeps the row. The path's backslash-r must survive byte for byte."""
+        old_string = (
+            "| main | tdx_local\\run_mainwave.bat | status_mainwave.txt | hidmw |\n"
+            "| s2 | closing_pipeline\\run_s2_pick.bat | status_s2.txt | hids2 |"
+        )
+        new_string = "| main | tdx_local\\run_mainwave.bat | status_mainwave.txt | hidmw |"
+        new, count, strategy, err = fuzzy_find_and_replace(
+            self.ROWS, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert strategy == "line_trimmed"
+        # The row is byte-identical to what was requested...
+        assert "| main | tdx_local\\run_mainwave.bat | status_mainwave.txt | hidmw |" in new
+        # ...so no fragment of the path was pushed onto the next line, and no real CR
+        # appeared anywhere but at a line ending.
+        assert "tdx_local\r" + "un_mainwave.bat" not in new
+        assert "\r" not in new.replace("\r\n", "")
+        assert "| s2 | closing_pipeline" not in new  # the removed row is gone
+
+    def test_added_crlf_row_keeps_new_path_backslash_r(self):
+        """A path the edit *adds* is not in the matched region yet, so the region holds
+        no literal ``\\r``; the line-break position of the escape is the proof that it
+        is content there."""
+        content = (
+            "| task | script |\r\n"
+            "| init | run_init.bat |\r\n"
+            "| done | run_done.bat |\r\n"
+        )
+        old_string = "| init | run_init.bat |\n| done | run_done.bat |"
+        new_string = (
+            "| init | run_init.bat |\n"
+            "| main | tdx_local\\run_mainwave.bat |\n"
+            "| done | run_done.bat |"
+        )
+        new, count, _strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert "| main | tdx_local\\run_mainwave.bat |" in new
+        assert "\r" not in new.replace("\r\n", "")
+
+    def test_crlf_multiline_replacement_keeps_path_backslash_t(self):
+        """Same evidence rule for ``\\t``: real tab indentation in the region does not
+        justify rewriting the ``\\t`` of ``tdx_local\\test\\run_mainwave.bat``."""
+        content = (
+            "[paths]\r\n"
+            "\tscript = tdx_local\\test\\run_mainwave.bat\r\n"
+            "\tout = status_mainwave.txt\r\n"
+        )
+        old_string = (
+            "[paths]\n"
+            "\tscript = tdx_local\\test\\run_mainwave.bat\n"
+            "\tout = status_mainwave.txt\n"
+        )
+        new_string = "[paths]\n\tscript = tdx_local\\test\\run_mainwave.bat\n"
+        new, count, _strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert "script = tdx_local\\test\\run_mainwave.bat" in new
+        assert "tdx_local" + "\t" + "est\\run_mainwave.bat" not in new
+        assert "\tscript = " in new  # the real tab indent is preserved
+
+    def test_added_tab_indented_row_keeps_new_path_backslash_t(self):
+        """A newly added path was not in the old region, so its ``\\t`` must not
+        be rewritten merely because the surrounding rows use real tab indentation."""
+        content = (
+            "[paths]\r\n"
+            "\tinit = run_init.bat\r\n"
+            "\tdone = run_done.bat\r\n"
+        )
+        old_string = "[paths]\n\tinit = run_init.bat\n\tdone = run_done.bat"
+        new_string = (
+            "[paths]\n\tinit = run_init.bat\n"
+            "\tscript = tdx_local\\test\\run_mainwave.bat\n"
+            "\tdone = run_done.bat"
+        )
+
+        new, count, _strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert "\tscript = tdx_local\\test\\run_mainwave.bat" in new
+        assert "tdx_local" + "\t" + "est\\run_mainwave.bat" not in new
+
+    def test_crlf_single_line_replacement_keeps_path_backslash_r(self):
+        """Uneventful before the fix (a single-line region holds no real CR) and must
+        stay byte-exact: the delivered result equals the requested text."""
+        content = "| main | tdx_local\\run_mainwave.bat | hidmw |\r\n"
+        old_string = "| main | tdx_local\\run_mainwave.bat | hidmw |"
+        new_string = "| main2 | tdx_local\\run_mainwave.bat | hidmw2 |"
+        new, count, strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert strategy == "exact"
+        assert new == "| main2 | tdx_local\\run_mainwave.bat | hidmw2 |\r\n"
+
+    def test_tab_indented_line_keeps_literal_backslash_t_in_string(self):
+        """A region with a real tab AND a literal ``\\t`` (source code holding the
+        escape) is ambiguous evidence: new_string is written as sent."""
+        content = "\tsep = \"\\t\"\n"
+        old_string = "\tsep = \"\\t\"\n"
+        new_string = "\tsep = \"\\tab\"\n"
+        new, count, strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert strategy == "exact"
+        assert new == "\tsep = \"\\tab\"\n"
+
+    def test_crlf_drifted_line_breaks_still_unescaped(self):
+        """The legitimate case #33733 fixed: the file has real CRs and holds no literal
+        ``\\r``, and new_string sends ``\\r`` directly before each real line break."""
+        content = "alpha\r\nbeta\r\n"
+        old_string = "alpha\\r\nbeta"    # literal \r, real line break: drifted CRLF
+        new_string = "gamma\\r\ndelta"   # same drift in the replacement
+        new, count, strategy, err = fuzzy_find_and_replace(content, old_string, new_string)
+        assert err is None, f"Unexpected error: {err}"
+        assert count == 1
+        assert strategy == "escape_normalized"
+        assert new == "gamma\r\ndelta\r\n"
+
+
 class TestContextAwareCorrectness:
     """Strategy 9 must not silently replace half-matching (wrong) blocks."""
 
@@ -700,7 +874,7 @@ class TestBackslashDoublingDrift:
         new = old + ' # touched'
         result, count, _strategy, err = self.replace(content, old, new)
         assert count == 0
-        assert err is not None and "twice as long" in err
+        assert err is not None and "intentional backslashes" in err
         assert result == content  # untouched
 
     def test_matching_backslashes_apply(self):
@@ -721,16 +895,14 @@ class TestBackslashDoublingDrift:
         assert count == 1 and err is None
         assert strategy == "exact"
 
-    def test_model_corrected_new_string_allowed(self):
-        """Doubled old_string but corrected new_string writes the right bytes."""
+    def test_model_corrected_new_string_requires_clean_anchor(self):
+        """A corrected replacement is still unverifiable beside a doubled anchor."""
         b = "\\"
         content, old = self._make(n_file=2, n_args=4)
         new = old.replace(b * 4, b * 2).replace("next line", "corrected")
         result, count, _strategy, err = self.replace(content, old, new)
-        assert count == 1 and err is None
-        assert "corrected" in result
-        # No doubling in the output
-        assert b * 4 not in result
+        assert count == 0 and "intentional backslashes" in err
+        assert result == content
 
     def test_single_prose_backslash_not_blocked(self):
         """A lone ``\\`` vs ``\\`` in prose is too weak a signal to block."""
@@ -741,12 +913,12 @@ class TestBackslashDoublingDrift:
         _result, _count, _strategy, err = self.replace(content, old, new)
         assert err is None or "twice" not in err
 
-    def test_quote_drift_guard_still_fires(self):
-        """The pre-existing apostrophe escape-drift guard must keep working."""
+    def test_verified_quote_drift_is_corrected(self):
+        """Shared matching corrects quote drift when its anchor is verified."""
         b = "\\"
         content = "print('hello world')\nrest = 1\n"
         old = "print(" + b + "'hello world" + b + "')\nrest = 1"
         new = "print(" + b + "'hello there" + b + "')\nrest = 1"
-        _result, count, _strategy, err = self.replace(content, old, new)
-        assert count == 0
-        assert err is not None and "apostrophe" in err
+        result, count, _strategy, err = self.replace(content, old, new)
+        assert count == 1 and err is None
+        assert result == "print('hello there')\nrest = 1\n"

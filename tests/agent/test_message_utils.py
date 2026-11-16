@@ -144,7 +144,7 @@ class TestGetToolCallFunctionAndId:
         assert isinstance(fn, dict) and name == "read_file" and cid == "c"
 
     def test_object_prefers_call_id_and_strips(self):
-        fn, name, cid = get_tool_call_function_and_id(
+        _fn, name, cid = get_tool_call_function_and_id(
             _obj_tc("  cx  ", "terminal", use_call_id=True)
         )
         assert name == "terminal" and cid == "cx"
@@ -244,7 +244,7 @@ def test_message_utils_import_is_light():
     )
     proc = subprocess.run(
         [sys.executable, "-c", code],
-        cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=90,
+        check=False, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=90,
     )
     assert proc.returncode == 0, f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
     assert "OK" in proc.stdout
@@ -277,7 +277,7 @@ def test_sanitize_does_not_import_run_agent():
     )
     proc = subprocess.run(
         [sys.executable, "-c", code],
-        cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=90,
+        check=False, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=90,
     )
     assert proc.returncode == 0, f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
     assert "OK" in proc.stdout

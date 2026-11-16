@@ -34,7 +34,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import import_accelerator as ia  # noqa: E402
+import import_accelerator as ia
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +276,7 @@ def _run_probe(probe: str, timeout: int = 60):
     src = f"ROOT = {str(PROJECT_ROOT)!r}\n" + probe
     result = subprocess.run(
         [sys.executable, "-c", src],
-        capture_output=True, text=True, timeout=timeout, cwd=str(PROJECT_ROOT),
+        check=False, capture_output=True, text=True, timeout=timeout, cwd=str(PROJECT_ROOT),
     )
     assert result.returncode == 0, f"probe failed:\n{result.stderr[-2000:]}"
     lines = [ln for ln in result.stdout.splitlines() if ln.startswith("RESULT ")]

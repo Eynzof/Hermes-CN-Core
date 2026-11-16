@@ -76,7 +76,7 @@ def _cmd_ping(args: argparse.Namespace, reg: NodeRegistry) -> int:
         return 1
     try:
         result = NodeClient(entry["url"], entry["token"]).ping()
-    except Exception as exc:  # noqa: BLE001 — surface any connection error
+    except Exception as exc:
         print(orjson.dumps({"ok": False, "error": str(exc)}).decode('utf-8'))
         return 1
     print(orjson.dumps({"ok": True, "node": args.name, **result}).decode('utf-8'))

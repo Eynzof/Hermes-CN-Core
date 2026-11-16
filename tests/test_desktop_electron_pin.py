@@ -78,7 +78,7 @@ def _builder_electron_version() -> str:
     result = subprocess.run(
         [node, "-e",
          "process.stdout.write(require('./electron-builder.config.cjs').electronVersion)"],
-        cwd=str(BUILDER_CONFIG.parent), capture_output=True, text=True, timeout=120,
+        check=False, cwd=str(BUILDER_CONFIG.parent), capture_output=True, text=True, timeout=120,
         stdin=subprocess.DEVNULL,
     )
     assert result.returncode == 0, result.stderr

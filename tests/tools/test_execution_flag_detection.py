@@ -29,7 +29,7 @@ def test_real_read_tool_binaries_confirm_option_ownership(
     if shutil.which(argv[0]) is None:
         pytest.skip(f"{argv[0]} is not installed")
 
-    completed = subprocess.run(argv, input=stdin, text=True, capture_output=True)
+    completed = subprocess.run(argv, input=stdin, text=True, capture_output=True, check=False)
 
     assert completed.returncode == expected_returncode
     assert completed.stdout == expected_output
@@ -40,7 +40,9 @@ def test_real_read_tool_binaries_confirm_option_ownership(
     [
         pytest.param("rg", ["--pre", "-payload-marker", "needle", "{input}"], None, False, marks=_win32),
         pytest.param("rg", ["--hostname-bin=-payload-marker", "needle", "{input}"], None, False, marks=_win32),
-        ("sort", ["--buffer-size=1K", "--compress-program", "-payload-marker"], "{bulk}", False),
+        # The equals form is accepted by both GNU and uutils sort; one worker
+        # and a tiny buffer force the external-sort compression path.
+        ("sort", ["--parallel=1", "--buffer-size=1K", "--compress-program=-payload-marker"], "{bulk}", False),
         ("ag", ["--pager=-payload-marker", "needle", "{input}"], None, True),
         ("man", ["--pager", "-payload-marker", "ls"], None, True),
         ("man", ["-P", "-payload-marker", "ls"], None, True),
@@ -49,11 +51,11 @@ def test_real_read_tool_binaries_confirm_option_ownership(
 def test_real_binaries_execute_leading_dash_program_payload(
     tmp_path, tool, args, stdin, needs_tty
 ):
-    """A PATH marker proves these binaries do not reparse '-program' as an option."""
+    """A PATH marker proves executable options can carry a leading-dash program."""
     if shutil.which(tool) is None or (needs_tty and shutil.which("script") is None):
         pytest.skip(f"{tool} or script is not installed")
     if sys.platform != "linux" and (tool == "sort" or needs_tty):
-        pytest.skip("this grammar probe requires GNU sort/util-linux script")
+        pytest.skip("this grammar probe requires Linux sort/util-linux script")
 
     marker = tmp_path / "executed"
     payload = tmp_path / "-payload-marker"
@@ -71,14 +73,16 @@ def test_real_binaries_execute_leading_dash_program_payload(
         **os.environ,
         "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
         "MARKER": str(marker),
+        "TMPDIR": str(tmp_path),
         "TERM": "xterm",
     }
     argv = [tool, *resolved_args]
     if needs_tty:
         argv = ["script", "-qec", shlex.join(argv), "/dev/null"]
 
-    subprocess.run(argv, input=input_text, text=True, capture_output=True, env=env, timeout=20)
+    completed = subprocess.run(argv, check=False, input=input_text, text=True, capture_output=True, env=env, timeout=20)
 
+    assert marker.exists(), (completed.returncode, completed.stderr)
     assert marker.read_text() == "executed"
 
 

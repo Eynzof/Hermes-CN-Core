@@ -138,7 +138,7 @@ def resume_subagent(
             }
 
         # Reconstruct conversation history from persisted messages
-        history = state.get_session_messages(session_id)
+        _history = state.get_session_messages(session_id)
 
         from tools.delegate_tool import _build_child_agent, _run_child_turn
 

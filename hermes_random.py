@@ -56,7 +56,7 @@ def choice(seq: Sequence[_T]) -> _T:
     return _random.choice(seq)
 
 
-def sample(population: List[_T], k: int) -> List[_T]:
+def sample(population: list[_T], k: int) -> list[_T]:
     """Return a k-length list of unique elements chosen from population.
 
     When NumPy is available, uses ``numpy.random.Generator.choice``
@@ -68,7 +68,7 @@ def sample(population: List[_T], k: int) -> List[_T]:
     return _random.sample(population, k)
 
 
-def shuffle(x: List[Any]) -> None:
+def shuffle(x: list[Any]) -> None:
     """Shuffle the list *x* in-place.
 
     NumPy acceleration via ``numpy.random.Generator.permutation``.

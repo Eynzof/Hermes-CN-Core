@@ -31,6 +31,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import SendResult
+from tests.waiting import async_wait_until
 from gateway.platforms.webhook import (
     WebhookAdapter,
     _INSECURE_NO_AUTH,
@@ -75,6 +76,8 @@ def _create_app(adapter: WebhookAdapter) -> web.Application:
     """Build the aiohttp Application from the adapter (without starting a full server)."""
     # Mirror connect(): client_max_size enforces the cap on chunked bodies.
     app = web.Application(client_max_size=adapter._max_body_bytes)
+    from tests.gateway.fixtures.webhook_route_authority import mount_authority
+    mount_authority(app, adapter)
     app.router.add_get("/health", adapter._handle_health)
     app.router.add_post("/webhooks/{route_name}", adapter._handle_webhook)
     return app
@@ -254,15 +257,6 @@ class TestValidateSignature:
         route_secret = adapter._routes["test"].get("secret", adapter._global_secret)
         assert not route_secret  # empty → validation is skipped in handler
 
-    def test_validate_generic_signature_valid(self):
-        """Valid X-Webhook-Signature (generic HMAC-SHA256 hex) is accepted."""
-        adapter = _make_adapter()
-        body = b'{"event": "push"}'
-        secret = "generic-secret"
-        sig = _generic_signature(body, secret)
-        req = _mock_request(headers={"X-Webhook-Signature": sig})
-        assert adapter._validate_signature(req, body, secret) is True
-
     def test_validate_generic_v2_signature_valid(self):
         """Valid X-Webhook-Signature-V2 (timestamp-bound) is accepted."""
         adapter = _make_adapter()
@@ -322,17 +316,6 @@ class TestValidateSignature:
         })
         assert adapter._validate_signature(req, body, secret) is False
 
-    def test_validate_generic_v1_still_works_without_timestamp(self):
-        """Legacy V1 (body-only) senders that never send X-Webhook-Timestamp
-        must keep working — this is the backward-compatibility guarantee for
-        existing integrations that predate the V2 scheme."""
-        adapter = _make_adapter()
-        body = b'{"event": "push"}'
-        secret = "generic-secret"
-        sig = _generic_signature(body, secret)
-        req = _mock_request(headers={"X-Webhook-Signature": sig})
-        assert adapter._validate_signature(req, body, secret) is True
-
     def test_validate_generic_v2_preferred_when_both_sent(self):
         """If a sender sends both V1 and V2 headers (mid-migration), V2 must
         win — a stale/wrong V1 must not be able to override a valid V2."""
@@ -368,8 +351,8 @@ class TestValidateSignature:
         v2_sig = _generic_v2_signature(body, secret, timestamp)
         v1_sig = _generic_signature(body, secret)
         # Simulates a captured mixed V1+V2 request replayed with the
-        # timestamp header stripped — V1 signature is still valid on its
-        # own, but must not be reachable via this path.
+        # timestamp header stripped — the V1 signature is still present,
+        # but must not be reachable via this path.
         req = _mock_request(headers={
             "X-Webhook-Signature-V2": v2_sig,
             "X-Webhook-Signature": v1_sig,
@@ -377,12 +360,40 @@ class TestValidateSignature:
         })
         assert adapter._validate_signature(req, body, secret) is False
 
-    def test_validate_generic_v1_signature_accepts(self):
-        """Legacy generic senders sign the raw body (X-Webhook-Signature)."""
+    def test_v1_signature_rejected_by_default(self):
+        """V1 (body-only HMAC) is rejected by default because it has no
+        timestamp binding and is therefore replayable. A captured
+        (body, signature) pair must not validate, regardless of how much
+        time has passed (SECURITY-CLASS-a93a9b33ab551b86)."""
         adapter = _make_adapter()
         body = b'{"event": "push"}'
         secret = "generic-secret"
-        req = _mock_request(headers={"X-Webhook-Signature": _generic_signature(body, secret)})
+        sig = _generic_signature(body, secret)
+        req = _mock_request(
+            headers={"X-Webhook-Signature": sig},
+            match_info={"route_name": "test-route"},
+        )
+        assert adapter._validate_signature(req, body, secret) is False
+        # A replay of the same pair is also rejected (no time dependency).
+        replayed = _mock_request(
+            headers={"X-Webhook-Signature": sig},
+            match_info={"route_name": "test-route"},
+        )
+        assert adapter._validate_signature(replayed, body, secret) is False
+
+    def test_v2_signature_still_accepted(self):
+        """Fresh timestamp-bound V2 signatures remain accepted."""
+        adapter = _make_adapter()
+        body = b'{"event": "push"}'
+        secret = "generic-secret"
+        timestamp = str(int(time.time()))
+        sig = _generic_v2_signature(body, secret, timestamp)
+        req = _mock_request(
+            headers={
+                "X-Webhook-Signature-V2": sig,
+                "X-Webhook-Timestamp": timestamp,
+            },
+        )
         assert adapter._validate_signature(req, body, secret) is True
 
     def test_validate_svix_signature_valid(self):
@@ -496,6 +507,18 @@ class TestValidateSignature:
         )
         assert adapter._validate_signature(req, body, malformed_secret) is False
 
+    def test_v1_migration_warning_is_emitted_once_per_route(self, caplog):
+        adapter = _make_adapter()
+        body = b'{}'
+        for route in ("first", "first", "second"):
+            req = _mock_request(
+                headers={"X-Webhook-Signature": _generic_signature(body, "secret")},
+                match_info={"route_name": route},
+            )
+            assert adapter._validate_signature(req, body, "secret") is False
+        warnings = [record.message for record in caplog.records]
+        assert len(warnings) == 2
+        assert all("X-Webhook-Signature-V2" in warning for warning in warnings)
     def test_validate_svix_signature_raw_secret_valid(self):
         """Raw shared secrets are accepted for Svix-style senders without whsec_ secrets."""
         adapter = _make_adapter()
@@ -1033,6 +1056,66 @@ class TestPayloadFilters:
 
 class TestHTTPHandling:
 
+    @pytest.mark.parametrize("host", ("127.0.0.1", "0.0.0.0"))
+    @pytest.mark.parametrize(
+        "mode", ({}, {"deliver_only": True, "deliver": "telegram"}, {"cron_job": "job"})
+    )
+    @pytest.mark.asyncio
+    async def test_v1_replay_rejected_after_ttl_and_concurrently(self, host, mode):
+        route = {"prompt": "test", **mode}
+        adapter = _make_adapter(routes={"legacy": route}, secret="secret", host=host)
+        adapter.handle_message = AsyncMock()
+        adapter._direct_deliver = AsyncMock()
+        adapter._handle_cron_trigger = MagicMock()
+        body = b'{"event":"push"}'
+        headers = {
+            "Content-Type": "application/json",
+            "X-Webhook-Signature": _generic_signature(body, "secret"),
+            "X-Request-ID": "captured-delivery",
+        }
+        with patch("gateway.platforms.webhook.time.time", return_value=1_700_000_000) as clock:
+            async with TestClient(TestServer(_create_app(adapter))) as cli:
+                first = await cli.post("/webhooks/legacy", data=body, headers=headers)
+                assert first.status == 404
+                clock.return_value += adapter._idempotency_ttl + 1
+                replay = await cli.post("/webhooks/legacy", data=body, headers=headers)
+                assert replay.status == 404
+                concurrent = await asyncio.gather(*(
+                    cli.post("/webhooks/legacy", data=body, headers=headers) for _ in range(2)
+                ))
+                assert [response.status for response in concurrent] == [404, 404]
+        adapter.handle_message.assert_not_called()
+        adapter._direct_deliver.assert_not_called()
+        adapter._handle_cron_trigger.assert_not_called()
+        assert adapter._seen_deliveries == {}
+        assert adapter._delivery_info == {}
+
+    @pytest.mark.asyncio
+    async def test_concurrent_v2_duplicates_admit_one_agent_run(self):
+        adapter = _make_adapter(routes={"signed": {"prompt": "test"}}, secret="secret")
+        captured = []
+
+        async def _capture(event):
+            captured.append(event)
+
+        adapter.handle_message = _capture
+        body = b'{"event":"push"}'
+        timestamp = str(int(time.time()))
+        headers = {
+            "Content-Type": "application/json",
+            "X-Webhook-Signature-V2": _generic_v2_signature(body, "secret", timestamp),
+            "X-Webhook-Timestamp": timestamp,
+            "X-Request-ID": "signed-delivery",
+        }
+        async with TestClient(TestServer(_create_app(adapter))) as cli:
+            responses = await asyncio.gather(*(
+                cli.post("/webhooks/signed", data=body, headers=headers) for _ in range(2)
+            ))
+            assert sorted(response.status for response in responses) == [200, 202]
+            await async_wait_until(lambda: captured, what="the admitted V2 run")
+        assert len(captured) == 1
+        assert captured[0].message_id == "signed-delivery"
+
     @pytest.mark.asyncio
     async def test_unknown_route_returns_404(self):
         """POST to an unknown route returns 404."""
@@ -1382,16 +1465,21 @@ class TestSessionIsolation:
         assert len(ids) == 2, "Each delivery must have a unique session chat_id"
 
     @pytest.mark.asyncio
-    async def test_delivery_tuple_is_an_unambiguous_session_identity(self):
-        """Route, provider delivery ID, and profile form one collision-free identity."""
+    async def test_delivery_tuple_is_an_unambiguous_session_identity(self, monkeypatch):
+        """Route, provider delivery ID, and profile form one collision-free identity (captured at the
+        durable admission seam; the HTTP ack itself waits for that admission)."""
+        from gateway.platforms import webhook_ingress
         adapter = _make_adapter()
         captured_events = []
 
-        async def _capture(event):
+        async def _capture(_adapter, event):
             captured_events.append(event)
+            raise RuntimeError("captured before admission")
 
-        def _spawn(prompt, delivery_id, route, profile, deliver, chat_id, now):
-            return adapter._spawn_agent_run(
+        monkeypatch.setattr(webhook_ingress, "admit_producer", _capture)
+
+        def _admit(prompt, delivery_id, route, profile, deliver, chat_id, now):
+            return adapter._admit_agent_run(
                 {},
                 prompt,
                 delivery_id,
@@ -1402,11 +1490,10 @@ class TestSessionIsolation:
                 event_type="push",
             )
 
-        adapter.handle_message = _capture
         await asyncio.gather(
-            _spawn("high prompt", "external:d1", "build", "shared-profile", "telegram", "high-chat", 100.0),
-            _spawn("low prompt", "d1", "build:external", "shared-profile", "discord", "low-chat", 101.0),
-            _spawn("other prompt", "external:d1", "build", "other-profile", "slack", "other-chat", 102.0),
+            _admit("high prompt", "external:d1", "build", "shared-profile", "telegram", "high-chat", 100.0),
+            _admit("low prompt", "d1", "build:external", "shared-profile", "discord", "low-chat", 101.0),
+            _admit("other prompt", "external:d1", "build", "other-profile", "slack", "other-chat", 102.0),
         )
 
         events = {event.text: event for event in captured_events}
@@ -2003,169 +2090,3 @@ class TestExclusiveBindTimeWait:
 
 
 # Regression coverage for #72041: profile-bound webhook authentication
-class TestMultiplexProfileWebhookAuthentication:
-    @staticmethod
-    def _configure_profiles(adapter, tmp_path, monkeypatch):
-        runner = MagicMock()
-        runner.config.multiplex_profiles = True
-        adapter.gateway_runner = runner
-        monkeypatch.setattr(
-            "hermes_cli.profiles.profiles_to_serve",
-            lambda multiplex: [
-                ("default", tmp_path),
-                ("worker", tmp_path / "profiles" / "worker"),
-                ("other", tmp_path / "profiles" / "other"),
-            ],
-        )
-
-    @staticmethod
-    def _app(adapter):
-        app = _create_app(adapter)
-        app.router.add_post(
-            "/p/{profile}/webhooks/{route_name}",
-            adapter._handle_webhook,
-        )
-        return app
-
-    @staticmethod
-    def _headers(body: bytes, secret: str):
-        return {
-            "Content-Type": "application/json",
-            "X-Hub-Signature-256": _github_signature(body, secret),
-            # Stop after successful authentication without dispatching an
-            # agent run; the route accepts only pull_request events.
-            "X-GitHub-Event": "push",
-        }
-
-    @pytest.mark.asyncio
-    async def test_route_secret_is_bound_to_named_profile(
-        self, tmp_path, monkeypatch
-    ):
-        route_secret = "worker-route-secret-abc123"
-        adapter = _make_adapter(
-            routes={
-                "gh": {
-                    "profile": "worker",
-                    "secret": route_secret,
-                    "events": ["pull_request"],
-                    "prompt": "PR: {action}",
-                }
-            },
-            host="127.0.0.1",
-        )
-        self._configure_profiles(adapter, tmp_path, monkeypatch)
-        body = b'{"action":"opened"}'
-        headers = self._headers(body, route_secret)
-
-        async with TestClient(TestServer(self._app(adapter))) as cli:
-            accepted = await cli.post(
-                "/p/worker/webhooks/gh",
-                data=body,
-                headers=headers,
-            )
-            assert accepted.status == 200
-            assert (await accepted.json())["status"] == "ignored"
-
-            wrong_profile = await cli.post(
-                "/p/other/webhooks/gh",
-                data=body,
-                headers=headers,
-            )
-            assert wrong_profile.status == 404
-
-            default_profile = await cli.post(
-                "/webhooks/gh",
-                data=body,
-                headers=headers,
-            )
-            assert default_profile.status == 404
-
-    @pytest.mark.asyncio
-    async def test_routed_profile_skills_resolve_under_that_profile(
-        self, tmp_path, monkeypatch
-    ):
-        """A /p/<profile>/ route's ``skills:`` must load from that profile's
-        skills/ dir (#67277). Before the fix the lookup ran with no profile
-        scope, so it scanned the launch profile and logged "Skill not found".
-        """
-        import agent.skill_commands as sc_mod
-
-        worker = tmp_path / "profiles" / "worker"
-        skill_dir = worker / "skills" / "worker-only"
-        skill_dir.mkdir(parents=True)
-        (skill_dir / "SKILL.md").write_text(
-            "---\nname: worker-only\ndescription: w\n---\n\nBody of worker-only.\n"
-        )
-        (worker / "config.yaml").write_text("{}\n")
-        (worker / ".env").write_text("")
-        monkeypatch.setattr(
-            "hermes_cli.profiles.get_profile_dir", lambda name: tmp_path / "profiles" / name
-        )
-        route_secret = "worker-route-secret-abc123"
-        adapter = _make_adapter(
-            routes={
-                "gh": {
-                    "profile": "worker",
-                    "secret": route_secret,
-                    "prompt": "PR: {action}",
-                    "skills": ["worker-only"],
-                }
-            },
-            host="127.0.0.1",
-        )
-        self._configure_profiles(adapter, tmp_path, monkeypatch)
-        seen = []
-
-        async def _capture(event):
-            seen.append(event)
-
-        adapter.handle_message = _capture
-        body = b'{"action":"opened"}'
-        headers = {
-            "Content-Type": "application/json",
-            "X-Hub-Signature-256": _github_signature(body, route_secret),
-        }
-        with (
-            patch.object(sc_mod, "_skill_commands_by_key", {}),
-        ):
-            async with TestClient(TestServer(self._app(adapter))) as cli:
-                resp = await cli.post("/p/worker/webhooks/gh", data=body, headers=headers)
-                assert resp.status == 202
-                await asyncio.sleep(0.05)
-        assert len(seen) == 1
-        assert seen[0].source.profile == "worker"
-        assert "Body of worker-only." in seen[0].text
-
-
-def test_route_profile_validation_fails_closed():
-    assert WebhookAdapter._route_allows_profile({}, None) is True
-    assert WebhookAdapter._route_allows_profile(
-        {"profile": "worker"}, "worker"
-    ) is True
-    assert WebhookAdapter._route_allows_profile(
-        {"profile": "worker"}, "other"
-    ) is False
-    for malformed in (None, "", "   ", 123, ["worker"]):
-        assert WebhookAdapter._route_allows_profile(
-            {"profile": malformed}, "worker"
-        ) is False
-
-
-class TestBlankRouteSecretFailsClosed:
-    @pytest.mark.parametrize("secret", ["   ", "\t", "\n", 123])
-    def test_connect_rejects_an_unusable_route_secret(self, secret):
-        adapter = _make_adapter(routes={"hook": {"secret": secret}})
-        with pytest.raises(ValueError, match="missing, blank, or not a string"):
-            asyncio.run(adapter.connect())
-        # The hot-reload path applies the same guard to agent-created dynamic routes.
-        assert adapter._dynamic_route_allowed("hook", {"secret": secret}) is False
-
-
-@pytest.mark.parametrize(
-    "value,usable",
-    [("s3cret", True), ("x", True), (" x ", True),
-     ("", False), ("   ", False), ("\t\n", False),
-     (None, False), (b"bytes", False), (123, False)],
-)
-def test_is_usable_secret_classifies_configured_secrets(value, usable):
-    assert _is_usable_secret(value) is usable

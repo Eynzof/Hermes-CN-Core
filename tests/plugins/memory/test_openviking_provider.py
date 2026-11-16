@@ -1968,7 +1968,7 @@ def test_is_available_true_for_config_yaml_endpoint(monkeypatch):
 def test_is_available_false_without_any_endpoint(monkeypatch):
     _clear_openviking_env(monkeypatch)
     monkeypatch.setattr(
-        openviking_module, "_load_hermes_openviking_config", lambda: {}
+        openviking_module, "_load_hermes_openviking_config", dict
     )
     assert OpenVikingMemoryProvider().is_available() is False
 

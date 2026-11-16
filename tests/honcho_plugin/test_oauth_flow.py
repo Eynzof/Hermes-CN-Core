@@ -44,7 +44,7 @@ class _FakeAS(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def do_GET(self):  # noqa: N802
+    def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/.well-known/oauth-authorization-server":
             if not _FakeAS.advertise_device:
@@ -78,7 +78,7 @@ class _FakeAS(BaseHTTPRequestHandler):
         self.send_header("Location", location)
         self.end_headers()
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         parsed = urlparse(self.path)
         length = int(self.headers.get("Content-Length", 0))
         form = parse_qs(self.rfile.read(length).decode())
@@ -214,7 +214,7 @@ def test_full_loopback_flow_then_refresh(tmp_path, fake_as):
 
 def test_state_mismatch_is_rejected(fake_as, tmp_path):
     endpoints = oauth_flow.resolve_endpoints()
-    _, state = oauth_flow.begin_authorization(endpoints)
+    _, _state = oauth_flow.begin_authorization(endpoints)
     with pytest.raises(ValueError, match="unknown or expired"):
         oauth_flow.complete_authorization(
             endpoints, "code", "not-the-real-state",

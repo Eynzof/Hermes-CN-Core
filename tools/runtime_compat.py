@@ -94,7 +94,7 @@ def run_python_script_in_process(
             else:
                 state["exit_code"] = 1
                 err_buf.write(f"{code}\n")
-        except BaseException as exc:  # noqa: BLE001 — a script crash is a failure
+        except BaseException as exc:
             state["exit_code"] = 1
             err_buf.write(f"{type(exc).__name__}: {exc}\n")
 

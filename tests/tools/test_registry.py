@@ -125,6 +125,20 @@ class TestRegisterAndDispatch:
             "underscore",
         }
 
+class TestSelectedGeneration:
+    def test_unrelated_registration_keeps_key_but_replacement_and_removal_change_it(self):
+        reg = ToolRegistry()
+        reg.register(name="selected", toolset="core", schema=_make_schema("selected"), handler=_dummy_handler)
+        before = reg.get_selected_generation({"selected"})
+        reg.register(name="other", toolset="other", schema=_make_schema("other"), handler=_dummy_handler)
+        assert reg.get_selected_generation({"selected"}) == before
+        reg.register(name="selected", toolset="core", schema=_make_schema("selected"), handler=_dummy_handler)
+        replaced = reg.get_selected_generation({"selected"})
+        assert replaced != before
+        reg.deregister("selected")
+        assert reg.get_selected_generation({"selected"}) != replaced
+
+
 class TestGetDefinitions:
     def test_returns_openai_format(self):
         reg = ToolRegistry()

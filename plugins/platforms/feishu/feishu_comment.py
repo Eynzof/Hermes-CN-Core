@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 async def _exec_request(client, method, uri, paths=None, queries=None, body=None):
     """Execute a lark API request (tenant token) and return (code, msg, data_dict)."""
-    logger.info("[Feishu-Comment] API >>> %s %s paths=%s queries=%s body=%s", method, uri, paths, queries, orjson.dumps(body).decode('utf-8')[:500] if body else None)
+    logger.info("[Feishu-Comment] API >>> %s %s paths=%s queries=%s body_keys=%s", method, uri, paths, queries, sorted(body) if isinstance(body, dict) else None)
+    logger.debug("[Feishu-Comment] API >>> body=%s", orjson.dumps(body).decode('utf-8')[:500] if body else None)
     from lark_oapi import AccessTokenType
     from lark_oapi.core.enum import HttpMethod
     from lark_oapi.core.model.base_request import BaseRequest
@@ -180,7 +181,7 @@ async def batch_query_comment(client: Any, file_token: str, file_type: str, comm
     if not items or not isinstance(items, list):
         return logger.warning("[Feishu-Comment] batch_query_comment: empty items, raw data keys=%s", list(data.keys())) or {}
     item = items[0]
-    logger.info("[Feishu-Comment] batch_query_comment: is_whole=%s quote=%s reply_count=%s", item.get("is_whole"), (item.get("quote", "") or "")[:60],
+    logger.info("[Feishu-Comment] batch_query_comment: is_whole=%s quote_len=%d reply_count=%s", item.get("is_whole"), len(item.get("quote", "") or ""),
                 len(item.get("reply_list", {}).get("replies", [])) if isinstance(item.get("reply_list"), dict) else "?")
     return item
 
@@ -238,7 +239,7 @@ def _sanitize_comment_text(text: str) -> str:
 async def reply_to_comment(client: Any, file_token: str, file_type: str, comment_id: str, text: str) -> tuple[bool, int]:
     """Post a reply to a local comment thread. Returns ``(success, code)``."""
     text = _sanitize_comment_text(text)
-    logger.info("[Feishu-Comment] reply_to_comment: comment_id=%s text=%s", comment_id, text[:100])
+    logger.info("[Feishu-Comment] reply_to_comment: comment_id=%s text_len=%d", comment_id, len(text))
     code, msg, _ = await _exec_request(client, "POST", _REPLIES_URI, paths={"file_token": file_token, "comment_id": comment_id}, queries=[("file_type", file_type)],
                                        body={"content": {"elements": [{"type": "text_run", "text_run": {"text": text}}]}})
     _log_outcome(code, "[Feishu-Comment] reply_to_comment FAILED: code=%s msg=%s comment_id=%s", (code, msg, comment_id),
@@ -249,7 +250,7 @@ async def reply_to_comment(client: Any, file_token: str, file_type: str, comment
 async def add_whole_comment(client: Any, file_token: str, file_type: str, text: str) -> bool:
     """Add a new whole-document comment. Returns ``True`` on success."""
     text = _sanitize_comment_text(text)
-    logger.info("[Feishu-Comment] add_whole_comment: file_token=%s text=%s", file_token, text[:100])
+    logger.info("[Feishu-Comment] add_whole_comment: file_token=%s text_len=%d", file_token, len(text))
     code, msg, _ = await _exec_request(client, "POST", _ADD_COMMENT_URI, paths={"file_token": file_token},
                                        body={"file_type": file_type, "reply_elements": [{"type": "text", "text": text}]})
     _log_outcome(code, "[Feishu-Comment] add_whole_comment FAILED: code=%s msg=%s", (code, msg), "[Feishu-Comment] add_whole_comment OK", ())
@@ -502,13 +503,17 @@ def _run_comment_agent(prompt: str, client: Any, session_key: str = "") -> str:
         history = _load_session_history(session_key) if session_key else []
         if history:
             logger.info("[Feishu-Comment] _run_comment_agent: loaded %d history messages from session %s", len(history), session_key)
+        # skip_memory unless compression.checkpoint_required needs the provider to checkpoint with (fork scope).
+        from agent.conversation_compression_checkpoint import checkpoint_required_from_config
+
         agent = AIAgent(model=model, **{k: runtime_kwargs.get(k) for k in ("base_url", "api_key", "provider", "api_mode", "credential_pool", "reasoning_config")},
-                        quiet_mode=True, skip_context_files=True, skip_memory=True, max_iterations=15, enabled_toolsets=["feishu_doc", "feishu_drive"])
+                        quiet_mode=True, skip_context_files=True, skip_memory=not checkpoint_required_from_config(),
+                        memory_agent_context="subagent", max_iterations=15, enabled_toolsets=["feishu_doc", "feishu_drive"])
         try:
             logger.info("[Feishu-Comment] _run_comment_agent: calling run_conversation (prompt=%d chars, history=%d)", len(prompt), len(history))
             result = agent.run_conversation(prompt, conversation_history=history or None)
             response = (result.get("final_response") or "").strip()
-            logger.info("[Feishu-Comment] _run_comment_agent: done api_calls=%d response_len=%d response=%s", result.get("api_calls", 0), len(response), response[:200])
+            logger.info("[Feishu-Comment] _run_comment_agent: done api_calls=%d response_len=%d", result.get("api_calls", 0), len(response))
             if session_key and result.get("messages", []):
                 _save_session_history(session_key, result["messages"])
             return response
@@ -552,8 +557,8 @@ async def _whole_comment_prompt(client: Any, from_open_id: str, doc: dict) -> st
             nearest_self_index = idx
     if not current_text and (found := _last_index_where(timeline, lambda e: not e[2])):
         current_text, current_index = found
-    logger.info("[Feishu-Comment] Whole timeline: %d entries, current_idx=%d, self_idx=%d, text=%s",
-                len(timeline), current_index, nearest_self_index, current_text[:80] if current_text else "(empty)")
+    logger.info("[Feishu-Comment] Whole timeline: %d entries, current_idx=%d, self_idx=%d, text_len=%d",
+                len(timeline), current_index, nearest_self_index, len(current_text or ""))
     return build_whole_comment_prompt(comment_text=current_text, timeline=timeline, current_index=current_index, nearest_self_index=nearest_self_index,
                                       referenced_docs=await _referenced_docs_text(client, all_raw_replies, file_token), **doc)
 
@@ -569,13 +574,31 @@ async def _local_comment_prompt(client: Any, comment_id: str, reply_id: str, fro
     target_text, target_index = hits[-1] if hits else ("", -1)
     if not target_text and (found := _last_index_where(timeline, lambda e: e[0] == from_open_id)):
         target_text, target_index = found
-    logger.info("[Feishu-Comment] Local timeline: %d entries, target_idx=%d, quote=%s root=%s target=%s",
-                len(timeline), target_index, *(t[:60] if t else "(empty)" for t in (quote_text, root_text, target_text)))
+    logger.info("[Feishu-Comment] Local timeline: %d entries, target_idx=%d, quote_len=%d root_len=%d target_len=%d",
+                len(timeline), target_index, *(len(t or "") for t in (quote_text, root_text, target_text)))
     return build_local_comment_prompt(comment_id=comment_id, quote_text=quote_text, root_comment_text=root_text, target_reply_text=target_text, timeline=timeline,
                                       target_index=target_index, referenced_docs=await _referenced_docs_text(client, replies, file_token), **doc)
 
 
-async def handle_drive_comment_event(client: Any, data: Any, *, self_open_id: str = "") -> None:
+async def handle_drive_comment_event(client: Any, data: Any, *, self_open_id: str = "", secondary: bool = False) -> None:
+    """Run a drive-comment event in its adapter's profile scope (``secondary``: the adapter belongs
+    to a multiplexed secondary profile, so it never borrows the launch scope)."""
+    from agent.secret_scope import current_secret_scope, is_multiplex_active
+
+    if current_secret_scope() is not None:
+        return await _handle_drive_comment_event(client, data, self_open_id=self_open_id)
+    if secondary and is_multiplex_active():
+        # Its connect-time scope was lost: fail closed instead of running on the launch credentials.
+        return logger.warning("[Feishu-Comment] Dropping unscoped comment event from a secondary profile adapter")
+    # SDK callbacks for the launch adapter can arrive without the connect-time
+    # context. Once multiplexing is active, bind the launch tenant explicitly
+    # before this path resolves comment rules, config, or model credentials.
+    from tui_gateway.launch_profile_policy import async_launch_profile_scope_if_multiplexed
+    async with async_launch_profile_scope_if_multiplexed():
+        await _handle_drive_comment_event(client, data, self_open_id=self_open_id)
+
+
+async def _handle_drive_comment_event(client: Any, data: Any, *, self_open_id: str = "") -> None:
     """Full orchestration for a drive comment event. Parse + filter (self-reply, receiver, notice_type) -> access rules -> OK reaction -> parallel fetch (doc meta +
     comment) -> build timeline/prompt by is_whole -> run agent -> deliver reply -> remove OK reaction."""
     logger.info("[Feishu-Comment] ========== handle_drive_comment_event START ==========")
@@ -597,7 +620,7 @@ async def handle_drive_comment_event(client: Any, data: Any, *, self_open_id: st
     # Access control. Wiki-hosted docs report their underlying obj token, so when no exact rule
     # matched and the config has wiki: keys, reverse-lookup the wiki node.
     from plugins.platforms.feishu.feishu_comment_rules import load_config, resolve_rule, is_user_allowed, has_wiki_keys
-    comments_cfg = load_config()
+    comments_cfg = await asyncio.to_thread(load_config)
     rule = resolve_rule(comments_cfg, file_type, file_token)
     if rule.match_source in {"wildcard", "top"} and has_wiki_keys(comments_cfg) and (wiki_token := await _reverse_lookup_wiki_token(client, file_type, file_token)):
         rule = resolve_rule(comments_cfg, file_type, file_token, wiki_token=wiki_token)
@@ -607,11 +630,12 @@ async def handle_drive_comment_event(client: Any, data: Any, *, self_open_id: st
         return logger.info("[Feishu-Comment] User %s denied (policy=%s, rule=%s)", from_open_id, rule.policy, rule.match_source)
     logger.info("[Feishu-Comment] Access granted: user=%s policy=%s rule=%s", from_open_id, rule.policy, rule.match_source)
     reaction_kwargs = dict(file_token=file_token, file_type=file_type, reply_id=reply_id, reaction_type="OK")
+    pending = [query_document_meta(client, file_token, file_type),
+               batch_query_comment(client, file_token, file_type, comment_id)]
     if reply_id:
-        asyncio.ensure_future(update_comment_reaction(client, "add", **reaction_kwargs))
+        pending.append(update_comment_reaction(client, "add", **reaction_kwargs))
     logger.info("[Feishu-Comment] [Step 2/5] Parallel fetch: doc meta + comment batch_query")
-    doc_meta, comment_detail = await asyncio.gather(asyncio.ensure_future(query_document_meta(client, file_token, file_type)),
-                                                    asyncio.ensure_future(batch_query_comment(client, file_token, file_type, comment_id)))
+    doc_meta, comment_detail, *_ = await asyncio.gather(*pending)
     doc = dict(doc_title=doc_meta.get("title", "Untitled"), doc_url=doc_meta.get("url", ""), file_token=file_token, file_type=file_type, self_open_id=self_open_id)
     is_whole = bool(comment_detail.get("is_whole"))
     logger.info("[Feishu-Comment] Comment context: title=%s is_whole=%s", doc["doc_title"], is_whole)
@@ -630,7 +654,8 @@ async def handle_drive_comment_event(client: Any, data: Any, *, self_open_id: st
     if not response or _NO_REPLY_SENTINEL in response:
         logger.info("[Feishu-Comment] Agent returned NO_REPLY, skipping delivery")
     else:
-        logger.info("[Feishu-Comment] Agent response (%d chars): %s", len(response), response[:200])
+        logger.info("[Feishu-Comment] Agent response (%d chars)", len(response))
+        logger.debug("[Feishu-Comment] Agent response text: %s", response[:200])
         logger.info("[Feishu-Comment] [Step 5/5] Delivering reply (is_whole=%s, comment_id=%s)", is_whole, comment_id)
         delivered = await deliver_comment_reply(client, file_token, file_type, comment_id, response, is_whole)
         logger.log(logging.INFO if delivered else logging.ERROR, "[Feishu-Comment] Reply delivered successfully" if delivered else "[Feishu-Comment] Failed to deliver reply")

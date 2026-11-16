@@ -143,10 +143,10 @@ def get_version() -> str:
     lag the Core checkout it embeds.
     """
     try:
-        from hermes_cli import __version__  # noqa: PLC0415 - lazy on purpose
+        from hermes_cli import __version__
 
         return str(__version__)
-    except Exception:  # noqa: BLE001 - never crash the version gate
+    except Exception:
         return "unknown"
 
 
@@ -192,7 +192,7 @@ def get_status(params: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
             session_token=ctx.get("sessionToken"),
             profile=ctx.get("profile"),
         )
-    except Exception:  # noqa: BLE001 - status must never hard-fail the UI
+    except Exception:
         status = {}
     if not isinstance(status, dict):
         status = {}
@@ -227,7 +227,7 @@ def get_config(params: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
 def _live_register(server: Any, transport: rust_transport.RustBridgeTransport) -> None:
     if not getattr(transport, "_live_registered", False):
         server.register_live_transport(transport)
-        transport._live_registered = True  # noqa: SLF001 - internal flag
+        transport._live_registered = True
 
 
 def handle_gateway_connect(params: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
@@ -247,13 +247,13 @@ def handle_gateway_connect(params: dict[str, Any], ctx: dict[str, Any]) -> dict[
     server = _gateway()
     _live_register(server, transport)
     try:
-        server._ensure_skin_watcher()  # noqa: SLF001 - same call ws.py makes
-    except Exception:  # noqa: BLE001 - cosmetic, never block connect
+        server._ensure_skin_watcher()
+    except Exception:
         pass
     skin: Any = None
     try:
         skin = server.resolve_skin()
-    except Exception:  # noqa: BLE001
+    except Exception:
         skin = None
     transport.write({
         "jsonrpc": "2.0",
@@ -284,17 +284,17 @@ def handle_gateway_disconnect(params: dict[str, Any], ctx: dict[str, Any]) -> di
         server = _gateway()
         try:
             server.unregister_live_transport(transport)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         try:
-            server._release_wake_for_transport(transport)  # noqa: SLF001
-        except Exception:  # noqa: BLE001
+            server._release_wake_for_transport(transport)
+        except Exception:
             pass
         try:
-            server._close_sessions_for_transport(  # noqa: SLF001
+            server._close_sessions_for_transport(
                 transport, end_reason="embedded_disconnect"
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     return {"ok": True, "connectionId": connection_id}
 
@@ -407,7 +407,7 @@ def _multipart_upload(params: dict[str, Any], ctx: dict[str, Any]) -> Any:
     filename = str(params.get("filename") or "attachment")
     try:
         content = base64.b64decode(str(params.get("content_base64") or ""), validate=True)
-    except Exception as exc:  # noqa: BLE001 - surface as 400-ish body
+    except Exception as exc:
         return {"ok": False, "error": f"invalid content_base64: {exc}"}
 
     chunks: list[bytes] = []
@@ -415,7 +415,7 @@ def _multipart_upload(params: dict[str, Any], ctx: dict[str, Any]) -> Any:
         chunks.append(
             f"--{boundary}\r\n"
             f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
-            f"{value}\r\n".encode("utf-8")
+            f"{value}\r\n".encode()
         )
     mime = str(params.get("mime_type") or "application/octet-stream")
     safe_filename = filename.replace('"', "").replace("\\", "_").replace("\r", "").replace("\n", "")
@@ -424,10 +424,10 @@ def _multipart_upload(params: dict[str, Any], ctx: dict[str, Any]) -> Any:
             f"--{boundary}\r\n"
             f'Content-Disposition: form-data; name="file"; filename="{safe_filename}"\r\n'
             f"Content-Type: {mime}\r\n\r\n"
-        ).encode("utf-8")
+        ).encode()
     )
     chunks.append(content)
-    chunks.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
+    chunks.append(f"\r\n--{boundary}--\r\n".encode())
 
     params = dict(params)
     params["body"] = (

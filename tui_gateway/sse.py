@@ -63,7 +63,7 @@ class SSETransport:
     the SSE generator can pull them out in order.
     """
 
-    __slots__ = ("client_id", "_loop", "_queue", "_closed")
+    __slots__ = ("_closed", "_loop", "_queue", "client_id")
 
     def __init__(self, client_id: str, loop: asyncio.AbstractEventLoop) -> None:
         self.client_id = client_id
@@ -123,7 +123,7 @@ class SSETransport:
                     self._queue.get(),
                     timeout=_SSE_PING_INTERVAL_S,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield ": ping\n\n"
                 continue
             if line is None:
@@ -146,7 +146,7 @@ class SSETransport:
 # Registry of live SSE connections, keyed by client_id. Populated when
 # /api/v2/events opens a stream and removed on disconnect. POST /api/v2/rpc
 # looks up the transport here before calling dispatch().
-SSE_CLIENTS: Dict[str, SSETransport] = {}
+SSE_CLIENTS: dict[str, SSETransport] = {}
 
 
 def new_client_id() -> str:

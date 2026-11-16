@@ -110,7 +110,7 @@ def test_run_python_script_in_process_honours_sys_exit(frozen, tmp_path):
 def test_run_python_script_in_process_timeout(frozen, tmp_path):
     script = tmp_path / "hang.py"
     script.write_text("import time; time.sleep(30)\n", encoding="utf-8")
-    code, stdout, stderr = frozen.run_python_script_in_process(str(script), 0.2)
+    code, _stdout, stderr = frozen.run_python_script_in_process(str(script), 0.2)
     assert code == 1
     assert "timed out" in stderr
 
@@ -118,6 +118,6 @@ def test_run_python_script_in_process_timeout(frozen, tmp_path):
 def test_run_python_script_in_process_crash(frozen, tmp_path):
     script = tmp_path / "crash.py"
     script.write_text("raise RuntimeError('boom')\n", encoding="utf-8")
-    code, stdout, stderr = frozen.run_python_script_in_process(str(script), 10)
+    code, _stdout, stderr = frozen.run_python_script_in_process(str(script), 10)
     assert code == 1
     assert "RuntimeError" in stderr and "boom" in stderr

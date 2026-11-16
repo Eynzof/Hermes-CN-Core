@@ -302,7 +302,7 @@ class TestResolveChildCwd(unittest.TestCase):
         """A recorded directory that no longer exists is skipped; the
         registered override is the next rung."""
         import tempfile
-        import tools.terminal_tool as terminal_tool
+        from tools import terminal_tool
 
         with tempfile.TemporaryDirectory() as reg:
             task_id = "stale-record-test"

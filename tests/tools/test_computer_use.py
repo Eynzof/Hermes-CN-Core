@@ -45,7 +45,7 @@ def noop_backend():
 class TestRegistration:
     def test_tool_registers_with_registry(self):
         # Importing the shim registers the tool.
-        import tools.computer_use_tool  # noqa: F401
+        import tools.computer_use_tool
         from tools.registry import registry
         entry = registry._tools.get("computer_use")
         assert entry is not None
@@ -1254,9 +1254,6 @@ class TestCuaDriverSessionReconnect:
         class FakeProc:
             returncode = 0
             stderr = ""
-            # Daemon returns a path, not inline base64.
-            stdout = ('{"element_count": 7, "tree_markdown": "- [0] AXButton",'
-                      f' "screenshot_file_path": "{shot!s}"}}')
             # Daemon returns a path, not inline base64.  Build via json.dumps
             # so Windows paths (C:\Users\...) are escaped as valid JSON.
             stdout = json.dumps({

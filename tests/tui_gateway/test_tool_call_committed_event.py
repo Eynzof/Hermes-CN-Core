@@ -50,7 +50,7 @@ def _stub_runner(monkeypatch, tmp_path):
 
     from tools.process_registry import process_registry
 
-    monkeypatch.setattr(process_registry, "drain_notifications", lambda: [])
+    monkeypatch.setattr(process_registry, "drain_notifications", list)
     return events
 
 

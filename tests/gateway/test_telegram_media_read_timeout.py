@@ -37,7 +37,7 @@ def _allow_public_image_urls(monkeypatch):
     the assertion is about. Stub it to True so the test drives the send path
     deterministically on every host.
     """
-    import tools.url_safety as url_safety
+    from tools import url_safety
 
     monkeypatch.setattr(url_safety, "is_safe_url", lambda url: True)
 
@@ -63,10 +63,19 @@ def _stub_download(monkeypatch, size: int):
     """Make the fallback's SSRF-safe client return ``size`` bytes."""
 
     class _Resp:
-        content = b"x" * size
+        headers = {}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
 
         def raise_for_status(self):
             return None
+
+        async def aiter_bytes(self):
+            yield b"x" * size
 
     class _Client:
         async def __aenter__(self):
@@ -75,7 +84,7 @@ def _stub_download(monkeypatch, size: int):
         async def __aexit__(self, *exc):
             return False
 
-        async def get(self, url):
+        def stream(self, method, url):
             return _Resp()
 
     from tools import url_safety

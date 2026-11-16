@@ -3,7 +3,7 @@ import os
 import stat
 import threading
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 
 import pytest
 
@@ -30,7 +30,7 @@ def frozen_capture_clock(monkeypatch):
     and fail the equality assert. Freezing the module's datetime makes both reads
     identical by construction.
     """
-    fixed = datetime(2026, 9, 15, 10, 30, 0, tzinfo=timezone.utc)
+    fixed = datetime(2026, 9, 15, 10, 30, 0, tzinfo=UTC)
 
     class _FrozenDatetime(datetime):
         @classmethod
@@ -143,11 +143,11 @@ def test_prefetch_includes_profile_on_first_turn(provider):
 
 
 def test_capture_custom_id_buckets_by_four_hours():
-    a = _capture_custom_id("session-1", datetime(2026, 9, 12, 3, 59, tzinfo=timezone.utc))
-    b = _capture_custom_id("session-1", datetime(2026, 9, 12, 4, 0, tzinfo=timezone.utc))
+    a = _capture_custom_id("session-1", datetime(2026, 9, 12, 3, 59, tzinfo=UTC))
+    b = _capture_custom_id("session-1", datetime(2026, 9, 12, 4, 0, tzinfo=UTC))
     assert a == "session_1_2026-09-12_b0"
     assert b == "session_1_2026-09-12_b1"
-    assert _capture_custom_id("", datetime(2026, 9, 12, 23, 0, tzinfo=timezone.utc)) == "hermes_2026-09-12_b5"
+    assert _capture_custom_id("", datetime(2026, 9, 12, 23, 0, tzinfo=UTC)) == "hermes_2026-09-12_b5"
 
 
 def test_sync_turn_writes_turn_to_session_document(provider, frozen_capture_clock):
@@ -190,7 +190,6 @@ def test_write_treats_none_client_result_as_success(provider, monkeypatch):
 
     def none_returning_add(content, metadata=None, **kwargs):
         calls.append(content)
-        return None
 
     monkeypatch.setattr(provider._client, "add_memory", none_returning_add)
     provider.sync_turn("hello", "hi there", session_id="session-1")
@@ -404,7 +403,7 @@ def test_shutdown_joins_threads_and_flushes_buffer(provider, monkeypatch, frozen
     assert provider._prefetch_thread is None
     # Explicit memory write and the retried turn both went through.
     assert len(provider._client.add_calls) == 2
-    flushed = next(c for c in provider._client.add_calls if c.get("custom_id") == _capture_custom_id("session-1"))
+    _flushed = next(c for c in provider._client.add_calls if c.get("custom_id") == _capture_custom_id("session-1"))
     assert provider._pending_turns == []
 
 

@@ -3,6 +3,8 @@
 from pathlib import Path
 import tomllib
 
+import pytest
+
 def _load_optional_dependencies():
     pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
     with pyproject_path.open("rb") as handle:
@@ -10,7 +12,8 @@ def _load_optional_dependencies():
     return project["optional-dependencies"]
 
 
-def test_wake_dependencies_and_runtime_gate_agree_on_supported_targets():
+@pytest.mark.parametrize("python_version,sherpa_supported", [("3.14", True), ("3.15", False)])
+def test_wake_dependencies_and_runtime_gate_agree_on_supported_targets(python_version, sherpa_supported):
     from packaging.markers import Marker, default_environment
     from packaging.requirements import Requirement
 
@@ -28,7 +31,8 @@ def test_wake_dependencies_and_runtime_gate_agree_on_supported_targets():
     ]
     for system, platform_system, machine, supported in targets:
         environment = {**default_environment(), "sys_platform": system,
-                       "platform_system": platform_system, "platform_machine": machine}
+                       "platform_system": platform_system, "platform_machine": machine,
+                       "python_version": python_version, "python_full_version": python_version + ".0"}
         for extra in ("wake", "wake-openwakeword"):
             requirement = next(req for spec in optional[extra]
                                if (req := Requirement(spec)).name == "pyopen-wakeword")
@@ -36,34 +40,40 @@ def test_wake_dependencies_and_runtime_gate_agree_on_supported_targets():
         assert Marker(gates["wake-openwakeword"]).evaluate(environment) is supported
         selected = {req.name for spec in optional["wake"]
                     if (req := Requirement(spec)).marker is None or req.marker.evaluate(environment)}
-        assert {"sherpa-onnx", "pvporcupine", "sentencepiece", "pypinyin"} <= selected
+        sherpa_names = {"sherpa-onnx", "sherpa-onnx-core", "sentencepiece", "pypinyin"}
+        assert "pvporcupine" in selected
+        assert (sherpa_names <= selected) is sherpa_supported
         sherpa_deps = {req.name for spec in optional["wake-sherpa"]
                        if (req := Requirement(spec)).marker is None or req.marker.evaluate(environment)}
-        assert {"sherpa-onnx", "sentencepiece", "pypinyin"} <= sherpa_deps
+        assert sherpa_deps == (sherpa_names if sherpa_supported else set())
         for extra in ("wake-sherpa", "wake-porcupine"):
+            expected = sherpa_supported if extra == "wake-sherpa" else True
             assert all(req.marker is None or req.marker.evaluate(environment)
-                       for req in map(Requirement, optional[extra]))
+                       for req in map(Requirement, optional[extra])) is expected
             gate = gates.get(extra)
-            assert gate is None or Marker(gate).evaluate(environment)
+            assert (gate is None or Marker(gate).evaluate(environment)) is expected
 
 
 def test_direct_overrides_preserve_the_declared_exact_version():
     from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
 
     root = Path(__file__).resolve().parents[1]
     metadata = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8-sig"))
     locked = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8-sig"))
-    direct = {req.name: req for spec in metadata["project"]["dependencies"]
+    # uv.lock records normalized names; pyproject keeps the declared spelling (Pillow).
+    direct = {canonicalize_name(req.name): req for spec in metadata["project"]["dependencies"]
               if (req := Requirement(spec)).specifier}
     for spec in metadata["tool"]["uv"].get("override-dependencies", []):
         override = Requirement(spec)
-        requirement = direct.get(override.name)
+        name = canonicalize_name(override.name)
+        requirement = direct.get(name)
         if requirement is None or not any(s.operator == "==" for s in requirement.specifier):
             continue
         assert override.specifier == requirement.specifier, (
             f"{override.name}: override {override.specifier} contradicts exact requirement {requirement.specifier}"
         )
-        versions = {row["version"] for row in locked["package"] if row["name"] == override.name}
+        versions = {row["version"] for row in locked["package"] if canonicalize_name(row["name"]) == name}
         assert versions and all(version in requirement.specifier for version in versions)
 
 
@@ -150,6 +160,7 @@ def test_lazy_installable_extras_excluded_from_all():
         "telegram", "discord",
         "wake", "wake-openwakeword", "wake-sherpa", "wake-porcupine",
         "google-chat",
+        "keychain",  # keyring — vault key in the OS keychain, installed by `hermes vault key migrate`
         "mistral",  # mistralai — Voxtral STT/TTS, lazy-installed (stt.mistral / tts.mistral)
     }
     all_extra_specs = optional_dependencies["all"]

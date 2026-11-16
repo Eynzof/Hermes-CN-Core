@@ -70,7 +70,7 @@ def _run(cmd: list[str], timeout: int = 300) -> subprocess.CompletedProcess[str]
     """Run a subprocess and return the result (stdout/stderr captured as text)."""
     return subprocess.run(
         cmd,
-        capture_output=True,
+        check=False, capture_output=True,
         text=True, encoding="utf-8", errors="replace",
         timeout=timeout,
         creationflags=windows_hide_flags(),
@@ -267,7 +267,7 @@ def _try_winget() -> bool:
         return False
     try:
         print("Installing Coreutils via WinGet ...")
-        result = _run(
+        _result = _run(
             [
                 "winget",
                 "install",
@@ -428,7 +428,7 @@ def _try_github_download(
     # Run the downloaded installer silently
     ok = False
     try:
-        print(f"Running installer ...")
+        print("Running installer ...")
         _run([str(installer)], timeout=3000)
         if _coreutils_found():
             ok = True

@@ -197,7 +197,7 @@ def test_cmd_fallback():
 def test_cmd_fallback_resolver_gating(monkeypatch):
     """The opt-in resolver is Windows+PowerShell only, env overrides config, and
     it defaults OFF.  Cross-platform via a mocked ``_IS_WINDOWS``."""
-    import tools.environments.local as local
+    from tools.environments import local
     import hermes_cli.config as cfg
 
     # Off when not Windows, or for a non-PowerShell shell.
@@ -363,7 +363,7 @@ def test_crc32_helper_matches_zlib(tmp_path):
     import zlib
     from tools.file_operations import _crc32_of_file
 
-    data = ("héllo 世界\n".encode("utf-8")) * 500  # multi-chunk-ish, non-ASCII
+    data = ("héllo 世界\n".encode()) * 500  # multi-chunk-ish, non-ASCII
     p = tmp_path / "blob.bin"
     p.write_bytes(data)
     crc, size = _crc32_of_file(str(p), chunk_size=64)

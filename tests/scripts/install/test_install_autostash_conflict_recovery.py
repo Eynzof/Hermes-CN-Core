@@ -95,7 +95,7 @@ def test_install_sh_repository_stage_recovers_from_autostash_conflict(
 
     result = subprocess.run(
         ["bash", str(INSTALL_SH), "--stage", "repository", "--non-interactive"],
-        cwd=tmp_path,
+        check=False, cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,
@@ -112,13 +112,15 @@ def test_install_sh_repository_stage_recovers_from_autostash_conflict(
     reason="needs git and PowerShell",
 )
 def test_install_ps1_repository_stage_recovers_from_autostash_conflict(
-    tmp_path: Path,
+    tmp_path: Path, pinned_git_store: Path,
 ) -> None:
     managed = _make_conflicted_managed_checkout(tmp_path)
     result = subprocess.run(
         [
             POWERSHELL,
             "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
             "-File",
             str(INSTALL_PS1),
             "-Stage",
@@ -129,7 +131,8 @@ def test_install_ps1_repository_stage_recovers_from_autostash_conflict(
             "-HermesHome",
             str(tmp_path / "hermes-home"),
         ],
-        cwd=tmp_path,
+        check=False, cwd=tmp_path,
+        env=dict(os.environ, HERMES_RUNTIME_DIR=str(pinned_git_store)),
         capture_output=True,
         text=True,
     )
@@ -183,7 +186,7 @@ def test_install_sh_repository_stage_clean_apply_drops_stash(
     }
     result = subprocess.run(
         ["bash", str(INSTALL_SH), "--stage", "repository", "--non-interactive"],
-        cwd=tmp_path,
+        check=False, cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,

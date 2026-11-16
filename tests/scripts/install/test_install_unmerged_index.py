@@ -35,7 +35,7 @@ def test_repository_stage_clears_unmerged_index_and_preserves_changes(tmp_path):
                    "-HermesHome", env["HERMES_HOME"]]
     else:
         command = ["bash", str(INSTALL_SH), "--stage", "repository", "--non-interactive", "--dir", str(repo)]
-    result = subprocess.run(command, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=120)
+    result = subprocess.run(command, check=False, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stdout + result.stderr
     assert not _git(repo, "ls-files", "--unmerged").stdout.strip()
     assert _git(repo, "status", "--porcelain").stdout.strip() == ""

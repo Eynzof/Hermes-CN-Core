@@ -201,7 +201,7 @@ class TestCmdStatus:
             def resolve_session_name(self):
                 return "hermes"
 
-        monkeypatch.setattr(honcho_cli, "_read_config", lambda: {})
+        monkeypatch.setattr(honcho_cli, "_read_config", dict)
         monkeypatch.setattr(honcho_cli, "_config_path", lambda: cfg_path)
         monkeypatch.setattr(honcho_cli, "_local_config_path", lambda: cfg_path)
         monkeypatch.setattr(honcho_cli, "_active_profile_name", lambda: "default")
@@ -680,7 +680,7 @@ class TestCmdSetupDeviceFlow:
                    headless=(False, True), device_result=None, device_error=None):
         """Run cmd_setup with the device flow stubbed; returns (cfg, calls, prompts)."""
         import plugins.memory.honcho.cli as honcho_cli
-        import plugins.memory.honcho.oauth_flow as oauth_flow
+        from plugins.memory.honcho import oauth_flow
         from plugins.memory.honcho.oauth import OAuthCredential
 
         cfg_path = tmp_path / "config.json"
@@ -693,7 +693,7 @@ class TestCmdSetupDeviceFlow:
         monkeypatch.setattr(honcho_cli, "_host_key", lambda: "hermes")
         monkeypatch.setattr(honcho_cli, "_ensure_sdk_installed", lambda: True)
         monkeypatch.setattr(honcho_cli, "_write_config", lambda *a, **k: None)
-        monkeypatch.setattr(honcho_cli, "_gateway_platforms", lambda: [])
+        monkeypatch.setattr(honcho_cli, "_gateway_platforms", list)
         monkeypatch.setattr(honcho_cli, "_device_login_available", lambda: device_available)
         monkeypatch.setattr(honcho_cli, "_headless", lambda: headless)
         monkeypatch.setattr(
@@ -941,7 +941,7 @@ class TestWriteConfigMergesOntoDisk:
         assert out == {"apiKey": "hch-at-new", "oauth": {"refreshToken": "hch-rt-new"}, "workspace": "A"}
 
     def test_a_grant_the_login_installed_yields_to_a_later_rotation(self, monkeypatch, tmp_path):
-        import plugins.memory.honcho.oauth as oauth
+        from plugins.memory.honcho import oauth
         honcho_cli, cfg_path = self._paths(monkeypatch, tmp_path, {"hosts": {"hermes": {"peerName": "alice"}}})
         monkeypatch.setattr(honcho_cli, "_host_key", lambda: "hermes")
         cfg = honcho_cli._read_config()
@@ -963,7 +963,7 @@ class TestWriteConfigMergesOntoDisk:
         return _point_cli_at(monkeypatch, local, _config_path=lambda: seed, _host_key=lambda: "hermes"), local
 
     def test_a_read_seeded_from_another_file_applies_only_its_edits_onto_the_local_file(self, monkeypatch, tmp_path):
-        import plugins.memory.honcho.oauth as oauth
+        from plugins.memory.honcho import oauth
         honcho_cli, local = self._seeded(monkeypatch, tmp_path)
         cfg = honcho_cli._read_config()
         grant = {"access_token": "hch-at-login", "refresh_token": "hch-rt-login", "expires_in": 3600}

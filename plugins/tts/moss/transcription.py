@@ -63,11 +63,11 @@ def _as_bool(value: Any) -> bool:
     return False
 
 
-def normalize_segments(raw: Any) -> List[Dict[str, Any]]:
+def normalize_segments(raw: Any) -> list[dict[str, Any]]:
     """Normalize a Moss ``segments`` payload to ``{start,end,text,speaker}``."""
     if not isinstance(raw, list):
         return []
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for item in raw:
         if not isinstance(item, dict):
             continue
@@ -96,7 +96,7 @@ class MossTranscriptionProvider(TranscriptionProvider):
     # ------------------------------------------------------------------ config
 
     @staticmethod
-    def _config() -> Dict[str, Any]:
+    def _config() -> dict[str, Any]:
         try:
             from tools.tts_tool import _load_tts_config
 
@@ -107,13 +107,13 @@ class MossTranscriptionProvider(TranscriptionProvider):
             return {}
 
     @classmethod
-    def _section(cls, cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _section(cls, cfg: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         cfg = cfg if cfg is not None else cls._config()
         section = cfg.get("moss") if isinstance(cfg, dict) else {}
         return section if isinstance(section, dict) else {}
 
     @classmethod
-    def _stt_section(cls, cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _stt_section(cls, cfg: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         """Read ``stt.moss`` (STT-specific overrides) from the live config."""
         cfg = cfg if cfg is not None else cls._config()
         try:
@@ -138,7 +138,7 @@ class MossTranscriptionProvider(TranscriptionProvider):
 
     # ------------------------------------------------------------------ models
 
-    def list_models(self) -> List[Dict[str, Any]]:
+    def list_models(self) -> list[dict[str, Any]]:
         return [
             {"id": MODEL_TRANSCRIBE, "display": "Moss Transcribe"},
             {
@@ -151,7 +151,7 @@ class MossTranscriptionProvider(TranscriptionProvider):
     def default_model(self) -> Optional[str]:
         return MODEL_TRANSCRIBE
 
-    def get_setup_schema(self) -> Dict[str, Any]:
+    def get_setup_schema(self) -> dict[str, Any]:
         return {
             "name": "Moss",
             "badge": "paid",
@@ -174,7 +174,7 @@ class MossTranscriptionProvider(TranscriptionProvider):
         model: Optional[str] = None,
         language: Optional[str] = None,
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Transcribe *file_path*; returns the standard STT envelope.
 
         On success::
@@ -293,24 +293,24 @@ class MossTranscriptionProvider(TranscriptionProvider):
                 async_mode=False,
             )
             return self._success_envelope(data, diarize=diarize, model=resolved_model)
-        except Exception as exc:  # noqa: BLE001 — ABC contract: never raise
+        except Exception as exc:
             logger.warning("Moss transcription failed: %s", exc, exc_info=True)
             return _error_envelope(f"{type(exc).__name__}: {exc}")
 
     # ----------------------------------------------------------------- helpers
 
     @staticmethod
-    def _api_transcribe(path: Path, **kwargs: Any) -> Dict[str, Any]:
+    def _api_transcribe(path: Path, **kwargs: Any) -> dict[str, Any]:
         """Thin seam so tests can monkeypatch ``api.transcribe``."""
         from plugins.tts.moss import api
 
         return api.transcribe(str(path), **kwargs)
 
     def _success_envelope(
-        self, data: Dict[str, Any], *, diarize: bool, model: str
-    ) -> Dict[str, Any]:
+        self, data: dict[str, Any], *, diarize: bool, model: str
+    ) -> dict[str, Any]:
         transcript = str(data.get("text") or data.get("transcript") or "").strip()
-        envelope: Dict[str, Any] = {
+        envelope: dict[str, Any] = {
             "success": True,
             "transcript": transcript,
             "provider": "moss",
@@ -339,7 +339,7 @@ class MossTranscriptionProvider(TranscriptionProvider):
         task_id: str,
         timeout: float = 180.0,
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Poll an async transcription task to completion.
 
         Reuses :meth:`MossProvider.poll_task` — the same
@@ -350,7 +350,7 @@ class MossTranscriptionProvider(TranscriptionProvider):
         return MossProvider().poll_task(task_id, timeout=timeout, **extra)
 
 
-def _resolve_max_file_size(stt: Dict[str, Any], section: Dict[str, Any]) -> int:
+def _resolve_max_file_size(stt: dict[str, Any], section: dict[str, Any]) -> int:
     for source in (stt, section):
         raw = source.get("max_file_size") if isinstance(source, dict) else None
         if isinstance(raw, int) and raw > 0:
@@ -358,7 +358,7 @@ def _resolve_max_file_size(stt: Dict[str, Any], section: Dict[str, Any]) -> int:
     return _DEFAULT_MAX_FILE_SIZE
 
 
-def _error_envelope(message: str) -> Dict[str, Any]:
+def _error_envelope(message: str) -> dict[str, Any]:
     return {
         "success": False,
         "transcript": "",

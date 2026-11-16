@@ -1,8 +1,8 @@
 """A backend binds even while another process holds the install lock.
 
 Regression: ``runtime_lock`` waited forever, and the lock is held across a whole dependency
-rebuild (tens of seconds on a bundle), so the second backend — the ``hermes-setup`` onboarding
-profile — never reached its port: the renderer gave up at 40 s and Electron killed it at 90 s
+rebuild (tens of seconds on a bundle), so the second backend — a pooled backend for
+another profile — never reached its port: the renderer gave up at 40 s and Electron killed it at 90 s
 while the holder ran a uv build it had started for a status probe. Deciding what a lost race
 means is the caller's job now: readers skip, explicit installs still wait.
 """
@@ -35,7 +35,8 @@ def install_tree(tmp_path, monkeypatch):
     environment = install_state_dir(repo) / "environments" / "gen1" / "venv"
     site = site_packages(environment)
     site.mkdir(parents=True)
-    (environment / "pyvenv.cfg").write_text("version = 3.14", encoding="utf-8")
+    (environment / "pyvenv.cfg").write_text(
+        f"version = {sys.version_info.major}.{sys.version_info.minor}", encoding="utf-8")
     (environment.parent / ".lease-managed").touch()
     runtime_facts_path(repo).write_text(
         json.dumps({"packages": {"venv": {"environment": str(environment)}}}), encoding="utf-8")

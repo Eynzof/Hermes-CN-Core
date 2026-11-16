@@ -40,9 +40,9 @@ from typing import Any, Callable
 __all__ = [
     "RustBridgeTransport",
     "bind_connection",
-    "unbind_connection",
-    "transport_for",
     "connection_ids",
+    "transport_for",
+    "unbind_connection",
 ]
 
 # Sink signature: callable(connection_id: str, frame_json: str) -> bool.
@@ -60,7 +60,7 @@ def _null_sink(_connection_id: str, _frame_json: str) -> bool:
 _active_sink: Sink = _null_sink
 
 # connection_id -> RustBridgeTransport (one per WebView gateway connection).
-_transports: dict[str, "RustBridgeTransport"] = {}
+_transports: dict[str, RustBridgeTransport] = {}
 _transports_lock = threading.Lock()
 
 
@@ -173,7 +173,7 @@ class RustBridgeTransport:
         )
 
 
-def bind_connection(connection_id: str) -> "RustBridgeTransport":
+def bind_connection(connection_id: str) -> RustBridgeTransport:
     """Create (or reuse) the transport for one WebView gateway connection.
 
     The transport resolves the module-level sink at *write* time so frames
@@ -188,7 +188,7 @@ def bind_connection(connection_id: str) -> "RustBridgeTransport":
         return transport
 
 
-def unbind_connection(connection_id: str) -> "RustBridgeTransport | None":
+def unbind_connection(connection_id: str) -> RustBridgeTransport | None:
     """Close and drop the transport for a disconnected WebView connection."""
     with _transports_lock:
         transport = _transports.pop(connection_id, None)
@@ -197,7 +197,7 @@ def unbind_connection(connection_id: str) -> "RustBridgeTransport | None":
     return transport
 
 
-def transport_for(connection_id: str | None) -> "RustBridgeTransport | None":
+def transport_for(connection_id: str | None) -> RustBridgeTransport | None:
     with _transports_lock:
         return _transports.get(connection_id or "")
 

@@ -400,7 +400,7 @@ def _deep_copy(d: dict) -> dict:
 
 # ── Registry registration ────────────────────────────────────────────────
 
-from tools.registry import registry  # noqa: E402
+from tools.registry import registry
 
 registry.register(
     name="agent_swarm",

@@ -136,7 +136,7 @@ def test_start_with_collection_off_purges_receipts_unreported(marks, monkeypatch
     assert marks.rows == []
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="runs the real install.sh")
+@pytest.mark.platforms("posix")
 def test_real_install_sh_ladder_leaves_only_closed_tokens(tmp_path):
     """The real ladder with git missing from PATH fails in prerequisites and parks one closed receipt."""
     tools = tmp_path / "bin"
@@ -151,6 +151,7 @@ def test_real_install_sh_ladder_leaves_only_closed_tokens(tmp_path):
          "--dir", str(tmp_path / "checkout")],
         env={"HOME": str(tmp_path), "PATH": str(tools), "HERMES_REPO_URL": "https://example.invalid/x.git"},
         capture_output=True, text=True, encoding="utf-8", timeout=60,
+        check=False,
     )
     assert result.returncode == 1, result.stdout + result.stderr
     assert "git is required" in result.stderr
@@ -179,7 +180,6 @@ def test_receipt_is_recorded_only_on_a_day_the_sender_can_ever_send(marks, monke
     t0 = datetime(2026, 10, 6, tzinfo=UTC)
     clock = {"now": t0 + timedelta(hours=9)}
     monkeypatch.setattr(store_module, "_utc_now", lambda: clock["now"])
-    monkeypatch.setattr(install_run.time, "time", lambda: clock["now"].timestamp())
     monkeypatch.setattr("hermes_cli.config.read_raw_config_readonly",
                         lambda: {"telemetry": {"shared_metrics": {"enabled": True, "send": True}}})
     store = store_module.SharedMetricsStore()

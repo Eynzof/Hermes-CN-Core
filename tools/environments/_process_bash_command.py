@@ -207,8 +207,7 @@ def _process_unquoted(cmd: str) -> str:
                 m2 = _UNQUOTED_SPECIAL_RE.search(cmd, j, dq_end)
                 if m2:
                     nxt2 = m2.start()
-                    if nxt2 > j:
-                        j = nxt2
+                    j = max(j, nxt2)
                 else:
                     # No more special chars inside DQ — rest is verbatim
                     j = dq_end

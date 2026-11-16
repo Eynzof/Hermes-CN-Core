@@ -34,9 +34,10 @@ from agent.compression_marker import elide_middle
 from agent.retry_utils import jittered_backoff
 from hermes_cli.env_loader import load_hermes_dotenv
 import json
+from hermes_cli._startup_fast import project_root_str
 
 # Load .env from HERMES_HOME first, then project root as a dev fallback.
-load_hermes_dotenv(hermes_home=get_hermes_home(), project_env=Path(__file__).parent / ".env")
+load_hermes_dotenv(hermes_home=get_hermes_home(), project_env=Path(project_root_str()) / ".env")
 
 
 def _response_finish_reason(response: Any) -> str:
@@ -59,7 +60,6 @@ def _effective_temperature_for_model(model: str, requested_temperature: Optional
 
     Returns ``None`` when the model manages temperature server-side (Kimi);
     callers must omit the ``temperature`` kwarg entirely in that case.
-    Shared with ``mini_swe_runner`` (which passes ``requested_temperature=None``).
     """
     try:
         from agent.auxiliary_client import _fixed_temperature_for_model, OMIT_TEMPERATURE
@@ -88,8 +88,7 @@ def _load_jsonl(path: Path, on_error: Optional[Callable[[int, json.JSONDecodeErr
 
 def _write_jsonl(path: Path, entries) -> None:
     with open(path, 'w', encoding='utf-8') as f:
-        for entry in entries:
-            f.write(orjson.dumps(entry).decode('utf-8') + '\n')
+        f.writelines(orjson.dumps(entry).decode('utf-8') + '\n' for entry in entries)
 
 
 # YAML section -> keys; "yaml_key:attr" when the config attribute name differs.
@@ -670,7 +669,7 @@ Write only the summary, starting with "[CONTEXT SUMMARY]:" prefix."""
         self._print_summary()
         if self.config.metrics_enabled:
             metrics_path = output_dir / self.config.metrics_output_file
-            with open(metrics_path, 'w', encoding="utf-8", errors="replace") as f:
+            with open(metrics_path, 'w', encoding="utf-8", errors="replace") as f:  # noqa: ASYNC230 -- small local write; a local open() is non-blocking in practice
                 f.write(orjson.dumps(self.aggregate_metrics.to_dict(), option=orjson.OPT_INDENT_2).decode('utf-8'))
             console.print(f"\n💾 Metrics saved to {metrics_path}")
 

@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import orjson
+import os
 import subprocess
 import sys
 import types
@@ -150,6 +151,7 @@ def test_api_calendar_list_uses_events_list(api_module):
 def test_api_get_credentials_refresh_persists_authorized_user_type(api_module, monkeypatch):
     token_path = api_module.TOKEN_PATH
     _write_token(token_path, token="ya29.old")
+    token_path.chmod(0o644)
 
     class FakeCredentials:
         def __init__(self):
@@ -196,6 +198,8 @@ def test_api_get_credentials_refresh_persists_authorized_user_type(api_module, m
     assert isinstance(creds, FakeCredentials)
     assert saved["token"] == "ya29.refreshed"
     assert saved["type"] == "authorized_user"
+    if os.name == "posix":
+        assert token_path.stat().st_mode & 0o777 == 0o600
 
 
 def test_gmail_search_empty_result_prints_json_array(

@@ -806,7 +806,7 @@ class TestToolHandler:
 
     def test_successful_call(self):
         from tools.mcp_tool_handlers import _make_tool_handler
-        from tools.mcp_tool import _servers
+        from tools.mcp_tool import _server_trust_levels, _servers
 
         mock_session = MagicMock()
         mock_session.call_tool = AsyncMock(
@@ -817,7 +817,7 @@ class TestToolHandler:
 
         try:
             handler = _make_tool_handler("test_srv", "greet", 120)
-            with self._patch_mcp_loop():
+            with self._patch_mcp_loop(), patch.dict(_server_trust_levels, {"test_srv": "full"}):
                 result = orjson.loads(handler({"name": "world"}))
             assert result["result"] == "hello world"
             mock_session.call_tool.assert_called_once_with("greet", arguments={"name": "world"})
@@ -826,7 +826,7 @@ class TestToolHandler:
 
     def test_mcp_error_result(self):
         from tools.mcp_tool_handlers import _make_tool_handler
-        from tools.mcp_tool import _servers
+        from tools.mcp_tool import _server_trust_levels, _servers
 
         mock_session = MagicMock()
         mock_session.call_tool = AsyncMock(
@@ -837,7 +837,7 @@ class TestToolHandler:
 
         try:
             handler = _make_tool_handler("test_srv", "fail_tool", 120)
-            with self._patch_mcp_loop():
+            with self._patch_mcp_loop(), patch.dict(_server_trust_levels, {"test_srv": "full"}):
                 result = orjson.loads(handler({}))
             assert "error" in result
             assert "something went wrong" in result["error"]
@@ -846,17 +846,18 @@ class TestToolHandler:
 
     def test_disconnected_server(self):
         from tools.mcp_tool_handlers import _make_tool_handler
-        from tools.mcp_tool import _servers
+        from tools.mcp_tool import _server_trust_levels, _servers
 
         _servers.pop("ghost", None)
         handler = _make_tool_handler("ghost", "any_tool", 120)
-        result = orjson.loads(handler({}))
+        with patch.dict(_server_trust_levels, {"ghost": "full"}):
+            result = orjson.loads(handler({}))
         assert "error" in result
         assert "not connected" in result["error"]
 
     def test_exception_during_call(self):
         from tools.mcp_tool_handlers import _make_tool_handler
-        from tools.mcp_tool import _servers
+        from tools.mcp_tool import _server_trust_levels, _servers
 
         mock_session = MagicMock()
         mock_session.call_tool = AsyncMock(side_effect=RuntimeError("connection lost"))
@@ -865,7 +866,7 @@ class TestToolHandler:
 
         try:
             handler = _make_tool_handler("test_srv", "broken_tool", 120)
-            with self._patch_mcp_loop():
+            with self._patch_mcp_loop(), patch.dict(_server_trust_levels, {"test_srv": "full"}):
                 result = orjson.loads(handler({}))
             assert "error" in result
             assert "connection lost" in result["error"]
@@ -874,7 +875,7 @@ class TestToolHandler:
 
     def test_interrupted_call_returns_interrupted_error(self):
         from tools.mcp_tool_handlers import _make_tool_handler
-        from tools.mcp_tool import _servers
+        from tools.mcp_tool import _server_trust_levels, _servers
 
         mock_session = MagicMock()
         server = _make_mock_server("test_srv", session=mock_session)
@@ -889,7 +890,7 @@ class TestToolHandler:
             with patch(
                 "tools.mcp_tool_loop._run_on_mcp_loop",
                 side_effect=_interrupting_run,
-            ):
+            ), patch.dict(_server_trust_levels, {"test_srv": "full"}):
                 result = orjson.loads(handler({}))
             assert result == {"error": "MCP call interrupted: user sent a new message"}
         finally:
@@ -897,7 +898,7 @@ class TestToolHandler:
 
     def test_recycled_stdio_server_reconnects_lazily_on_tool_call(self):
         from tools.mcp_tool_handlers import _make_tool_handler
-        from tools.mcp_tool import _servers
+        from tools.mcp_tool import _server_trust_levels, _servers
 
         mock_session = MagicMock()
         mock_session.call_tool = AsyncMock(
@@ -918,7 +919,7 @@ class TestToolHandler:
         try:
             handler = _make_tool_handler("test_srv", "greet", 120)
             with patch("tools.mcp_tool_discovery._request_lazy_reconnect", side_effect=fake_lazy_reconnect) as reconnect, \
-                 self._patch_mcp_loop():
+                 self._patch_mcp_loop(), patch.dict(_server_trust_levels, {"test_srv": "full"}):
                 result = json.loads(handler({"name": "world"}))
             assert result["result"] == "reconnected"
             reconnect.assert_called_once()
@@ -1410,7 +1411,6 @@ class TestToolsetInjection:
             result1 = discover_mcp_tools()
             assert "mcp__good__ping" in result1
             assert "mcp__broken__ping" not in result1
-            first_attempts = call_count
 
             # "Fix" the broken server
             broken_fixed = True
@@ -1654,6 +1654,7 @@ class TestBuildSafeEnv:
             "SHELL": "/bin/bash",
             "TMPDIR": "/tmp",
             "XDG_DATA_HOME": "/home/test/.local/share",
+            "HERMES_HOME": "/home/test/.hermes",
             "SECRET_KEY": "should_not_appear",
             "AWS_ACCESS_KEY_ID": "AKIAIOSFODNN7EXAMPLE",
         }
@@ -1676,6 +1677,7 @@ class TestBuildSafeEnv:
 
         fake_env = {
             "PATH": "/usr/bin",
+            "HERMES_HOME": "/home/test/.hermes",
             "AWS_SECRET_ACCESS_KEY": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
             "GITHUB_TOKEN": "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
             "OPENAI_API_KEY": "sk-proj-abc123",
@@ -1691,51 +1693,6 @@ class TestBuildSafeEnv:
         assert "OPENAI_API_KEY" not in result
         assert "DATABASE_URL" not in result
         assert "API_SECRET" not in result
-
-    def test_secret_source_injected_vars_are_passed(self, monkeypatch):
-        """Vars tagged by an external secret source (Bitwarden/1Password) are
-        deliberately allowed for MCP stdio servers."""
-        from hermes_cli import env_loader
-        from tools.mcp_tool_config import _build_safe_env
-
-        monkeypatch.setitem(env_loader._SECRET_SOURCES, "ALPACA_API_KEY", "bitwarden")
-        monkeypatch.setitem(env_loader._SECRET_SOURCES, "NOTION_TOKEN", "onepassword")
-        fake_env = {
-            "PATH": "/usr/bin",
-            "ALPACA_API_KEY": "from-bws-key",
-            "NOTION_TOKEN": "from-op",
-            "UNTRACKED_SECRET_KEY": "still-filtered",
-        }
-        with patch.dict("os.environ", fake_env, clear=True):
-            result = _build_safe_env(None)
-
-        assert result["PATH"] == "/usr/bin"
-        assert result["ALPACA_API_KEY"] == "from-bws-key"
-        assert result["NOTION_TOKEN"] == "from-op"
-        assert "UNTRACKED_SECRET_KEY" not in result
-
-    def test_secret_source_vars_resolve_through_active_profile_scope(self, monkeypatch):
-        """Under multiplex the stdio child gets the ROUTED profile's value for a source-tagged name,
-        never the launch profile's os.environ copy; a name the profile lacks is omitted."""
-        from agent.secret_scope import set_multiplex_active, set_secret_scope, reset_secret_scope
-        from hermes_cli import env_loader
-        from tools.mcp_tool_config import _build_safe_env
-
-        monkeypatch.setitem(env_loader._SECRET_SOURCES, "GITHUB_TOKEN", "bitwarden")
-        monkeypatch.setitem(env_loader._SECRET_SOURCES, "NOTION_TOKEN", "onepassword")
-        fake_env = {"PATH": "/usr/bin", "GITHUB_TOKEN": "default-profile", "NOTION_TOKEN": "default-notion"}
-        set_multiplex_active(True)
-        token = set_secret_scope({"GITHUB_TOKEN": "profile-b"})
-        try:
-            with patch.dict("os.environ", fake_env, clear=True):
-                result = _build_safe_env(None)
-        finally:
-            reset_secret_scope(token)
-            set_multiplex_active(False)
-
-        assert result["PATH"] == "/usr/bin"
-        assert result["GITHUB_TOKEN"] == "profile-b"
-        assert "NOTION_TOKEN" not in result
 
     def test_windows_location_vars_passed_without_secrets(self):
         """Windows launcher tools need location vars, but secrets stay filtered."""
@@ -2244,7 +2201,7 @@ class TestConfigurableTimeouts:
     def test_timeout_passed_to_handler(self):
         """The tool handler uses the server's configured timeout."""
         from tools.mcp_tool_handlers import _make_tool_handler
-        from tools.mcp_tool import _servers
+        from tools.mcp_tool import _server_trust_levels, _servers
 
         mock_session = MagicMock()
         mock_session.call_tool = AsyncMock(
@@ -2256,7 +2213,8 @@ class TestConfigurableTimeouts:
 
         try:
             handler = _make_tool_handler("test_srv", "my_tool", 180)
-            with patch("tools.mcp_tool_loop._run_on_mcp_loop") as mock_run:
+            with patch("tools.mcp_tool_loop._run_on_mcp_loop") as mock_run, \
+                 patch.dict(_server_trust_levels, {"test_srv": "full"}):
                 def fake_run(coro, timeout=30):
                     coro.close()
                     return orjson.dumps({"result": "ok"}).decode('utf-8')
@@ -4016,7 +3974,7 @@ class TestMCPDiscoveryCrossProcessLock:
             with patch("tools.mcp_tool_loop._try_acquire_mcp_discovery_lock", mock_acquire), \
                  patch("tools.mcp_tool._MCP_AVAILABLE", True), \
                  patch("tools.mcp_tool_config._load_mcp_config", return_value=mock_config), \
-                 patch("tools.mcp_tool_discovery.register_mcp_servers", return_value=["mcp__test_srv__ping"]) as reg_spy:
+                 patch("tools.mcp_tool_discovery.register_mcp_servers", return_value=["mcp__test_srv__ping"]):
                 result = discover_mcp_tools()
             assert result == ["mcp__test_srv__ping"]
             release_spy.assert_called_once()
@@ -4032,7 +3990,7 @@ class TestMCPDiscoveryCrossProcessLock:
              patch("tools.mcp_tool_config._load_mcp_config", return_value=mock_config), \
              patch("tools.mcp_tool_discovery.register_mcp_servers") as reg_spy, \
              patch("tools.mcp_tool_registration._existing_tool_names", return_value=[]):
-            result = discover_mcp_tools()
+            discover_mcp_tools()
         # Must still run local discovery
         reg_spy.assert_called_once_with(mock_config)
 

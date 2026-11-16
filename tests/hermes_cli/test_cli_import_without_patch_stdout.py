@@ -57,6 +57,7 @@ def _import_cli_without_patch_stdout():
         text=True,
         env=_isolated_env(),
         cwd=str(PROJECT_ROOT),
+        check=False,
     )
 
 
@@ -77,5 +78,6 @@ def test_cli_patch_stdout_falls_back_to_nullcontext():
         text=True,
         env=_isolated_env(),
         cwd=str(PROJECT_ROOT),
+        check=False,
     )
     assert proc.returncode == 0, proc.stderr

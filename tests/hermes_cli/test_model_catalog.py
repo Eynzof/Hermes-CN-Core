@@ -25,6 +25,7 @@ def isolated_home(tmp_path, monkeypatch):
     import importlib
     from hermes_cli import model_catalog
     importlib.reload(model_catalog)
+    monkeypatch.setattr(model_catalog, "_bundled_catalog_candidates", list)
     yield home
     model_catalog.reset_cache()
 
@@ -130,6 +131,140 @@ class TestFetchFailure:
 
         # Stale cache is better than nothing.
         assert result == manifest
+
+    def test_offline_cold_cache_does_not_refetch_on_every_call(self, isolated_home, monkeypatch):
+        """Offline with no cached manifest: one failed fetch, then later calls answer at once
+        until the retry window ends; an explicit refresh still tries the network."""
+        from hermes_cli import model_catalog
+        calls: list[str] = []
+        failed_at = time.monotonic()
+
+        def offline(url, timeout):
+            calls.append(url)  # returns None: the fetch failed
+
+        with patch.object(model_catalog, "_fetch_manifest", side_effect=offline):
+            assert model_catalog.get_catalog() == {}
+            per_attempt = len(calls)
+            assert per_attempt >= 1
+            assert model_catalog.get_catalog() == {}
+            assert model_catalog.get_catalog() == {}
+            assert len(calls) == per_attempt, "retried the unreachable catalog inside the window"
+            assert model_catalog.get_catalog(force_refresh=True) == {}
+            assert len(calls) == 2 * per_attempt
+
+        # The clock passes the last failure's window: a plain call fetches again and serves it.
+        later = failed_at + model_catalog.FETCH_RETRY_DELAY_SECONDS + 60.0
+        monkeypatch.setattr(model_catalog.time, "monotonic", lambda: later)
+        with patch.object(model_catalog, "_fetch_manifest", return_value=_valid_manifest()):
+            assert model_catalog.get_catalog() == _valid_manifest()
+
+    def test_model_refresh_retries_a_backed_off_catalog(self, isolated_home):
+        """``/model --refresh`` (``clear_provider_models_cache``) must show a catalog that came back
+        inside the backoff window, override URL included."""
+        from hermes_cli import model_catalog
+        from hermes_cli.models import clear_provider_models_cache
+        override = _valid_manifest()
+        override["providers"]["openrouter"]["models"] = [{"id": "vendor/override-model", "description": ""}]
+        cfg = {"enabled": True, "url": "http://master", "ttl_hours": 24.0,
+               "providers": {"openrouter": {"url": "http://override"}}}
+        with patch.object(model_catalog, "_load_catalog_config", return_value=cfg):
+            with patch.object(model_catalog, "_fetch_manifest", return_value=None):
+                assert model_catalog.get_curated_openrouter_models() is None
+
+            def recovered(url, timeout):
+                return override if "override" in url else _valid_manifest()
+
+            with patch.object(model_catalog, "_fetch_manifest", side_effect=recovered):
+                clear_provider_models_cache()
+                assert model_catalog.get_curated_openrouter_models() == [("vendor/override-model", "")]
+
+    def test_override_failure_backs_off_per_profile(self, isolated_home, tmp_path):
+        """A multiplexed gateway serves many profiles: one profile's dead override must not
+        suppress another profile's request to the same URL."""
+        from hermes_cli import model_catalog
+        from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+        calls: list[str] = []
+        cfg = {"enabled": True, "url": "http://master", "ttl_hours": 24.0,
+               "providers": {"openrouter": {"url": "http://override"}}}
+
+        def fetch(url, timeout):
+            calls.append(url)
+            return _valid_manifest()
+
+        for name in ("alpha", "beta"):
+            (tmp_path / name).mkdir()
+        with patch.object(model_catalog, "_load_catalog_config", return_value=cfg):
+            token = set_hermes_home_override(str(tmp_path / "alpha"))
+            try:
+                with patch.object(model_catalog, "_fetch_manifest", return_value=None):
+                    model_catalog.get_curated_openrouter_models()
+            finally:
+                reset_hermes_home_override(token)
+            token = set_hermes_home_override(str(tmp_path / "beta"))
+            try:
+                with patch.object(model_catalog, "_fetch_manifest", side_effect=fetch):
+                    model_catalog.get_curated_openrouter_models()
+            finally:
+                reset_hermes_home_override(token)
+        assert "http://override" in calls, "profile beta skipped the override after alpha's failure"
+
+    def test_dead_override_on_the_manifest_url_does_not_skip_the_manifest(self, isolated_home):
+        """An override failure must not suppress the main manifest request to the same URL."""
+        from hermes_cli import model_catalog
+        cfg = {"enabled": True, "url": "http://master", "ttl_hours": 24.0,
+               "providers": {"openrouter": {"url": "http://master"}}}
+        with patch.object(model_catalog, "_load_catalog_config", return_value=cfg), \
+                patch.object(model_catalog, "_fetch_manifest",
+                             side_effect=[None, _valid_manifest()]) as fetch:
+            models = model_catalog.get_curated_openrouter_models()
+        assert models == [(m["id"], m["description"]) for m in _valid_manifest()["providers"]["openrouter"]["models"]]
+        assert [call.args[0] for call in fetch.call_args_list] == ["http://master", "http://master"]
+
+    def test_bundled_fallback_preserves_failed_override_backoff(self, isolated_home, tmp_path, monkeypatch):
+        from hermes_cli import model_catalog
+        manifest = _valid_manifest()
+        bundled = tmp_path / "catalog.json"
+        bundled.write_bytes(orjson.dumps(manifest))
+        monkeypatch.setattr(model_catalog, "_bundled_catalog_candidates", lambda: [bundled])
+        cfg = {"enabled": True, "url": "http://master", "ttl_hours": 24.0,
+               "providers": {"openrouter": {"url": "http://override"}}}
+        with patch.object(model_catalog, "_load_catalog_config", return_value=cfg), \
+                patch.object(model_catalog, "_fetch_manifest", return_value=None) as fetch:
+            first = model_catalog.get_curated_openrouter_models()
+            second = model_catalog.get_curated_openrouter_models()
+        assert first == second == [(m["id"], m["description"]) for m in manifest["providers"]["openrouter"]["models"]]
+        assert [call.args[0] for call in fetch.call_args_list] == ["http://override", "http://master"]
+
+    def test_corrupt_disk_cache_uses_bundled_fallback(self, isolated_home, tmp_path, monkeypatch):
+        from hermes_cli import model_catalog
+        cache = model_catalog._cache_path()
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text("{broken", encoding="utf-8")
+        bundled = tmp_path / "catalog.json"
+        bundled.write_bytes(orjson.dumps(_valid_manifest()))
+        monkeypatch.setattr(model_catalog, "_bundled_catalog_candidates", lambda: [bundled])
+        with patch.object(model_catalog, "_fetch_manifest", return_value=None):
+            assert model_catalog.get_catalog() == _valid_manifest()
+
+    def test_unreachable_provider_override_is_not_refetched_on_every_call(self, isolated_home):
+        from hermes_cli import model_catalog
+        calls: list[str] = []
+
+        def fetch(url, timeout):
+            calls.append(url)
+            return None if "override" in url else _valid_manifest()
+
+        cfg = {"enabled": True, "url": "http://master", "ttl_hours": 24.0,
+               "providers": {"openrouter": {"url": "http://override"}}}
+        with patch.object(model_catalog, "_load_catalog_config", return_value=cfg), \
+                patch.object(model_catalog, "_fetch_manifest", side_effect=fetch):
+            first = model_catalog.get_curated_openrouter_models()
+            second = model_catalog.get_curated_openrouter_models()
+
+        # Both calls fall back to the main manifest; the dead override is asked once.
+        assert first == second == [(m["id"], m["description"]) for m in
+                                   _valid_manifest()["providers"]["openrouter"]["models"]]
+        assert calls.count("http://override") == 1
 
 
 class TestCatalogUrl:
@@ -293,7 +428,7 @@ class TestDefaultModelFromCache:
             fetch.assert_not_called()
 
 
-    def test_shipped_manifest_labels_glm52_default(self, isolated_home):
+    def test_shipped_manifest_labels_the_silent_default(self, isolated_home):
         """Contract with the in-repo manifest: both provider blocks label the
         same default entry the code constant points at."""
         from hermes_cli import model_catalog
@@ -364,12 +499,10 @@ class TestRefreshCadence:
         with patch.object(model_catalog, "_load_catalog_config", return_value={
             "enabled": True, "url": "http://master", "ttl_hours": 1.0, "providers": {},
         }), patch.object(model_catalog, "get_catalog", return_value=_valid_manifest()) as gc, \
-             patch("hermes_cli.models.fetch_openrouter_models") as orm, \
-             patch("hermes_cli.models.fetch_nous_recommended_models") as nous:
+             patch("hermes_cli.models.fetch_openrouter_models") as orm:
             assert model_catalog.refresh_catalogs() is True
         gc.assert_called_once_with(force_refresh=True)
         orm.assert_called_once_with(force_refresh=True)
-        nous.assert_called_once_with(force_refresh=True)
 
 
 class TestIntegrationWithModelsModule:
@@ -680,3 +813,12 @@ class TestManifestMatchesInRepoLists:
                 for entry in json.load(fh)["providers"]["openrouter"]["models"]
             ]
         assert "inclusionai/ling-3.0-flash:free" in manifest_ids
+
+    def test_nous_lists_portal_served_muse_spark_but_not_contributor_twins(self):
+        """The Portal serves plain muse-spark 1.2/1.3; only the -contributor twins are OpenRouter-only."""
+        from hermes_cli.models_catalog_static import _PROVIDER_MODELS
+
+        nous = _PROVIDER_MODELS["nous"]
+        for version in ("1.2", "1.3"):
+            assert f"meta/muse-spark-{version}" in nous
+            assert f"meta/muse-spark-{version}-contributor" not in nous

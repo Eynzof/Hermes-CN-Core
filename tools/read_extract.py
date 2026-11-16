@@ -257,7 +257,7 @@ def _pdf_page_texts(path: str) -> Optional[list[str]]:
         return None
     try:
         proc = subprocess.run(
-            ["pdftotext", path, "-"], stdin=subprocess.DEVNULL, capture_output=True, timeout=PDF_PAGE_SCAN_TIMEOUT)
+            ["pdftotext", path, "-"], stdin=subprocess.DEVNULL, capture_output=True, timeout=PDF_PAGE_SCAN_TIMEOUT, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
     out = proc.stdout.decode("utf-8", errors="replace") if proc.returncode == 0 else ""
@@ -414,9 +414,6 @@ _CELL_LABELS = {"markdown": "Markdown", "code": "Code", "raw": "Raw"}
 
 def _extract_notebook(path: str, *, display_path: Optional[str] = None) -> str:
     try:
-        with open(path, encoding="utf-8-sig", errors="replace") as fh:
-            nb = json.load(fh)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
         with open(path, encoding="utf-8-sig", errors="replace") as fh:
             nb = orjson.loads(fh.read())
     except (OSError, ValueError, orjson.JSONDecodeError) as exc:

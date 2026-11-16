@@ -52,11 +52,11 @@ import threading
 from typing import Callable, Iterator, TypeVar
 
 __all__ = [
-    "gc_init_freeze",
+    "freeze_permanent_objects",
     "gc_frozen_init",
+    "gc_init_freeze",
     "is_init_gc_frozen",
     "post_init_collect_count",
-    "freeze_permanent_objects",
 ]
 
 _ENV_DISABLE = "HERMES_DISABLE_GC_INIT_FREEZE"

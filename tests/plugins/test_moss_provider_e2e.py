@@ -98,7 +98,7 @@ def test_provider_synthesize_mp3_and_wav(provider, tmp_path):
 
 
 def test_streaming_pcm(provider, tmp_path, monkeypatch):
-    from plugins.tts.moss import streaming as _moss_streaming  # noqa: F401 — @register runs at import
+    from plugins.tts.moss import streaming as _moss_streaming
     from tools.tts_streaming import _try_instantiate
 
     monkeypatch.setenv("MOSS_API_KEY", _MOSS_API_KEY)
@@ -185,7 +185,7 @@ def _make_ocr_image(path: Path) -> None:
     draw = ImageDraw.Draw(img)
     try:
         font = ImageFont.truetype("arial.ttf", 72)
-    except Exception:  # noqa: BLE001 — fall back to the default bitmap font
+    except Exception:
         font = ImageFont.load_default()
     draw.text((40, 60), "HELLO MOSS 2026", fill="black", font=font)
     img.save(path, "PNG")
@@ -368,7 +368,7 @@ def _make_test_video(path: Path) -> bool:
             import imageio_ffmpeg
 
             ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-        except Exception:  # noqa: BLE001 — no video encoder available
+        except Exception:
             return False
     try:
         result = subprocess.run(
@@ -383,12 +383,12 @@ def _make_test_video(path: Path) -> bool:
                 "yuv420p",
                 str(path),
             ],
-            capture_output=True,
+            check=False, capture_output=True,
             timeout=90,
             stdin=subprocess.DEVNULL,
         )
         return result.returncode == 0 and path.stat().st_size > 0
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:
         return False
 
 

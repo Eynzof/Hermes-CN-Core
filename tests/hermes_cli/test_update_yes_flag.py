@@ -14,10 +14,10 @@ from hermes_cli import update_cmd_config
 def migration(monkeypatch):
     from hermes_cli import config, update_cmd
 
-    monkeypatch.setattr(config, "get_missing_config_fields", lambda: [])
+    monkeypatch.setattr(config, "get_missing_config_fields", list)
     monkeypatch.setattr(config, "get_missing_env_vars", lambda **kw: ["NEW_KEY"])
     monkeypatch.setattr(config, "check_config_version", lambda **kw: (1, 2))
-    monkeypatch.setattr(update_cmd, "_migrate_sibling_profile_configs", lambda: [])
+    monkeypatch.setattr(update_cmd, "_migrate_sibling_profile_configs", list)
     monkeypatch.setattr(update_cmd_config, "_restore_snapshot_safety_nets", lambda _: None)
     calls = []
 

@@ -104,7 +104,7 @@ def _child(definitions, code, *, setup=""):
     return subprocess.run(
         [sys.executable, "-I", "-X", "utf8", "-B", "-c", script],
         input=json.dumps(definitions), capture_output=True, text=True,
-        encoding="utf-8", timeout=30,
+        encoding="utf-8", timeout=30, check=False,
     )
 
 

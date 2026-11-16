@@ -436,7 +436,6 @@ class TestFeishuAdapterMessaging(unittest.TestCase):
         from plugins.platforms.feishu.adapter import FeishuAdapter
 
         adapter = FeishuAdapter(PlatformConfig())
-        ws_client = SimpleNamespace()
         owned_executor = object()
         submitted_executors = []
 
@@ -898,7 +897,7 @@ class TestAdapterBehavior(unittest.TestCase):
         adapter._resolve_sender_profile = AsyncMock(
             return_value={"user_id": "u_human", "user_name": "Human", "user_id_alt": None}
         )
-        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat"})
+        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat", "type": "group"})
         return adapter
 
     @patch.dict(os.environ, {}, clear=True)
@@ -918,7 +917,7 @@ class TestAdapterBehavior(unittest.TestCase):
         )
         adapter._handle_message_with_guards.assert_not_awaited()
 
-    @patch.dict(os.environ, {}, clear=True)
+    @patch.dict(os.environ, {"FEISHU_GROUP_POLICY": "open"}, clear=True)
     def test_reaction_on_our_own_bot_message_is_routed(self):
         adapter = self._build_reaction_adapter(msg_sender_id="cli_self_app")
 
@@ -2042,9 +2041,7 @@ class TestAdapterBehavior(unittest.TestCase):
     def test_download_remote_document_reads_response_before_httpx_client_closes(self):
         """#18451 — snapshot Content-Type + body while the httpx.AsyncClient
         context is still active so pooled connections fully release on
-        exit.  Otherwise the response is only readable because httpx
-        eagerly buffers it; a future refactor to .stream() would silently
-        read-after-close."""
+        exit; the body is streamed, so a read after close would fail."""
         from gateway.config import PlatformConfig
         from plugins.platforms.feishu.adapter import FeishuAdapter
 
@@ -2053,13 +2050,17 @@ class TestAdapterBehavior(unittest.TestCase):
         class _FakeResponse:
             headers = {"Content-Type": "application/octet-stream"}
 
+            async def __aenter__(self) -> "_FakeResponse":
+                return self
+            async def __aexit__(self, *exc: object) -> None:
+                events.append("response_exit")
+
             def raise_for_status(self) -> None:
                 events.append("raise_for_status")
 
-            @property
-            def content(self) -> bytes:
+            async def aiter_bytes(self):
                 events.append("content_read")
-                return b"doc-bytes"
+                yield b"doc-bytes"
 
         class _FakeAsyncClient:
             def __init__(self, *_a: object, **_k: object) -> None:
@@ -2072,7 +2073,7 @@ class TestAdapterBehavior(unittest.TestCase):
             async def __aexit__(self, *exc: object) -> None:
                 events.append("client_exit")
 
-            async def get(self, *_a: object, **_k: object) -> _FakeResponse:
+            def stream(self, *_a: object, **_k: object) -> _FakeResponse:
                 events.append("get")
                 return _FakeResponse()
 
@@ -2097,9 +2098,7 @@ class TestAdapterBehavior(unittest.TestCase):
 
         self.assertEqual(path, "/tmp/cached-doc.bin")
         self.assertTrue(filename)
-        # content_read MUST happen before client_exit — otherwise we're
-        # reading response body after the connection pool has been torn
-        # down, which only works by accident (httpx's eager buffering).
+        # content_read MUST happen before client_exit (no read after the pool is torn down).
         self.assertLess(events.index("content_read"), events.index("client_exit"))
 
     def test_dedup_state_persists_across_adapter_restart(self):
@@ -3469,7 +3468,7 @@ class TestWebhookSecurity(unittest.TestCase):
         encrypt_key = "test_secret"
         adapter = self._make_adapter(encrypt_key)
         body = b'{"type":"event"}'
-        timestamp = "1700000000"
+        timestamp = str(int(time.time()))
         nonce = "abc123"
         content = f"{timestamp}{nonce}{encrypt_key}" + body.decode("utf-8")
         sig = hashlib.sha256(content.encode("utf-8")).hexdigest()
@@ -3918,7 +3917,7 @@ class TestBotNameResolution(unittest.TestCase):
     """Tests for the bot branch of _resolve_sender_name_from_api (basic_batch API + shared cache)."""
 
     @staticmethod
-    def _batch_payload(bots: Dict[str, str]):
+    def _batch_payload(bots: dict[str, str]):
         import orjson as _json
         body = {
             oid: {"bot_id": oid, "name": name, "i18n_names": {"en_us": name}}
@@ -3926,7 +3925,7 @@ class TestBotNameResolution(unittest.TestCase):
         }
         return _json.dumps({"code": 0, "msg": "", "data": {"bots": body, "failed_bots": {}}})
 
-    def _build_adapter_with_bots(self, bots: Dict[str, str]):
+    def _build_adapter_with_bots(self, bots: dict[str, str]):
         from gateway.config import PlatformConfig
         from plugins.platforms.feishu.adapter import FeishuAdapter
 
@@ -4868,7 +4867,7 @@ class TestFeishuProcessInboundMessage(unittest.TestCase):
         adapter._bot_name = "Hermes"
         adapter._download_feishu_message_resources = AsyncMock(return_value=([], []))
         adapter._fetch_message_text = AsyncMock(return_value=None)
-        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat"})
+        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat", "type": "group"})
         adapter._resolve_sender_profile = AsyncMock(
             return_value={"user_id": "u1", "user_name": "Alice", "user_id_alt": None}
         )
@@ -5253,7 +5252,7 @@ class TestFeishuMentionEndToEnd(unittest.TestCase):
         adapter._bot_name = "Hermes"
         adapter._download_feishu_message_resources = AsyncMock(return_value=([], []))
         adapter._fetch_message_text = AsyncMock(return_value=None)
-        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat"})
+        adapter.get_chat_info = AsyncMock(return_value={"name": "Test Chat", "type": "group"})
         adapter._resolve_sender_profile = AsyncMock(
             return_value={"user_id": "u1", "user_name": "Alice", "user_id_alt": None}
         )

@@ -14,7 +14,7 @@ Covers two residual bypasses addressed in the PR:
 from __future__ import annotations
 
 import orjson
-from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch, AsyncMock
 
 import pytest
@@ -114,8 +114,7 @@ class TestPluginApiRuntimeGate:
         call_next = AsyncMock(return_value=JSONResponse({"ok": True}))
 
         with patch.object(web_server, "_get_dashboard_plugins", return_value=[fake_plugin]), \
-             patch("hermes_cli.plugins_cmd._get_enabled_set", return_value={"hot"}), \
-             patch("hermes_cli.plugins_cmd._get_disabled_set", return_value={"hot"}):
+             patch("hermes_cli.web_server_dashboard._plugin_enable_sets_here", return_value=({"hot"}, {"hot"})):
             response = await web_server._plugin_api_runtime_gate(request, call_next)
 
         assert response.status_code == 404
@@ -165,8 +164,35 @@ class TestPluginApiRuntimeGate:
         call_next = AsyncMock(return_value=JSONResponse({"ok": True}))
 
         with patch.object(web_server, "_get_dashboard_plugins", return_value=[]), \
-             patch("hermes_cli.plugins_cmd._get_enabled_set", return_value=set()), \
-             patch("hermes_cli.plugins_cmd._get_disabled_set", return_value=set()):
+             patch("hermes_cli.web_server_dashboard._plugin_enable_sets_here", return_value=(set(), set())):
+            response = await web_server._plugin_api_runtime_gate(request, call_next)
+
+        assert response.status_code == 404
+        call_next.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_middleware_blocks_disabled_plugin_for_native_ticket_request(self):
+        """Desktop authenticates with a native ticket (``native_http_principal``), not a
+        session token; a plugin disabled while the daemon runs must 404 for it too."""
+        from starlette.requests import Request
+        from starlette.responses import JSONResponse
+
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/plugins/hot/probe",
+            "query_string": b"",
+            "headers": [],
+            "state": {"native_http_principal": {"profile_id": "default", "purpose": "native-http"}},
+            # Local Desktop: loopback mode, no gated auth.
+            "app": SimpleNamespace(state=SimpleNamespace(auth_required=False)),
+        }
+        request = Request(scope)
+
+        call_next = AsyncMock(return_value=JSONResponse({"ok": True}))
+
+        with patch.object(web_server, "_get_dashboard_plugins", return_value=[{"name": "hot", "source": "user"}]), \
+             patch("hermes_cli.web_server_dashboard._plugin_enable_sets_here", return_value=({"hot"}, {"hot"})):
             response = await web_server._plugin_api_runtime_gate(request, call_next)
 
         assert response.status_code == 404
@@ -194,22 +220,14 @@ class TestBundledPluginAssetGate:
 
         with patch.object(web_server, "_get_dashboard_plugins", return_value=[fake_plugin]):
             # Sanity: asset is served when not disabled.
-            with patch(
-                "hermes_cli.plugins_cmd._get_enabled_set", return_value=set()
-            ), patch(
-                "hermes_cli.plugins_cmd._get_disabled_set", return_value=set()
-            ):
+            with patch("hermes_cli.web_server_dashboard._plugin_enable_sets_here", return_value=(set(), set())):
                 resp = test_client.get("/dashboard-plugins/bundledx/dist/index.js")
                 assert resp.status_code == 200, (
                     "Sanity: bundled plugin asset should be served when not disabled"
                 )
 
             # Disable it.
-            with patch(
-                "hermes_cli.plugins_cmd._get_enabled_set", return_value=set()
-            ), patch(
-                "hermes_cli.plugins_cmd._get_disabled_set", return_value={"bundledx"}
-            ):
+            with patch("hermes_cli.web_server_dashboard._plugin_enable_sets_here", return_value=(set(), {"bundledx"})):
                 resp = test_client.get("/dashboard-plugins/bundledx/dist/index.js")
                 assert resp.status_code == 404, (
                     "Disabled bundled plugin asset must return 404"

@@ -189,7 +189,7 @@ class TestSessionReusePerformance:
         spawn_start = time.perf_counter()
         subprocess.run(
             [_PS_PATH, "-NoProfile", "-NonInteractive", "-Command", "Write-Output hi"],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             timeout=30,
         )

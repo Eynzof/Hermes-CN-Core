@@ -95,7 +95,7 @@ class SessionContextMixin:
         context_kwargs: dict[str, Any] = self._target_kwargs(target)
         if search_query is not None:
             context_kwargs["search_query"] = search_query
-        peer = lambda: self._get_or_create_peer(peer_id)  # noqa: E731
+        peer = lambda: self._get_or_create_peer(peer_id)
         failed = "Direct %s failed for '%%s': %%s"
         ctx = self._guarded_authed(
             "peer context fetch", lambda: peer().context(**context_kwargs), None, logging.DEBUG,

@@ -357,7 +357,7 @@ class TestFindBashUsesGitExeChain:
 
     def test_no_candidates_raises_helpful_error(self, tmp_path, monkeypatch):
         self._clear_win_env(monkeypatch, tmp_path)
-        monkeypatch.setattr(local_mod, "_where_git_executables", lambda: [])
+        monkeypatch.setattr(local_mod, "_where_git_executables", list)
         monkeypatch.setattr(local_mod, "_bash_starts", lambda p: False)
         monkeypatch.setattr(local_mod, "_mandatory_aslr_enabled", lambda: False)
 
@@ -539,7 +539,7 @@ class TestRunBashUsesShellPath:
         env._shell_path = shell_path
         monkeypatch.setattr(local_mod, "_find_bash_posix", lambda: "/evil/path/bash")
         monkeypatch.setattr(local_mod, "_prepare_bash_cmd", lambda c: c)
-        monkeypatch.setattr(local_mod, "_resolve_shell_init_files", lambda: [])
+        monkeypatch.setattr(local_mod, "_resolve_shell_init_files", list)
         monkeypatch.setattr(local_mod, "_resolve_safe_cwd", lambda c: c)
         monkeypatch.setattr(local_mod, "_make_run_env", lambda env: {})
         with patch.object(
@@ -564,7 +564,7 @@ class TestRunBashUsesShellPath:
         env._shell_path = "/resolved/git/bash.exe"
         monkeypatch.setattr(local_mod, "_find_bash_posix", lambda: "/evil/path/bash")
         monkeypatch.setattr(local_mod, "_prepare_bash_cmd", lambda c: c)
-        monkeypatch.setattr(local_mod, "_resolve_shell_init_files", lambda: [])
+        monkeypatch.setattr(local_mod, "_resolve_shell_init_files", list)
         monkeypatch.setattr(local_mod, "_resolve_safe_cwd", lambda c: c)
         monkeypatch.setattr(local_mod, "_make_run_env", lambda env: {})
         with patch.object(

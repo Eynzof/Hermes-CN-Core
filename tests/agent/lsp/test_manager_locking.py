@@ -71,7 +71,7 @@ def test_delta_baseline_is_capped_by_write_recency(monkeypatch, tmp_path):
     nothing and pass vacuously).
     """
     repo = tmp_path / "repo"
-    base = str(repo)
+    _base = str(repo)
     f0, f1, new = str(repo / "f0.py"), str(repo / "f1.py"), str(repo / "new.py")
     service = LSPService(enabled=False, wait_mode="document", wait_timeout=0.1,
                          install_strategy="manual", idle_timeout=0)

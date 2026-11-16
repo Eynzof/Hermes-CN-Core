@@ -22,7 +22,7 @@ def test_python_subprocess_spawn(timing_context):
         for _ in range(50):
             _ = subprocess.run(
                 [sys.executable, "-c", "print('hello')"],
-                capture_output=True, text=True, timeout=10,
+                check=False, capture_output=True, text=True, timeout=10,
             )
     total_ms = timing_context.summary().get("python_subprocess_spawn", {}).get("total_ms", 0)
     avg_ms = total_ms / 50
@@ -68,10 +68,10 @@ def test_shell_resolution_timing(timing_context):
 @pytest.mark.perf
 def test_terminal_description_timing(timing_context):
     """Measure dynamic terminal description build."""
-    from tools.terminal_tool import _build_dynamic_terminal_description
+    from tools.terminal_description import _build_dynamic_terminal_description
 
     with timing_context.measure("build_terminal_description"):
-        desc = _build_dynamic_terminal_description()
+        _desc = _build_dynamic_terminal_description()
 
     total_ms = timing_context.summary().get("build_terminal_description", {}).get("total_ms", 0)
     print(f"\n  Terminal description build: {total_ms:.1f}ms")
@@ -88,7 +88,7 @@ def test_powershell_spawn_cold(timing_context):
     with timing_context.measure("powershell_cold_spawn"):
         _ = subprocess.run(
             ["powershell.exe", "-NoProfile", "-Command", "echo 'hello'"],
-            capture_output=True, text=True, timeout=30,
+            check=False, capture_output=True, text=True, timeout=30,
         )
     total_ms = timing_context.summary().get("powershell_cold_spawn", {}).get("total_ms", 0)
     print(f"\n  PowerShell cold spawn: {total_ms:.1f}ms")
@@ -103,13 +103,13 @@ def test_powershell_spawn_warm(timing_context):
         pytest.skip("Windows-only test")
     _ = subprocess.run(
         ["powershell.exe", "-NoProfile", "-Command", "echo 'warmup'"],
-        capture_output=True, text=True, timeout=30,
+        check=False, capture_output=True, text=True, timeout=30,
     )
     with timing_context.measure("powershell_warm_spawn"):
         for _ in range(10):
             _ = subprocess.run(
                 ["powershell.exe", "-NoProfile", "-Command", "echo 'hello'"],
-                capture_output=True, text=True, timeout=30,
+                check=False, capture_output=True, text=True, timeout=30,
             )
     total_ms = timing_context.summary().get("powershell_warm_spawn", {}).get("total_ms", 0)
     avg_ms = total_ms / 10

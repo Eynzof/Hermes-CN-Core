@@ -48,7 +48,7 @@ class PortLock:
                 handle.close()
                 _local_claims.discard(self.port)
 
-    def __enter__(self) -> "PortLock":
+    def __enter__(self) -> PortLock:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -325,7 +325,7 @@ else:
 
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             return True
-        except (OSError, IOError):
+        except OSError:
             return False
 
     def _release_lock(handle) -> None:
@@ -333,7 +333,7 @@ else:
             import fcntl
 
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        except (OSError, IOError):
+        except OSError:
             pass
 
 

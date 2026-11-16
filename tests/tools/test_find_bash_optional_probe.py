@@ -34,7 +34,7 @@ class TestFindBashOptionalProbe:
     @pytest.fixture(autouse=True)
     def _without_pm_bash(self, monkeypatch):
         monkeypatch.setattr("pm.shell.bash", lambda: None)
-        monkeypatch.setattr(f"{LOCAL}._where_git_executables", lambda: [])
+        monkeypatch.setattr(f"{LOCAL}._where_git_executables", list)
 
     def test_optional_returns_none_when_no_candidates(self, monkeypatch):
         """No candidate at all → optional probe returns None (no raise)."""

@@ -73,9 +73,9 @@ def _ambient_host_block() -> tuple[dict | None, dict]:
     from plugins.memory.honcho.client import _host_block, resolve_active_host, resolve_config_path
 
     path = resolve_config_path()
-    if not path.exists():
+    if not path.exists():  # config-reader: ok — Honcho plugin honcho.json, not config.yaml
         return None, {}
-    raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    raw = json.loads(path.read_text(encoding="utf-8-sig"))  # config-reader: ok — Honcho plugin honcho.json, not config.yaml
     return raw, _host_block(raw, resolve_active_host())
 
 
@@ -141,7 +141,7 @@ def _honcho_json_timeout() -> float | None:
         path = resolve_config_path()
         path_key = str(path)
         try:
-            mtime_ns: int = path.stat().st_mtime_ns
+            mtime_ns: int = path.stat().st_mtime_ns  # config-reader: ok — Honcho plugin honcho.json, not config.yaml
         except OSError:
             mtime_ns = -1
         memo = _honcho_json_timeout_memo.get(path_key)

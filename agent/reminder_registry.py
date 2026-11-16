@@ -21,8 +21,8 @@ class ReminderRegistry:
     """Collects ephemeral reminders from system and user providers."""
 
     def __init__(self) -> None:
-        self._system_providers: List[SystemReminderProvider] = []
-        self._user_providers: List[UserReminderProvider] = []
+        self._system_providers: list[SystemReminderProvider] = []
+        self._user_providers: list[UserReminderProvider] = []
 
     def register_system_provider(self, provider: SystemReminderProvider) -> None:
         """Register a system-reminder provider."""
@@ -32,7 +32,7 @@ class ReminderRegistry:
         """Register a user-reminder provider."""
         self._user_providers.append(provider)
 
-    def get_reminders(self, agent: Any, api_call_count: int) -> List[Reminder]:
+    def get_reminders(self, agent: Any, api_call_count: int) -> list[Reminder]:
         """Collect ALL reminders (system + user).
 
         .. deprecated::
@@ -43,13 +43,13 @@ class ReminderRegistry:
             agent, api_call_count
         )
 
-    def get_system_reminders(self, agent: Any, api_call_count: int) -> List[Reminder]:
+    def get_system_reminders(self, agent: Any, api_call_count: int) -> list[Reminder]:
         """Collect only system reminders.
 
         Exceptions from individual providers are isolated so one broken
         provider cannot crash the API call.
         """
-        reminders: List[Reminder] = []
+        reminders: list[Reminder] = []
         for provider in self._system_providers:
             try:
                 reminders.extend(provider.get_reminders(agent, api_call_count))
@@ -61,13 +61,13 @@ class ReminderRegistry:
                 )
         return reminders
 
-    def get_user_reminders(self, agent: Any, api_call_count: int) -> List[Reminder]:
+    def get_user_reminders(self, agent: Any, api_call_count: int) -> list[Reminder]:
         """Collect only user reminders (e.g. /steer).
 
         Exceptions from individual providers are isolated so one broken
         provider cannot crash the API call.
         """
-        reminders: List[Reminder] = []
+        reminders: list[Reminder] = []
         for provider in self._user_providers:
             try:
                 reminders.extend(provider.get_reminders(agent, api_call_count))
@@ -108,7 +108,7 @@ class ReminderRegistry:
         assistant response (so the caller can deliver it as the next user
         turn instead of silently dropping it).
         """
-        pieces: List[str] = []
+        pieces: list[str] = []
         for provider in self._user_providers:
             try:
                 reminders = provider.get_reminders(agent, 0)

@@ -87,7 +87,7 @@ class ToolCallResult:
     and speeds attribute access and GC scanning.
     """
 
-    __slots__ = ("name", "arguments", "result", "duration_ms", "error")
+    __slots__ = ("arguments", "duration_ms", "error", "name", "result")
 
     def __init__(
         self,
@@ -114,7 +114,7 @@ class ToolCallResult:
 class _Slot:
     """Bookkeeping for one stored result. Slotted to stay tiny in memory."""
 
-    __slots__ = ("location", "size", "value", "path")
+    __slots__ = ("location", "path", "size", "value")
 
     def __init__(
         self,
@@ -150,16 +150,16 @@ class ToolResultStore:
     """
 
     __slots__ = (
-        "_slots",
-        "_max_memory",
-        "_spill_threshold",
-        "_memory_bytes",
-        "_spilled_bytes",
-        "_spill_dir",
-        "_spill_dir_ready",
-        "_seq",
         "_closed",
         "_lock",
+        "_max_memory",
+        "_memory_bytes",
+        "_seq",
+        "_slots",
+        "_spill_dir",
+        "_spill_dir_ready",
+        "_spill_threshold",
+        "_spilled_bytes",
     )
 
     def __init__(
@@ -168,7 +168,7 @@ class ToolResultStore:
         spill_threshold_bytes: int = DEFAULT_SPILL_THRESHOLD_BYTES,
         spill_dir: Optional[os.PathLike] = None,
     ) -> None:
-        self._slots: List[_Slot] = []
+        self._slots: list[_Slot] = []
         self._max_memory = max(0, int(max_memory_bytes))
         self._spill_threshold = max(0, int(spill_threshold_bytes))
         self._memory_bytes = 0
@@ -278,10 +278,10 @@ class ToolResultStore:
                     pass
                 self._spill_dir_ready = False
 
-    def __enter__(self) -> "ToolResultStore":
+    def __enter__(self) -> ToolResultStore:
         return self
 
-    def __exit__(self, *exc: Any) -> None:
+    def __exit__(self, *exc: object) -> None:
         self.close()
 
     # ── disk backing ─────────────────────────────────────────────────────

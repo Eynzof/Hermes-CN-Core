@@ -252,8 +252,7 @@ def _truncate_lines(output: str, max_lines: int | None) -> str:
     n = len(lines)
     head_count = max_lines // 2
     tail_count = max_lines - head_count - 1  # -1 for the fold marker line
-    if tail_count < 0:
-        tail_count = 0
+    tail_count = max(tail_count, 0)
 
     omitted = n - head_count - tail_count
     fold_marker = f"\n[... {omitted} lines omitted ...]\n"

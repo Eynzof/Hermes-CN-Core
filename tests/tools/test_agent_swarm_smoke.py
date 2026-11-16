@@ -283,7 +283,7 @@ def test_build_and_run_subagent_calls_credential_resolution():
                 ):
                     from tools.subagent_runner import build_and_run_subagent
 
-                    result = build_and_run_subagent(
+                    _result = build_and_run_subagent(
                         goal="test goal",
                         parent_agent=parent,
                     )
@@ -362,7 +362,7 @@ def test_build_and_run_subagent_no_delegation_config_inherits_parent():
                 ):
                     from tools.subagent_runner import build_and_run_subagent
 
-                    result = build_and_run_subagent(
+                    _result = build_and_run_subagent(
                         goal="test goal",
                         parent_agent=parent,
                     )

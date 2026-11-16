@@ -148,7 +148,7 @@ def _write_config(cfg: dict, path: Path | None = None) -> None:
         if isinstance(cfg, _ReadConfig):
             if cfg.path == path:
                 out = _apply_edits(cfg.snapshot, cfg, disk)
-            elif path.exists():
+            elif path.exists():  # config-reader: ok — Honcho plugin honcho.json, not config.yaml
                 out = _apply_edits(cfg.snapshot, cfg, _overlay_local(cfg.snapshot, disk))
         from hermes_constants import mkdir_under_hermes_home
         mkdir_under_hermes_home(path.parent)
@@ -575,7 +575,7 @@ def _setup_identity_mapping(cfg: dict, hermes_host: dict, current_peer: str, new
 def _ensure_sdk_installed() -> bool:
     """Check honcho-ai is importable; offer to install if not. Returns True if ready."""
     try:
-        import honcho  # noqa: F401
+        import honcho
         return True
     except ImportError:
         pass
@@ -835,7 +835,7 @@ def _setup_wizard(args) -> None:
     write_path, read_path = _local_config_path(), _config_path()
     _refuse_unparseable(write_path)  # before the questions, not after them
     print(f"\nHoncho memory setup\n{RULE}\n  Honcho gives Hermes persistent cross-session memory.\n  Config: {write_path}")
-    if read_path != write_path and read_path.exists():
+    if read_path != write_path and read_path.exists():  # config-reader: ok — Honcho plugin honcho.json, not config.yaml
         print(f"  (seeding from existing config at {read_path})")
     print()
     if not _ensure_sdk_installed():
@@ -955,7 +955,7 @@ def cmd_status(args) -> None:
         _cmd_status_all()
         return
     try:
-        import honcho  # noqa: F401
+        import honcho
     except ImportError:
         print("  honcho-ai is not installed. Run: hermes honcho setup\n")
         return

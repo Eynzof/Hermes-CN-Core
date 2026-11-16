@@ -44,9 +44,9 @@ def _disable_remote_nous_catalog(monkeypatch):
     for config in PROVIDER_REGISTRY.values():
         for env_var in getattr(config, "api_key_env_vars", ()):
             monkeypatch.delenv(env_var, raising=False)
-    monkeypatch.setattr("hermes_cli.auth._load_auth_store", lambda: {})
+    monkeypatch.setattr("hermes_cli.auth._load_auth_store", dict)
     monkeypatch.setattr("agent.credential_pool.load_pool", lambda *args, **kwargs: EmptyPool())
-    monkeypatch.setattr("hermes_cli.models.get_curated_nous_model_ids", lambda: [])
+    monkeypatch.setattr("hermes_cli.models.get_curated_nous_model_ids", list)
     monkeypatch.setattr("hermes_cli.models.fetch_api_models", lambda *args, **kwargs: [])
     # Upstream added ``cache_only=`` to this function (GUI read path); the stub only has to
     # swallow the keyword so the offline gate keeps working for every caller shape.
@@ -156,7 +156,7 @@ def _age_cached_rows(seconds):
     for row in cache.values():
         row["at"] -= seconds
     for key, row in cache.items():
-        models_mod._store_cache_entry(key, row, cache)
+        models_mod._store_cache_entry(key, row)
 
 
 def test_picker_native_catalog_uses_the_short_native_ttl(monkeypatch):

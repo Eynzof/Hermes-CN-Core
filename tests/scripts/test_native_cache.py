@@ -56,7 +56,7 @@ def test_windows_cache_alias_builds_and_replays_after_removal(tmp_path, abort):
 
     def run(*arguments, selected_cache=cache):
         result = subprocess.run(
-            [*uv, *arguments], env={**env, "UV_CACHE_DIR": str(selected_cache)},
+            [*uv, *arguments], check=False, env={**env, "UV_CACHE_DIR": str(selected_cache)},
             cwd=tmp_path, capture_output=True, text=True, timeout=60,
         )
         assert result.returncode == 0, result.stdout + result.stderr
@@ -87,6 +87,6 @@ def test_windows_cache_alias_builds_and_replays_after_removal(tmp_path, abort):
     result = subprocess.run(
         [sys.executable, "-I", "-c",
          "import sys; sys.path.insert(0, sys.argv[1]); import cache_proof; print(cache_proof.VALUE)",
-         str(tmp_path / "second")], capture_output=True, text=True, timeout=30,
+         str(tmp_path / "second")], check=False, capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0 and result.stdout.strip() == "installed from cached wheel", result.stderr

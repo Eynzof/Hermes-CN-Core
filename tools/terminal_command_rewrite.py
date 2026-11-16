@@ -233,7 +233,7 @@ def _read_shell_word(command: str, start: int) -> tuple[str, int]:
             i = end + 1
         elif c in ("'", '"', "`"):
             # Nested quote inside unquoted token
-            token, i = _read_shell_word(command, i)
+            _token, i = _read_shell_word(command, i)
         else:
             i += 1
     return command[start:i], i

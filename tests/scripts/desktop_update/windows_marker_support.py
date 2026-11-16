@@ -60,7 +60,7 @@ def _run(home: Path, *args: str, install: Path | None = None, timeout: int = 120
     try:
         out, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)], capture_output=True)
+        subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)], capture_output=True, check=False)
         out, _ = proc.communicate()
         pytest.fail(f'hand-off did not finish within {timeout}s: {out}')
     return proc.pid, proc.returncode, out

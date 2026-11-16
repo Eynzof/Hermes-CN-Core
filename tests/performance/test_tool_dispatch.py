@@ -36,7 +36,7 @@ def test_handle_function_call_simple(timing_context):
 
     with timing_context.measure("dispatch_simple"):
         for tool_name, args in test_cases:
-            result = handle_function_call(tool_name, orjson.dumps(args).decode('utf-8'))
+            _result = handle_function_call(tool_name, orjson.dumps(args).decode('utf-8'))
 
     summary = timing_context.summary()
     total_ms = summary.get("dispatch_simple", {}).get("total_ms", 0)
@@ -62,10 +62,10 @@ def test_check_fn_cached_timing(timing_context):
     )
 
     with timing_context.measure("check_fn_uncached"):
-        result = _check_fn_cached(fast_check_fn)
+        _result = _check_fn_cached(fast_check_fn)
 
     with timing_context.measure("check_fn_cached"):
-        result2 = _check_fn_cached(fast_check_fn)
+        _result2 = _check_fn_cached(fast_check_fn)
 
     summary = timing_context.summary()
     uncached_ms = summary.get("check_fn_uncached", {}).get("total_ms", 0)
@@ -129,7 +129,7 @@ def test_tool_budget_enforcement_timing(timing_context):
     ]
 
     with timing_context.measure("enforce_budget"):
-        pruned = enforce_turn_budget(results)
+        _pruned = enforce_turn_budget(results)
 
     total_ms = timing_context.summary().get("enforce_budget", {}).get("total_ms", 0)
     print(f"\n  Budget enforcement (20 results): {total_ms:.1f}ms")

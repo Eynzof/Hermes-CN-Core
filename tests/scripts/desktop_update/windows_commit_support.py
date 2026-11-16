@@ -86,7 +86,7 @@ def _handoff(tmp_path: Path, *args: str, verify: str = 'pass\n', timeout: int = 
     try:
         out, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)], capture_output=True)
+        subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)], capture_output=True, check=False)
         out, _ = proc.communicate()
         pytest.fail(f'hand-off did not finish within {timeout}s: {out}')
     argv = [json.loads(line) for line in calls.read_text(encoding='utf-8-sig').splitlines()] if calls.exists() else []

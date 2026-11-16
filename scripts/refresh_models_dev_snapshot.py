@@ -28,14 +28,14 @@ DEST = Path(__file__).resolve().parent.parent / "agent" / "models_dev_snapshot.j
 
 def main() -> int:
     print(f"Fetching {URL} ...", file=sys.stderr)
-    request = urllib.request.Request(  # noqa: S310
+    request = urllib.request.Request(
         URL,
         headers={
             "Accept": "application/json",
             "User-Agent": "Hermes-Agent-CN/0.19 snapshot-refresh",
         },
     )
-    with urllib.request.urlopen(request, timeout=30) as resp:  # noqa: S310
+    with urllib.request.urlopen(request, timeout=30) as resp:
         data = orjson.loads(resp.read().decode("utf-8"))
     if not isinstance(data, dict) or not data:
         print(

@@ -18,15 +18,15 @@ from plugins.tts.moss.client import DOC_VOICES
 class FakeMossClient:
     """Minimal stand-in for the repository-owned MossClient."""
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: Optional[dict[str, Any]] = None):
         self.config = config or {}
-        self.calls: Dict[str, list] = {}
+        self.calls: dict[str, list] = {}
         self.audio_bytes = b"\xff\xfb\x90\x64" + b"\x00" * 512  # MPEG sync + pad
         self.speech_result: Any = None
         self.voices: list = []
-        self.create_voice_result: Optional[Dict[str, Any]] = None
+        self.create_voice_result: Optional[dict[str, Any]] = None
 
-    def _record(self, name: str, kwargs: Dict[str, Any]):
+    def _record(self, name: str, kwargs: dict[str, Any]):
         self.calls.setdefault(name, []).append(kwargs)
 
     def speech(self, text: str, **kwargs):

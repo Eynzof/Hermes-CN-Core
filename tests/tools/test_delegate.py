@@ -60,14 +60,6 @@ def _make_mock_parent(depth=0):
     parent.thinking_callback = None
     return parent
 
-class TestDelegateRequirements(unittest.TestCase):
-
-
-
-    def test_empty_context_ignored(self):
-        prompt = _build_child_system_prompt("Do something", "  ")
-        self.assertNotIn("CONTEXT", prompt)
-
 class TestStripBlockedTools(unittest.TestCase):
     def test_removes_blocked_toolsets(self):
         result = _strip_blocked_tools(["terminal", "file", "delegation", "clarify", "memory", "code_execution"])
@@ -324,7 +316,7 @@ class TestDelegateTask(unittest.TestCase):
             "summary": "Done", "api_calls": 1, "duration_seconds": 1.0
         }
         parent = _make_mock_parent()
-        result = orjson.loads(delegate_task(
+        _result = orjson.loads(delegate_task(
             goal="This should be ignored",
             tasks=[
                 {"goal": "Actual task A"},
@@ -658,7 +650,7 @@ class TestToolNamePreservation(unittest.TestCase):
 
     def test_build_child_agent_honors_acp_command_when_binary_present(self):
         """When the acp_command binary exists on PATH, behavior is unchanged:
-        provider is forced to copilot-acp and command/args propagate to the
+        the explicitly resolved provider and command/args propagate to the
         child agent. Guards against the missing-binary check accidentally
         breaking working ACP delegation setups.
         """
@@ -679,7 +671,7 @@ class TestToolNamePreservation(unittest.TestCase):
                 max_iterations=10,
                 parent_agent=parent,
                 task_count=1,
-                override_acp_command="copilot",
+                override_provider="copilot-acp", override_acp_command="copilot",
                 override_acp_args=["--foo"],
             )
 
@@ -1687,7 +1679,7 @@ class TestDelegationProviderIntegration(unittest.TestCase):
     def test_build_child_agent_inherits_active_client_endpoint(self):
         """Regression: stale parent.base_url AND stale parent.api_key must not
         reach subagents — the live client's endpoint + key win (the stale pair
-        ​401s against the live endpoint)."""
+        \u200b401s against the live endpoint)."""
         parent = _make_mock_parent(depth=0)
         parent.provider = "ollama"
         parent.base_url = "https://openrouter.ai/api/v1"
@@ -1964,11 +1956,10 @@ class TestChildCredentialPoolResolution(unittest.TestCase):
         parent.provider, parent.base_url, parent.requested_provider = "custom", url, "custom:open-ai"
         parent._credential_pool = None
 
-        with patch("tools.delegate_tool_config._loaded_pool", side_effect=lambda key: key) as loaded:
-            key = _resolve_child_credential_pool("custom", parent, url, effective_requested_provider="custom:open-ai")
-        loaded.assert_called_once()
-        self.assertIn("open-ai", key)
-        self.assertNotIn("claude", key)
+        with patch("tools.delegate_tool_config._loaded_pool", return_value=None) as loaded:
+            _resolve_child_credential_pool("custom", parent, url, effective_requested_provider="custom:open-ai")
+        (key,) = loaded.assert_called_once() or loaded.call_args.args
+        self.assertTrue("open-ai" in key and "claude" not in key)
 
 
     @patch(
@@ -2715,7 +2706,7 @@ class TestOrchestratorRoleBehavior(unittest.TestCase):
         """With max_spawn_depth=2 and child_depth=1, the orchestrator's
         own children would be at depth 2 (the floor) → must be leaves."""
         prompt = _build_child_system_prompt(
-            "Survey", role="orchestrator",
+            role="orchestrator",
             max_spawn_depth=2, child_depth=1,
         )
         self.assertIn("MUST be leaves", prompt)

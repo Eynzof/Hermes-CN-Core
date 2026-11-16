@@ -4,8 +4,8 @@ import json
 import orjson
 from types import SimpleNamespace
 
-import tools.terminal_tool as terminal_tool
-import tools.terminal_output_stream as terminal_output_stream
+from tools import terminal_tool
+from tools import terminal_output_stream
 
 
 def _minimal_terminal_config(cwd="/default"):
@@ -196,7 +196,7 @@ def test_foreground_command_prefers_recorded_session_cwd_over_init_time_cwd(monk
     result = orjson.loads(terminal_tool.terminal_tool(command="pwd", task_id=task_id))
     assert result["exit_code"] == 0
     assert [c[0] for c in calls] == ["pwd"]
-    command, executed_kwargs = calls[0]
+    _command, executed_kwargs = calls[0]
     # Upstream's foreground→background handoff passes a yield_handler on the
     # local backend; every other kwarg is still exactly as before.
     assert callable(executed_kwargs.pop("yield_handler", None))

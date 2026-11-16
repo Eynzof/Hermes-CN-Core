@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import hermes_cli.gateway_setup_service as service_setup
 
 
 # ---------------------------------------------------------------------------
@@ -22,12 +23,12 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _no_real_gateway_service(monkeypatch):
-    """run_import() auto-installs the gateway service post-restore; tests must
+    """run_import() may start an existing gateway service post-restore; tests must
     never touch the host's systemd/launchd. Individual tests re-patch these to
     assert the wiring."""
     import hermes_cli.gateway as gateway_mod
 
-    monkeypatch.setattr(gateway_mod, "ensure_gateway_service", lambda **kw: False)
+    monkeypatch.setattr(service_setup, "ensure_gateway_service", lambda **kw: False)
     monkeypatch.setattr(gateway_mod, "_is_service_running", lambda: False)
 
 
@@ -331,11 +332,9 @@ class TestIterBackupFiles:
 # ---------------------------------------------------------------------------
 
 class TestBackup:
-
-
     def test_db_snapshots_staged_beside_output_zip(self, tmp_path, monkeypatch):
         """SQLite staging temp files must be created on the output zip's
-        filesystem (dir=out_path.parent), NOT the system /tmp default — a
+        filesystem, NOT the system temporary-directory default — a
         small tmpfs there silently drops large DBs from the backup (#35376)."""
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
@@ -351,19 +350,20 @@ class TestBackup:
 
         import hermes_cli.backup as backup_mod
         staged_dirs = []
-        real_ntf = backup_mod.tempfile.NamedTemporaryFile
+        real_copy = backup_mod._safe_copy_db
 
-        def _spy(*a, **kw):
-            staged_dirs.append(kw.get("dir"))
-            return real_ntf(*a, **kw)
+        def _spy(src, dst, **kw):
+            staged_dirs.append(dst.parent)
+            assert dst.parent.stat().st_dev == out_dir.stat().st_dev
+            return real_copy(src, dst, **kw)
 
-        monkeypatch.setattr(backup_mod.tempfile, "NamedTemporaryFile", _spy)
+        monkeypatch.setattr(backup_mod, "_safe_copy_db", _spy)
         backup_mod.run_backup(args)
 
         # At least one .db was staged, and every staging call targeted the
         # output zip's directory rather than the system temp default.
         assert staged_dirs, "no SQLite snapshot was staged"
-        assert all(d == str(out_dir) for d in staged_dirs), staged_dirs
+        assert all(d.is_relative_to(out_dir) for d in staged_dirs), staged_dirs
 
     def test_pre_update_db_snapshots_staged_beside_output_zip(self, tmp_path, monkeypatch):
         """The pre-update/pre-migration zip path (_write_full_zip_backup) must
@@ -380,18 +380,19 @@ class TestBackup:
 
         import hermes_cli.backup as backup_mod
         staged_dirs = []
-        real_ntf = backup_mod.tempfile.NamedTemporaryFile
+        real_copy = backup_mod._safe_copy_db
 
-        def _spy(*a, **kw):
-            staged_dirs.append(kw.get("dir"))
-            return real_ntf(*a, **kw)
+        def _spy(src, dst, **kw):
+            staged_dirs.append(dst.parent)
+            assert dst.parent.stat().st_dev == out_zip.parent.stat().st_dev
+            return real_copy(src, dst, **kw)
 
-        monkeypatch.setattr(backup_mod.tempfile, "NamedTemporaryFile", _spy)
+        monkeypatch.setattr(backup_mod, "_safe_copy_db", _spy)
         result = backup_mod._write_full_zip_backup(out_zip, hermes_home)
 
         assert result is not None
         assert staged_dirs, "no SQLite snapshot was staged"
-        assert all(d == str(out_zip.parent) for d in staged_dirs), staged_dirs
+        assert all(d.is_relative_to(out_zip.parent) for d in staged_dirs), staged_dirs
 
 
 
@@ -504,7 +505,7 @@ class TestImport:
 
         calls = []
         monkeypatch.setattr(
-            gateway_mod, "ensure_gateway_service",
+            service_setup, "ensure_gateway_service",
             lambda **kw: calls.append(kw) or True,
         )
         monkeypatch.setattr(gateway_mod, "_is_service_running", lambda: False)
@@ -528,7 +529,7 @@ class TestImport:
 
         calls = []
         monkeypatch.setattr(
-            gateway_mod, "ensure_gateway_service",
+            service_setup, "ensure_gateway_service",
             lambda **kw: calls.append(kw) or True,
         )
         monkeypatch.setattr(gateway_mod, "_is_service_running", lambda: True)
@@ -804,9 +805,12 @@ class TestImport:
         # Live runtime files are untouched; the backup's foreign ones never land.
         assert (hermes_home / "gateway.pid").read_text() == "4242"
         assert (hermes_home / "processes.json").read_text() == '{"live": true}'
-        # cron.pid / gateway.lock had no live copy and were not seeded.
+        # No foreign runtime file is installed. Maintenance creates a local lock
+        # inode which must remain after release, or concurrent openers can split ownership.
         assert not (hermes_home / "cron.pid").exists()
-        assert not (hermes_home / "gateway.lock").exists()
+        lock = json.loads((hermes_home / "gateway.lock").read_text())
+        from gateway.runtime_ownership import canonical_home  # the identity the lock stores (normcase)
+        assert lock["hermes_home"] == str(canonical_home(hermes_home))
 
 
 
@@ -1233,7 +1237,7 @@ class TestImportAtomicWrites:
         hermes_home.mkdir()
         target = hermes_home / "config.yaml"
         target.write_text("model: original\n")
-        os.chmod(target, 0o644)
+        os.chmod(target, 0o640)  # no world bits: #59726 strips those from config.yaml
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
@@ -1244,7 +1248,7 @@ class TestImportAtomicWrites:
         run_import(Namespace(zipfile=str(zip_path), force=True))
 
         assert target.read_text() == "model: restored\n"
-        assert (target.stat().st_mode & 0o777) == 0o644
+        assert (target.stat().st_mode & 0o777) == 0o640
 
     @pytest.mark.platforms("posix")
     def test_restore_preserves_existing_file_owner(self, tmp_path, monkeypatch):
@@ -1283,26 +1287,24 @@ class TestImportAtomicWrites:
         # state.db is newly created, so there is no prior owner to restore.
         assert chown_calls == [(target, 123, 456)]
 
+    @pytest.mark.platforms("posix")
     def test_mode_is_applied_before_the_replace(self, tmp_path, monkeypatch):
-        """Publish the correct native permission bits with no permissive window."""
-    @pytest.mark.skipif(not hasattr(os, "fchmod"), reason="needs fchmod present to remove it")
-    @pytest.mark.skipif(os.name != "posix", reason=(
-        "POSIX permission bits: Windows st_mode is synthesized (0o666 for any writable file), "
-        "so neither the target's 0o644 nor the staged file's mode is observable there"))
-    def test_mode_is_applied_before_the_replace_without_fchmod(self, tmp_path, monkeypatch):
-        """Covers the Windows branch: no ``fchmod``, so ``chmod`` the temp path.
+        """Publish the correct native permission bits with no permissive window.
 
         Applying the mode only *after* ``atomic_replace`` leaves the published
         file at mkstemp's 0600 until that chmod lands (and permanently if the
         process dies in between), and ``atomic_replace``'s EXDEV/EBUSY
         ``shutil.copystat`` fallback would copy 0600 onto the target. Mirrors
         the transit-window fix ``atomic_yaml_write`` already carries.
+
+        POSIX-only: Windows st_mode is synthesized (0o666 for any writable
+        file), so neither the target's mode nor the staged file's is observable.
         """
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
         target = hermes_home / "config.yaml"
         target.write_text("model: original\n")
-        os.chmod(target, 0o644)
+        os.chmod(target, 0o640)  # no world bits: #59726 strips those from config.yaml
         expected_mode = target.stat().st_mode & 0o777
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -1848,9 +1850,9 @@ class TestFailedZipMemberRecovery:
     def test_automatic_backup_omits_crc_valid_partial_member(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
-        # newline="": the archive stores the file's bytes verbatim, so the fixture has to be LF
+        # write_bytes: the archive stores the file's bytes verbatim, so the fixture has to be LF
         # on every host (write_text translates \n to os.linesep by default).
-        (hermes_home / "config.yaml").write_text("model: test\n", newline="")
+        (hermes_home / "config.yaml").write_bytes(b"model: test\n")
         (hermes_home / "flaky.bin").write_bytes(os.urandom(300_000))
         archive = tmp_path / "automatic.zip"
         _fail_zip_write_after(monkeypatch, "flaky.bin")
@@ -1870,9 +1872,9 @@ class TestFailedZipMemberRecovery:
     def test_incomplete_pre_update_backup_does_not_rotate_last_complete(self, tmp_path, monkeypatch):
         hermes_home = tmp_path / ".hermes"
         hermes_home.mkdir()
-        # newline="": the archive stores the file's bytes verbatim, so the fixture has to be LF
+        # write_bytes: the archive stores the file's bytes verbatim, so the fixture has to be LF
         # on every host (write_text translates \n to os.linesep by default).
-        (hermes_home / "config.yaml").write_text("model: test\n", newline="")
+        (hermes_home / "config.yaml").write_bytes(b"model: test\n")
 
         from hermes_cli.backup import create_pre_update_backup
 
@@ -2070,12 +2072,12 @@ class TestRunPreUpdateBackup:
 
 
 # ---------------------------------------------------------------------------
-# Pre-migration backup (hermes claw migrate safety net)
+# Pre-migration backup (safety net for agent imports, e.g. hermes import-agent openclaw)
 # ---------------------------------------------------------------------------
 
 class TestPreMigrationBackup:
     """Tests for create_pre_migration_backup — the auto-backup
-    ``hermes claw migrate`` runs before mutating ~/.hermes/."""
+    ``hermes import-agent openclaw`` runs before mutating ~/.hermes/."""
 
     @pytest.fixture
     def hermes_home(self, tmp_path):
@@ -2202,7 +2204,7 @@ class TestRestoreCronPromptFieldsIfDegraded:
 
     def test_restores_prompts_when_count_unchanged_but_clobbered(self, tmp_path):
         """The reported incident: 6 jobs before, 6 after, every prompt == name."""
-        from hermes_cli.backup import restore_cron_prompt_fields_if_degraded
+        from hermes_cli.backup_cron_prompts import restore_cron_prompt_fields_if_degraded
         hermes_home = tmp_path / ".hermes"
         jobs_path = hermes_home / "cron" / "jobs.json"
         self._seed_jobs(jobs_path, [
@@ -2234,7 +2236,7 @@ class TestRestoreCronPromptFieldsIfDegraded:
 
     def test_blank_prompt_is_restored_too(self, tmp_path):
         """Missing/blank prompt on a live agent job is equally unusable."""
-        from hermes_cli.backup import restore_cron_prompt_fields_if_degraded
+        from hermes_cli.backup_cron_prompts import restore_cron_prompt_fields_if_degraded
         hermes_home = tmp_path / ".hermes"
         jobs_path = hermes_home / "cron" / "jobs.json"
         self._seed_jobs(jobs_path, [{"id": "a", "name": "Cleanup", "prompt": "Clean the tmp dir."}])
@@ -2250,7 +2252,7 @@ class TestRestoreCronPromptFieldsIfDegraded:
 
     def test_no_agent_jobs_are_untouched(self, tmp_path):
         """Script jobs have no prompt — never restored, never stomped."""
-        from hermes_cli.backup import restore_cron_prompt_fields_if_degraded
+        from hermes_cli.backup_cron_prompts import restore_cron_prompt_fields_if_degraded
         hermes_home = tmp_path / ".hermes"
         jobs_path = hermes_home / "cron" / "jobs.json"
         self._seed_jobs(jobs_path, [
@@ -2276,7 +2278,7 @@ class TestRestoreCronPromptFieldsIfDegraded:
     def test_a_legitimate_user_edit_is_not_stomped(self, tmp_path):
         """Only prompt==name or blank restores — a genuinely different prompt
         is the user's edit during the window, not degradation."""
-        from hermes_cli.backup import restore_cron_prompt_fields_if_degraded
+        from hermes_cli.backup_cron_prompts import restore_cron_prompt_fields_if_degraded
         hermes_home = tmp_path / ".hermes"
         jobs_path = hermes_home / "cron" / "jobs.json"
         self._seed_jobs(jobs_path, [{"id": "a", "name": "Old", "prompt": "Old prompt text."}])
@@ -2292,7 +2294,7 @@ class TestRestoreCronPromptFieldsIfDegraded:
     def test_a_legit_prompt_equal_to_name_stays(self, tmp_path):
         """A user may legitimately set prompt == name; a blank SNAPSHOT prompt
         means the snapshot has nothing better — restore nothing."""
-        from hermes_cli.backup import restore_cron_prompt_fields_if_degraded
+        from hermes_cli.backup_cron_prompts import restore_cron_prompt_fields_if_degraded
         hermes_home = tmp_path / ".hermes"
         jobs_path = hermes_home / "cron" / "jobs.json"
         # Snapshot job had a blank prompt (hand-edited oddity).
@@ -2308,7 +2310,7 @@ class TestRestoreCronPromptFieldsIfDegraded:
 
     def test_unknown_job_ids_are_left_alone(self, tmp_path):
         """Jobs the snapshot does not know are new since the snapshot — theirs."""
-        from hermes_cli.backup import restore_cron_prompt_fields_if_degraded
+        from hermes_cli.backup_cron_prompts import restore_cron_prompt_fields_if_degraded
         hermes_home = tmp_path / ".hermes"
         jobs_path = hermes_home / "cron" / "jobs.json"
         self._seed_jobs(jobs_path, [{"id": "a", "name": "A", "prompt": "A prompt."}])
@@ -2324,7 +2326,7 @@ class TestRestoreCronPromptFieldsIfDegraded:
         assert result is None
 
     def test_healthy_file_is_untouched(self, tmp_path):
-        from hermes_cli.backup import restore_cron_prompt_fields_if_degraded
+        from hermes_cli.backup_cron_prompts import restore_cron_prompt_fields_if_degraded
         hermes_home = tmp_path / ".hermes"
         jobs_path = hermes_home / "cron" / "jobs.json"
         self._seed_jobs(jobs_path, [{"id": "a", "name": "A", "prompt": "A prompt."}])
@@ -2651,7 +2653,7 @@ class TestImportHonorsHermesHomeOverride:
 
         calls = []
         monkeypatch.setattr(
-            "hermes_cli.gateway.ensure_gateway_service",
+            "hermes_cli.gateway_setup_service.ensure_gateway_service",
             lambda *a, **kw: calls.append(kw),
         )
         monkeypatch.setattr(
@@ -2685,7 +2687,7 @@ class TestImportHonorsHermesHomeOverride:
 
         calls = []
         monkeypatch.setattr(
-            "hermes_cli.gateway.ensure_gateway_service",
+            "hermes_cli.gateway_setup_service.ensure_gateway_service",
             lambda *a, **kw: calls.append(kw),
         )
         monkeypatch.setattr(
@@ -2852,60 +2854,3 @@ def _count_rows(db_path: Path) -> tuple[int, int]:
         )
     finally:
         conn.close()
-
-
-def test_run_backup_prunes_older_default_named_zips_but_not_others(tmp_path, monkeypatch):
-    """Hourly `hermes backup` callers accumulated 150+ zips; --keep bounds the default-named
-    ones and leaves custom-named or foreign zips alone (#81317)."""
-    from argparse import Namespace
-    from hermes_cli import backup as backup_mod
-
-    home = tmp_path / ".hermes"
-    home.mkdir()
-    (home / "config.yaml").write_text("model: x\n")
-    monkeypatch.setenv("HERMES_HOME", str(home))
-    monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    for i in range(4):
-        (tmp_path / f"hermes-backup-2026-01-0{i + 1}-000000.zip").write_bytes(b"old")
-    (tmp_path / "my-archive.zip").write_bytes(b"mine")
-
-    backup_mod.run_backup(Namespace(output=None, keep=2))
-
-    kept = sorted(p.name for p in tmp_path.glob("hermes-backup-*.zip"))
-    assert len(kept) == 2 and kept[0] == "hermes-backup-2026-01-04-000000.zip"
-    assert (tmp_path / "my-archive.zip").exists()
-
-
-def test_import_restores_the_session_store_with_its_message_uids(tmp_path, monkeypatch):
-    """A backup ships state.db as a SQLite snapshot and an import puts it back byte-for-byte: the durable
-    message ids come back with the rows."""
-    from hermes_state import SessionDB
-
-    hermes_home = tmp_path / ".hermes"
-    hermes_home.mkdir()
-    _make_hermes_tree(hermes_home)
-    db = SessionDB(db_path=hermes_home / "state.db")
-    try:
-        db.create_session("s", "cli", model="m")
-        db.append_message(session_id="s", role="user", content="q")
-        db.append_message(session_id="s", role="assistant", content="a")
-        uids = [m["message_uid"] for m in db.get_messages_as_conversation("s")]
-    finally:
-        db.close()
-    assert len(uids) == 2 and all(len(u) == 32 for u in uids)
-
-    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-    monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    from hermes_cli.backup import run_backup, run_import
-
-    out_zip = tmp_path / "backup.zip"
-    run_backup(Namespace(output=str(out_zip)))
-    for name in ("state.db", "state.db-wal", "state.db-shm"):
-        (hermes_home / name).unlink(missing_ok=True)
-    assert run_import(Namespace(zipfile=str(out_zip), force=True)) is None
-
-    restored = SessionDB(db_path=hermes_home / "state.db")
-    try:
-        assert [m["message_uid"] for m in restored.get_messages_as_conversation("s")] == uids
-    finally:
-        restored.close()

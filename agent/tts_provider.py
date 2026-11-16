@@ -171,7 +171,7 @@ class TTSProvider(CatalogProviderBase):
         name: Optional[str] = None,
         description: Optional[str] = None,
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Clone a voice from a reference audio sample.
 
         Returns a dict with at least ``voice_id`` (the reusable voice
@@ -191,7 +191,7 @@ class TTSProvider(CatalogProviderBase):
         model: Optional[str] = None,
         format: str = DEFAULT_OUTPUT_FORMAT,
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Start an async TTS task; returns ``{"task_id": str, ...}``.
 
         The result is fetched later via :meth:`poll_task`. Default: not
@@ -207,7 +207,7 @@ class TTSProvider(CatalogProviderBase):
         task_id: str,
         timeout: float = 180.0,
         **extra: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Poll an async TTS task to completion; returns the task result.
 
         Default: not supported (raises).

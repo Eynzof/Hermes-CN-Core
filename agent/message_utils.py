@@ -88,7 +88,7 @@ def get_tool_call_name(tc: Any) -> str:
     return getattr(fn, "name", "") or ""
 
 
-def get_tool_call_function(tc: Any) -> Tuple[Any, Any]:
+def get_tool_call_function(tc: Any) -> tuple[Any, Any]:
     """Return ``(function, name)`` for a tool_call, without normalizing.
 
     Unlike :func:`get_tool_call_name` this preserves the *raw* name (which may
@@ -105,7 +105,7 @@ def get_tool_call_function(tc: Any) -> Tuple[Any, Any]:
     return fn, name
 
 
-def get_tool_call_function_and_id(tc: Any) -> Tuple[Any, Any, str]:
+def get_tool_call_function_and_id(tc: Any) -> tuple[Any, Any, str]:
     """Return ``(function_container, raw_name, call_id)`` in a single dispatch.
 
     Hot-path helper for :func:`sanitize_api_messages`, which runs before *every*
@@ -140,7 +140,7 @@ def is_blank_name(name: Any) -> bool:
     return not (isinstance(name, str) and name.strip())
 
 
-def assistant_has_payload(msg: Dict[str, Any]) -> bool:
+def assistant_has_payload(msg: dict[str, Any]) -> bool:
     """True if an assistant message still carries API-relevant payload.
 
     Such a message must survive the empty-content filter so reasoning replay
@@ -153,7 +153,7 @@ def assistant_has_payload(msg: Dict[str, Any]) -> bool:
     return False
 
 
-def is_empty_content_droppable(msg: Dict[str, Any], role: Any = None) -> bool:
+def is_empty_content_droppable(msg: dict[str, Any], role: Any = None) -> bool:
     """True when ``msg`` is an empty-content message the API would reject.
 
     A message is droppable iff its role is in :data:`EMPTY_CONTENT_ROLES`, its

@@ -57,9 +57,32 @@ def test_hidden_internal_subcommands_in_builtin_fast_path(hermes_main):
 
 def test_slash_worker_subcommand_parses_args(subparsers):
     p = subparsers.choices["__slash-worker"]
-    args = p.parse_args(["--session-key", "k1", "--model", "m1"])
+    args = p.parse_args([
+        "--session-key", "k1", "--model", "m1",
+        "--provider", "moa", "--base-url", "https://example.invalid/v1",
+    ])
     assert args.session_key == "k1"
     assert args.model == "m1"
+    assert args.provider == "moa"
+    assert args.base_url == "https://example.invalid/v1"
+
+
+def test_slash_worker_subcommand_forwards_live_provider_context(subparsers, monkeypatch):
+    import sys
+
+    seen = []
+    monkeypatch.setattr("tui_gateway.slash_worker.main", lambda: seen.append(list(sys.argv)))
+    args = subparsers.choices["__slash-worker"].parse_args([
+        "--session-key", "k1", "--model", "m1",
+        "--provider", "moa", "--base-url", "https://example.invalid/v1",
+    ])
+
+    args.func(args)
+
+    assert seen == [[
+        "tui_gateway.slash_worker", "--session-key", "k1", "--model", "m1",
+        "--provider", "moa", "--base-url", "https://example.invalid/v1",
+    ]]
 
 
 def test_gateway_restart_watch_parses_remainder(subparsers):

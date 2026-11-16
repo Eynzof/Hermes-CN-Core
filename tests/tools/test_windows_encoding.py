@@ -45,7 +45,7 @@ class TestPowerShellUtf8Output:
         r = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
              f"Write-Output '{self.UTF8_CHARS}'"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=10,
         )
         # On a cp1252 system, stdout will likely NOT contain the full UTF-8 string.
@@ -61,7 +61,7 @@ class TestPowerShellUtf8Output:
         cmd = ps_with_utf8(f"Write-Output '{self.UTF8_CHARS}'")
         r = subprocess.run(
             ["powershell", "-NoProfile", "-Command", cmd],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=10,
         )
         assert r.returncode == 0
@@ -74,7 +74,7 @@ class TestPowerShellUtf8Output:
         cmd = ps_with_utf8(f"Write-Output '{cjk}'")
         r = subprocess.run(
             ["powershell", "-NoProfile", "-Command", cmd],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=10,
         )
         assert r.returncode == 0
@@ -87,7 +87,7 @@ class TestPowerShellUtf8Output:
         cmd = ps_with_utf8(f"Write-Output '{emoji}'")
         r = subprocess.run(
             ["powershell", "-NoProfile", "-Command", cmd],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=10,
         )
         assert r.returncode == 0
@@ -99,7 +99,7 @@ class TestPowerShellUtf8Output:
         cmd = ps_with_utf8("Write-Error '\u9519\u8bef\u6d88\u606f'")
         r = subprocess.run(
             ["powershell", "-NoProfile", "-Command", cmd],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=10,
         )
         # Write-Error goes to stderr
@@ -117,7 +117,7 @@ class TestSubprocessEncodingHardening:
              "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
              "$OutputEncoding=[System.Text.Encoding]::UTF8;"
              "Write-Output '\u00e9'"],
-            capture_output=True, text=True,  # NO encoding= — uses system default
+            check=False, capture_output=True, text=True,  # NO encoding= — uses system default
             timeout=10,
         )
         # May fail or produce garbled output depending on system code page
@@ -130,7 +130,7 @@ class TestSubprocessEncodingHardening:
              "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
              "$OutputEncoding=[System.Text.Encoding]::UTF8;"
              "Write-Output '\u00e9'"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=10,
         )
         assert r.returncode == 0

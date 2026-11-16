@@ -9,8 +9,8 @@ import statistics
 import pytest
 
 try:
-    import rapidfuzz.fuzz as fuzz
-    import rapidfuzz.process as process
+    from rapidfuzz import fuzz
+    from rapidfuzz import process
     HAS_RAPIDFUZZ = True
 except ImportError:
     HAS_RAPIDFUZZ = False

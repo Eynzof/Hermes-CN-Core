@@ -32,7 +32,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_timing_data(raw_dir: Path) -> List[Dict]:
+def load_timing_data(raw_dir: Path) -> list[dict]:
     """Load all JSON timing files from raw directory."""
     data_files = []
     if not raw_dir.exists():
@@ -52,7 +52,7 @@ def load_timing_data(raw_dir: Path) -> List[Dict]:
     return data_files
 
 
-def load_baseline(baseline_dir: Path) -> Dict:
+def load_baseline(baseline_dir: Path) -> dict:
     """Load the most recent baseline data."""
     if not baseline_dir.exists():
         return {}
@@ -67,7 +67,7 @@ def load_baseline(baseline_dir: Path) -> Dict:
         return {}
 
 
-def discover_flame_graphs(flame_dir: Path) -> List[Path]:
+def discover_flame_graphs(flame_dir: Path) -> list[Path]:
     """Find flame graph images in the attachments directory."""
     if not flame_dir.exists():
         return []
@@ -78,7 +78,7 @@ def discover_flame_graphs(flame_dir: Path) -> List[Path]:
     return images
 
 
-def generate_summary_table(timing_data: List[Dict], baseline: Dict) -> List[Dict]:
+def generate_summary_table(timing_data: list[dict], baseline: dict) -> list[dict]:
     """Generate summary table rows from timing data."""
     rows = []
 
@@ -120,7 +120,7 @@ def generate_summary_table(timing_data: List[Dict], baseline: Dict) -> List[Dict
     return rows
 
 
-def generate_hotspot_ranking(timing_data: List[Dict], top_n: int = 10) -> List[Dict]:
+def generate_hotspot_ranking(timing_data: list[dict], top_n: int = 10) -> list[dict]:
     """Generate hotspot ranking (top N by cumulative time)."""
     all_sections = []
 
@@ -141,7 +141,7 @@ def generate_hotspot_ranking(timing_data: List[Dict], top_n: int = 10) -> List[D
     return all_sections[:top_n]
 
 
-def detect_anomalies(timing_data: List[Dict]) -> List[str]:
+def detect_anomalies(timing_data: list[dict]) -> list[str]:
     """Detect performance anomalies in timing data."""
     anomalies = []
 
@@ -165,7 +165,7 @@ def detect_anomalies(timing_data: List[Dict]) -> List[str]:
     return anomalies
 
 
-def generate_recommendations(hotspots: List[Dict]) -> List[str]:
+def generate_recommendations(hotspots: list[dict]) -> list[str]:
     """Generate actionable recommendations based on hotspot analysis."""
     recommendations = []
 
@@ -237,13 +237,13 @@ def generate_report(args) -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
         )
         if result.returncode == 0:
             git_branch = result.stdout.strip()
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
+            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
         )
         if result.returncode == 0:
             git_sha = result.stdout.strip()
@@ -259,7 +259,7 @@ def generate_report(args) -> str:
     lines.append(f"**Platform:** {plat.system()} / {plat.machine()}")
     lines.append(f"**Python:** {plat.python_version()}")
     lines.append(f"**Branch:** {git_branch} @ {git_sha}")
-    lines.append(f"**Offline mode:** Yes (all tests mock LLM calls)")
+    lines.append("**Offline mode:** Yes (all tests mock LLM calls)")
     lines.append("")
 
     # Load timing info
@@ -273,8 +273,8 @@ def generate_report(args) -> str:
     # Summary
     baseline_status = "✅ Baseline exists" if baseline else "⚠️ No baseline (this run IS the baseline)"
     lines.append("## Summary\n")
-    lines.append(f"| Metric | Value |")
-    lines.append(f"|--------|-------|")
+    lines.append("| Metric | Value |")
+    lines.append("|--------|-------|")
     lines.append(f"| Tests run | {total_tests} |")
     lines.append(f"| Total measured time | {total_wall_time:.1f}ms ({total_wall_time/1000:.1f}s) |")
     lines.append(f"| Baseline | {baseline_status} |")

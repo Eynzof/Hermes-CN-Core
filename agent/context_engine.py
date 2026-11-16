@@ -30,7 +30,18 @@ def sanitize_memory_context(memory_context: str) -> str:
     return elide_middle(sanitized, _MEMORY_CONTEXT_HEAD_CHARS, _MEMORY_CONTEXT_TAIL_CHARS)
 
 
-def automatic_compaction_status_message(engine: Any, *, phase: str, default_message: str, **context: Any) -> str | None:
+class CompactionProgressText(str):
+    """A status line its producer marks as compaction in progress (the lifecycle status kind stays).
+
+    Gateways re-tag only these as ``kind="compacting"``: a warning that merely mentions compression
+    is not progress, and an engine may reword the progress lines. Like ``DiagnosticText``, the mark
+    lives on the object, so classify before ``str()``/``strip()``/formatting drop it.
+    """
+
+
+def automatic_compaction_status_message(
+    engine: Any, *, phase: str, default_message: str, **context: Any
+) -> CompactionProgressText | None:
     """Host-visible status for an automatic compaction event; ``None`` = emit nothing.
 
     Engines suppress via ``emit_automatic_compaction_status = False`` or
@@ -42,7 +53,8 @@ def automatic_compaction_status_message(engine: Any, *, phase: str, default_mess
     message = formatter(phase=phase, default_message=default_message, **context) if callable(formatter) else default_message
     if message is None:
         return None
-    return str(message).strip() or None
+    text = str(message).strip()
+    return CompactionProgressText(text) if text else None
 
 
 class ContextEngine(ABC):
@@ -214,13 +226,13 @@ class ContextEngine(ABC):
         return orjson.dumps({"error": f"Unknown context engine tool: {name}"}).decode('utf-8')
 
 
-    def get_usage_status(self) -> Dict[str, Any]:
+    def get_usage_status(self) -> dict[str, Any]:
         """Return context usage status as a JSON-serializable dict.
 
         Used by the context_usage tool and can be called by status displays.
         Returns zeros gracefully when no context data is available yet.
         """
-        last_prompt = self.last_prompt_tokens if self.last_prompt_tokens > 0 else 0
+        last_prompt = max(0, self.last_prompt_tokens)
         return {
             "usage_percent": (
                 min(100.0, last_prompt / self.context_length * 100)

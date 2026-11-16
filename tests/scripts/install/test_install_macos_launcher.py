@@ -18,7 +18,7 @@ def test_source_launcher_starts_without_realpath_or_legacy_console_scripts(tmp_p
     _launchers.ensure_install_launchers(root, out)
     env = dict(os.environ, PATH="", PYTHONHOME=str(tmp_path / "foreign-python"),
                PYTHONPATH=str(tmp_path / "foreign-dependencies"))
-    result = subprocess.run([str(out / "hermes"), "--version"], cwd=tmp_path, env=env,
+    result = subprocess.run([str(out / "hermes"), "--version"], check=False, cwd=tmp_path, env=env,
                             capture_output=True, text=True, timeout=30)
     assert result.returncode == 7, result.stdout + result.stderr
     receipt = json.loads(result.stdout)

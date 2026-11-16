@@ -84,7 +84,7 @@ def test_install_sh_discards_runtime_lockfile_churn_before_stash(
         "run\n"
     )
     res = subprocess.run(
-        ["bash", "-c", script], cwd=repo, capture_output=True, text=True
+        ["bash", "-c", script], check=False, cwd=repo, capture_output=True, text=True
     )
 
     assert res.returncode == 0, res.stderr

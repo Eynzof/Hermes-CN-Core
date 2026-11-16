@@ -31,10 +31,9 @@ import json
 import os
 import sys
 
-# Make the script location the import root so it works from any CWD.
-_HERE = os.path.dirname(os.path.abspath(__file__))
-if _HERE not in sys.path:
-    sys.path.insert(0, _HERE)
+from hermes_cli._startup_fast import project_root_str
+
+_HERE = project_root_str()
 
 try:
     import hermes_constants

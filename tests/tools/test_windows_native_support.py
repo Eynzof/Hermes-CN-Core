@@ -412,7 +412,7 @@ class TestTuiGatewayEntrySignalGuards:
         for mod in list(sys.modules):
             if mod.startswith("tui_gateway"):
                 del sys.modules[mod]
-        import tui_gateway.entry  # noqa: F401  # must not raise
+        import tui_gateway.entry  # must not raise
 
 
 # ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ def test_prompt_model_selection_uses_curses_radiolist():
         description=None,
         searchable=False,
         search_labels=None,
+        headings=None,
     ):
         seen["title"] = title
         seen["items"] = items

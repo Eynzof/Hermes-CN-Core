@@ -364,3 +364,73 @@ def test_config_set_on_unparseable_yaml_reports_error_not_crash(tmp_path, monkey
     assert "formatting error" in (result.output or "")
     # The broken-but-recoverable file must survive untouched.
     assert config_path.read_text(encoding="utf-8") == original
+
+
+def test_mutating_console_command_reuses_the_process_shared_writer(
+    _isolate_hermes_home, monkeypatch
+):
+    """One state.db, one writer per process: a mutating console command runs inside the
+    dashboard process beside an already-open handle, so it must land on the registry's
+    shared writer instead of minting a second connection + close-time WAL checkpoint on
+    the same file (#90837, #100896). Constructing any SessionDB here is the failure."""
+    import hermes_state
+    import hermes_state_registry
+    from hermes_constants import get_hermes_home
+    from hermes_state import SessionDB
+
+    monkeypatch.setattr(
+        hermes_state, "DEFAULT_DB_PATH", get_hermes_home() / "state.db"
+    )
+    holder = hermes_state_registry.acquire()
+    built: list = []
+    original_init = SessionDB.__init__
+
+    def tracking_init(self, *args, **kwargs):
+        built.append(kwargs.get("db_path"))
+        original_init(self, *args, **kwargs)
+
+    try:
+        holder.create_session("rename-me", source="cli", model="test/model")
+        monkeypatch.setattr(SessionDB, "__init__", tracking_init)
+
+        result = HermesConsoleEngine().execute(
+            "sessions rename rename-me a better title", confirmed=True
+        )
+
+        assert result.status == "ok", result.output
+        assert built == [], f"console opened its own SessionDB: {built}"
+        assert holder.get_session_title("rename-me") == "a better title"
+    finally:
+        hermes_state_registry.release(holder)
+
+
+def test_read_only_console_command_still_attaches_its_own_reader(
+    _isolate_hermes_home, monkeypatch
+):
+    """The mutating path shares; the browsing path must not. A read that borrowed the
+    writer would put list/stat queries on the dashboard's write connection."""
+    import hermes_state
+    from hermes_constants import get_hermes_home
+    from hermes_state import SessionDB
+
+    monkeypatch.setattr(
+        hermes_state, "DEFAULT_DB_PATH", get_hermes_home() / "state.db"
+    )
+    seed = SessionDB()
+    try:
+        seed.create_session("readable", source="cli", model="test/model")
+    finally:
+        seed.close()
+
+    seen: list = []
+    original_init = SessionDB.__init__
+
+    def tracking_init(self, *args, **kwargs):
+        seen.append(kwargs.get("read_only"))
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(SessionDB, "__init__", tracking_init)
+    result = HermesConsoleEngine().execute("sessions list --limit 5")
+
+    assert result.status == "ok", result.output
+    assert seen == [True], f"a read opened the writer: read_only={seen}"

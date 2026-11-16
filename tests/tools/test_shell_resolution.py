@@ -341,7 +341,7 @@ class TestBuildPowershellBackgroundScript:
     """_build_powershell_background_script produces a runnable PowerShell wrapper."""
 
     def test_includes_command_cwd_and_cwd_file(self):
-        from tools.environments.local import _build_powershell_background_script
+        from tools.environments.local_background import _build_powershell_background_script
 
         script = _build_powershell_background_script(
             command="echo hello",
@@ -355,7 +355,7 @@ class TestBuildPowershellBackgroundScript:
         assert "exit $hermes_ec" in script
 
     def test_omits_cwd_file_when_not_provided(self):
-        from tools.environments.local import _build_powershell_background_script
+        from tools.environments.local_background import _build_powershell_background_script
 
         script = _build_powershell_background_script(
             command="echo hello",
@@ -366,7 +366,7 @@ class TestBuildPowershellBackgroundScript:
         assert "exit $hermes_ec" in script
 
     def test_escapes_single_quotes(self):
-        from tools.environments.local import _build_powershell_background_script
+        from tools.environments.local_background import _build_powershell_background_script
 
         script = _build_powershell_background_script(
             command="echo 'hello'",
@@ -378,7 +378,7 @@ class TestBuildPowershellBackgroundScript:
     # --- try/catch wrapping (fix N1) ---
 
     def test_try_catch_wraps_invoke_expression(self):
-        from tools.environments.local import _build_powershell_background_script
+        from tools.environments.local_background import _build_powershell_background_script
 
         script = _build_powershell_background_script(
             command="echo hello",
@@ -391,7 +391,7 @@ class TestBuildPowershellBackgroundScript:
     # --- $PSNativeCommandArgumentPassing (fix #6) ---
 
     def test_native_command_argument_passing_set(self):
-        from tools.environments.local import _build_powershell_background_script
+        from tools.environments.local_background import _build_powershell_background_script
 
         script = _build_powershell_background_script(
             command="echo hello",
@@ -403,7 +403,7 @@ class TestBuildPowershellBackgroundScript:
     # --- $Error.Count check (fix #11/F7) ---
 
     def test_error_count_check_present(self):
-        from tools.environments.local import _build_powershell_background_script
+        from tools.environments.local_background import _build_powershell_background_script
 
         script = _build_powershell_background_script(
             command="echo hello",
@@ -419,7 +419,7 @@ class TestBuildBashBackgroundScript:
     git-bash default background path (mirrors the PowerShell wrapper)."""
 
     def test_includes_cd_command_and_cwd_file(self):
-        from tools.environments.local import _build_bash_background_script
+        from tools.environments.local_background import _build_bash_background_script
 
         script = _build_bash_background_script(
             command="echo hello",
@@ -436,7 +436,7 @@ class TestBuildBashBackgroundScript:
         assert "exit $__hermes_ec" in script
 
     def test_omits_cwd_file_when_not_provided(self):
-        from tools.environments.local import _build_bash_background_script
+        from tools.environments.local_background import _build_bash_background_script
 
         script = _build_bash_background_script(
             command="echo hello",
@@ -446,7 +446,7 @@ class TestBuildBashBackgroundScript:
         assert "exit $__hermes_ec" in script
 
     def test_escapes_single_quotes(self):
-        from tools.environments.local import _build_bash_background_script
+        from tools.environments.local_background import _build_bash_background_script
 
         script = _build_bash_background_script(
             command="echo 'hello'",
@@ -458,7 +458,7 @@ class TestBuildBashBackgroundScript:
         assert "eval 'echo " + esc + "hello" + esc + "'" in script
 
     def test_no_powershell_flags_in_wrapper(self):
-        from tools.environments.local import _build_bash_background_script
+        from tools.environments.local_background import _build_bash_background_script
 
         script = _build_bash_background_script(
             command="echo hello",
@@ -561,7 +561,7 @@ class TestFindBashWindowsRejectsWsl:
     def _stub_environment(self, monkeypatch):
         monkeypatch.setattr("pm.shell.bash", lambda: None)
         monkeypatch.setattr("tools.environments.local._wsl_bash_launcher_cache", {})
-        monkeypatch.setattr("tools.environments.local._where_git_executables", lambda: [])
+        monkeypatch.setattr("tools.environments.local._where_git_executables", list)
         monkeypatch.setattr("tools.environments.local._bash_starts", lambda _p: True)
         with mock.patch.dict(
             os.environ,

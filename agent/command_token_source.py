@@ -18,6 +18,8 @@ import threading
 import time
 from typing import Optional
 
+from agent.credential_source import KEY_CMD
+
 logger = logging.getLogger(__name__)
 
 # Treat a token as spent slightly before expiry so a request can't be signed with one that dies in
@@ -57,6 +59,7 @@ def _mint(command: str, label: str) -> tuple[str, Optional[float]]:
             # before we can report the exit status.
             errors="replace",
             env=served_profile_child_env(inherit_credentials=True),
+            check=False,
             stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired as exc:
@@ -118,6 +121,8 @@ def _mint(command: str, label: str) -> tuple[str, Optional[float]]:
 
 class CommandTokenSource:
     """Callable returning a bearer token, cached until shortly before expiry."""
+
+    hermes_credential_source = KEY_CMD  # display label source; read without calling (agent.credential_source)
 
     def __init__(self, command: str, label: str = "custom") -> None:
         self._command = command

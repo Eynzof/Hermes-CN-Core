@@ -67,9 +67,7 @@ def _transform_dumps_args(args_str: str) -> tuple[str, str]:
             has_indent = True
         elif re.match(r'^sort_keys\s*=', arg):
             has_sort_keys = True
-        elif re.match(r'^ensure_ascii\s*=', arg):
-            pass
-        elif re.match(r'^separators\s*=', arg):
+        elif re.match(r'^ensure_ascii\s*=', arg) or re.match(r'^separators\s*=', arg):
             pass
         else:
             preserved.append(arg)

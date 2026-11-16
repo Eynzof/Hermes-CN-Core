@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from agent.compression_marker import _COMPRESSION_MARKER_ARTIFACT_RE
 from agent.message_metadata import stamp_message_timestamp
+from agent.redact_secret_sources import redact_secret_source_values
 from agent.tool_result_classification import (
     FILE_MUTATING_TOOL_NAMES as _FILE_MUTATING_TOOLS,
     tool_may_have_side_effect,
@@ -27,7 +28,7 @@ from tools.threat_patterns import scan_for_threats
 logger = logging.getLogger(__name__)
 
 # Interactive / user-facing tools never run concurrently: any of these in a batch is a barrier.
-_NEVER_PARALLEL_TOOLS = frozenset({"clarify", "manage_connections", "manage_catalog", "setup_choose"})
+_NEVER_PARALLEL_TOOLS = frozenset({"clarify", "manage_connections", "manage_catalog", "setup_beat", "set_theme"})
 
 # Read-only tools with no shared mutable session state.
 _PARALLEL_SAFE_TOOLS = frozenset({
@@ -102,6 +103,23 @@ def _context_pruned_argument_paths(tool_name: str, args: Any) -> list[str]:
 def _is_destructive_command(cmd: str) -> bool:
     """Heuristic: does this terminal command look like it modifies/deletes files?"""
     return bool(cmd) and bool(_DESTRUCTIVE_PATTERNS.search(cmd) or _REDIRECT_OVERWRITE.search(cmd))
+
+
+def _extend_tool_timeout(tool_name: str, default: float | None) -> float | None:
+    """A registered transport budget must not be cut short by the generic executor."""
+    from tools.registry import registry
+
+    entry = registry.get_entry(tool_name)
+    if default is None or entry is None or entry.execution_timeout is None:
+        return default
+    return max(default, entry.execution_timeout)
+
+
+def _requires_extended_tool_deadline(tool_name: str) -> bool:
+    from agent.tool_executor import _resolve_concurrent_tool_timeout
+
+    default = _resolve_concurrent_tool_timeout()
+    return _extend_tool_timeout(tool_name, default) != default
 
 
 def _is_mcp_tool_parallel_safe(tool_name: str) -> bool:
@@ -182,7 +200,7 @@ def _batch_admission(tool_call, execution_cwd: Optional[Path]) -> tuple[str, lis
         return None
 
     name, args = _peel_bridge_call(tool_name, function_args)
-    if name in _NEVER_PARALLEL_TOOLS:
+    if name in _NEVER_PARALLEL_TOOLS or _requires_extended_tool_deadline(name):
         return None
     if name in _PATH_SCOPED_TOOLS:
         scoped = _extract_parallel_scope_paths(name, args, execution_cwd=execution_cwd)
@@ -421,6 +439,17 @@ def _trajectory_normalize_msg(msg: dict[str, Any]) -> dict[str, Any]:
     return msg
 
 
+def _redact_secret_source_content(content: Any) -> Any:
+    """Scrub applied secret-source values from a result's text before it becomes provider context:
+    not every tool runs its output through ``redact_sensitive_text`` (MCP, web, plugin tools)."""
+    if isinstance(content, str):
+        return redact_secret_source_values(content)
+    if isinstance(content, list):
+        return [{**item, "text": redact_secret_source_values(item["text"])} if _is_text_item(item) else item
+                for item in content]
+    return content
+
+
 def _normalize_tool_call_id(tool_call_id: Any) -> Any:
     """Normalize a composite bridge id to its canonical call-id half."""
     if isinstance(tool_call_id, str) and "|" in tool_call_id:
@@ -443,6 +472,7 @@ def make_tool_result_message(
     tool_call_id = _normalize_tool_call_id(tool_call_id)
     # Elision notice is appended to the RAW content first, THEN wrapped, so it sits inside
     # the untrusted block next to the data it describes — once, at construction (cache-safe).
+    content = _redact_secret_source_content(content)
     wrapped = _maybe_wrap_untrusted(name, _maybe_append_elision_notice(name, content))
     message = stamp_message_timestamp({
         "role": "tool",

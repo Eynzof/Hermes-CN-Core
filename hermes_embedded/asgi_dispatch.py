@@ -30,7 +30,7 @@ import os
 import threading
 from typing import Any
 
-__all__ = ["dispatch_rest", "web_app", "ensure_core_environment"]
+__all__ = ["dispatch_rest", "ensure_core_environment", "web_app"]
 
 _import_lock = threading.Lock()
 _app: Any = None
@@ -83,7 +83,7 @@ class _PersistentAsyncRunner:
                 continue
             try:
                 value = await coro
-            except BaseException as exc:  # noqa: BLE001 - preserve caller semantics
+            except BaseException as exc:
                 result.set_exception(exc)
             else:
                 result.set_result(value)
@@ -250,7 +250,7 @@ def dispatch_rest(
         (b"host", b"localhost"),
         (b"accept", b"application/json"),
         (b"x-hermes-session-token", token.encode("utf-8")),
-        (b"authorization", f"Bearer {token}".encode("utf-8")),
+        (b"authorization", f"Bearer {token}".encode()),
         *body_headers,
     ]
 

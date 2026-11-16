@@ -1,6 +1,5 @@
 # Hermes-CN-Core
 
-简体中文（兼容入口：[README.zh-CN.md](./README.zh-CN.md)） · [English](./README.en.md)
 
 [![Tests](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/tests.yml/badge.svg)](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/tests.yml)
 [![Runtime Release](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/release-runtime.yml/badge.svg)](https://github.com/Eynzof/Hermes-CN-Core/actions/workflows/release-runtime.yml)
@@ -19,11 +18,11 @@
 <tr><td><b>面向桌面端的 Dashboard 后端</b></td><td>维护 CN 桌面端需要的附件、workspace、MCP 摘要、profile 以及 SSE/POST transport API。</td></tr>
 <tr><td><b>本地与原生 Windows 友好</b></td><td>包含 PowerShell 安装器和桌面分发链路需要的 runtime 打包逻辑。</td></tr>
 <tr><td><b>真正可用的终端界面</b></td><td>完整 TUI，支持多行编辑、斜杠命令补全、会话历史、中断重定向和流式工具输出。</td></tr>
-<tr><td><b>能出现在你常用的平台里</b></td><td>Telegram、Discord、Slack、WhatsApp、Signal、Email 和 CLI 都可以通过同一个 gateway process 接入。</td></tr>
+<tr><td><b>能出现在你常用的平台里</b></td><td>Telegram、Discord、Slack、WhatsApp、Signal、Email 和 CLI 都可以通过同一个 gateway process 接入；语音消息会转写成文本，跨平台对话保持连续。</td></tr>
 <tr><td><b>闭环学习</b></td><td>智能体维护记忆并定期回顾；复杂任务后自动创建新技能，技能在使用中自我改进。FTS5 会话搜索配合 LLM 摘要实现跨会话回忆，支持 <a href="https://github.com/plastic-labs/honcho">Honcho</a> 对话式用户建模，兼容 <a href="https://agentskills.io">agentskills.io</a> 开放标准。</td></tr>
 <tr><td><b>定时自动化</b></td><td>内置 cron 调度器，可投递到任意平台。日报、夜间备份、每周审计——全部用自然语言描述、无人值守运行。</td></tr>
-<tr><td><b>委派与并行</b></td><td>派生隔离的子代理并行处理工作流。编写 Python 脚本通过 RPC 调用工具，把多步流水线折叠为零上下文成本的调用。</td></tr>
-<tr><td><b>随处运行</b></td><td>七种终端后端——local、Docker、SSH、Singularity、Modal、Daytona 和 Vercel Sandbox。Daytona 和 Modal 提供无服务器持久化——你的智能体环境空闲时休眠、按需唤醒，几乎不产生空闲成本。可以跑在 $5 VPS 或 GPU 集群上。</td></tr>
+<tr><td><b>委派与并行</b></td><td>派生隔离的子代理并行处理工作流。桌面端可在 <b>设置 → 模型 → 子代理</b> 中选择它们的服务商、模型与限制，然后 Apply 完整路由。编写 Python 脚本通过 RPC 调用工具，把多步流水线折叠为零上下文成本的调用。</td></tr>
+<tr><td><b>随处运行</b></td><td>六种内置终端后端——local、Docker、SSH、Modal、Daytona 和 Vercel Sandbox，另有 Singularity/Apptainer 等插件后端。Daytona 和 Modal 提供无服务器持久化——你的智能体环境空闲时休眠、按需唤醒，几乎不产生空闲成本。可以跑在 $5 VPS 或 GPU 集群上。</td></tr>
 <tr><td><b>保留研究能力</b></td><td>继续保留 batch trajectory generation 和 trajectory compression，方便工具调用模型训练与研究。</td></tr>
 </table>
 
@@ -41,7 +40,7 @@ Hermes Agent 中文社区官网是 [hermesagent.org.cn](https://hermesagent.org.
 
 ## 和上游有什么不同？
 
-所有 fork 专属改动都记录在 [FORK_NOTES.zh-CN.md](./FORK_NOTES.zh-CN.md)；英文版记录见 [FORK_NOTES.md](./FORK_NOTES.md)。简单说，这个 fork 主要维护：
+所有 fork 专属改动都记录在 [FORK_NOTES.md](./FORK_NOTES.md)。简单说，这个 fork 主要维护：
 
 - **中文模型服务商元数据**：让 Dashboard 环境变量面板识别 ARK、千帆、混元、SiliconFlow、ModelScope、AI302、CompShare、LongCat 等配置项。
 - **桌面端依赖的 Dashboard API**：包括附件上传、workspace 目录浏览、MCP server 摘要、active profile 读写等接口。
@@ -83,7 +82,7 @@ pip install "git+https://github.com/Eynzof/Hermes-CN-Core.git"
 iex (irm https://raw.githubusercontent.com/Eynzof/Hermes-CN-Core/main/scripts/install.ps1)
 ```
 
-The source installer delegates Python 3.14, Node.js, npm, ripgrep, FFmpeg,
+The source installer delegates Python 3.14, Node.js, npm, pnpm, ripgrep, FFmpeg,
 and Python dependencies to PM. If Git is absent, it stages the verified Git
 for Windows archive in Hermes' tool store. It does not replace your system Git.
 See [installation methods](https://hermes-agent.nousresearch.com/docs/getting-started/installation)
@@ -107,6 +106,7 @@ hermes              # 启动交互式 CLI
 hermes model        # 选择 LLM 服务商和模型
 hermes tools        # 配置启用的工具
 hermes config set   # 设置单个配置项
+hermes config get # 打印单个配置项
 hermes gateway      # 启动消息网关
 hermes setup        # 运行完整设置向导
 hermes update       # 更新 Hermes
@@ -166,18 +166,60 @@ source .venv/bin/activate
 pip install -e ".[all,dev]"
 ```
 
-What gets imported:
+---
+
+## Documentation
+
+All documentation lives at **[hermes-agent.nousresearch.com/docs](https://hermes-agent.nousresearch.com/docs/)**:
+
+| Section                                                                                             | What's Covered                                             |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [Quickstart](https://hermes-agent.nousresearch.com/docs/getting-started/quickstart)                 | Install → setup → first conversation in 2 minutes          |
+| [CLI Usage](https://hermes-agent.nousresearch.com/docs/user-guide/cli)                              | Commands, keybindings, personalities, sessions             |
+| [Configuration](https://hermes-agent.nousresearch.com/docs/user-guide/configuration)                | Config file, providers, models, all options                |
+| [Messaging Gateway](https://hermes-agent.nousresearch.com/docs/user-guide/messaging)                | Telegram, Discord, Slack, WhatsApp, Signal, Home Assistant |
+| [Security](https://hermes-agent.nousresearch.com/docs/user-guide/security)                          | Command approval, DM pairing, container isolation          |
+| [Tools & Toolsets](https://hermes-agent.nousresearch.com/docs/user-guide/features/tools)            | 40+ tools, toolset system, terminal backends               |
+| [Skills System](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills)              | Procedural memory, Skills Hub, creating skills             |
+| [Memory](https://hermes-agent.nousresearch.com/docs/user-guide/features/memory)                     | Persistent memory, user profiles, best practices           |
+| [MCP Integration](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp)               | Connect any MCP server for extended capabilities           |
+| [Cron Scheduling](https://hermes-agent.nousresearch.com/docs/user-guide/features/cron)              | Scheduled tasks with platform delivery                     |
+| [Context Files](https://hermes-agent.nousresearch.com/docs/user-guide/features/context-files)       | Project context that shapes every conversation             |
+| [Architecture](https://hermes-agent.nousresearch.com/docs/developer-guide/architecture)             | Project structure, agent loop, key classes                 |
+| [Contributing](https://hermes-agent.nousresearch.com/docs/developer-guide/contributing)             | Development setup, PR process, code style                  |
+| [CLI Reference](https://hermes-agent.nousresearch.com/docs/reference/cli-commands)                  | All commands and flags                                     |
+| [Environment Variables](https://hermes-agent.nousresearch.com/docs/reference/environment-variables) | Complete env var reference                                 |
+
+---
+
+## Migrating from OpenClaw or another agent
+
+If you're coming from OpenClaw, Claude Code, Codex CLI or Cursor, Hermes can import your settings, memories and skills (and, for OpenClaw, API keys when you ask for them).
+
+**During setup:** `hermes setup` asks whether to import from another agent, pre-selects the ones it finds (`~/.openclaw`, `~/.claude`, `~/.codex`, `~/.cursor`), installs the official `agent-importers` plugin and runs the import with a preview first.
+
+**Anytime after install:**
+
+```bash
+hermes plugins install agent-importers          # once per profile
+hermes import-agent openclaw                    # interactive migration (full preset)
+hermes import-agent openclaw --dry-run          # preview what would be migrated
+hermes import-agent openclaw --migrate-secrets  # also bring allowlisted API keys
+hermes import-agent claude-code                 # or codex / cursor
+```
+
+What gets imported from OpenClaw:
 
 - **SOUL.md** — persona file
 - **Memories** — MEMORY.md and USER.md entries
 - **Skills** — user-created skills → `~/.hermes/skills/openclaw-imports/`
 - **Command allowlist** — approval patterns
 - **Messaging settings** — platform configs, allowed users, working directory
-- **API keys** — allowlisted secrets (Telegram, OpenRouter, OpenAI, Anthropic, ElevenLabs)
+- **API keys** — allowlisted secrets (Telegram, OpenRouter, OpenAI, Anthropic, ElevenLabs), only with `--migrate-secrets`
 - **TTS assets** — workspace audio files
 - **Workspace instructions** — AGENTS.md (with `--workspace-target`)
 
-See `hermes claw migrate --help` for all options, or use the `openclaw-migration` skill for an interactive agent-guided migration with dry-run previews.
+`hermes claw migrate` still works as the older spelling. See the [OpenClaw migration guide](https://hermes-agent.nousresearch.com/docs/guides/migrate-from-openclaw) and [Import from Other Agents](https://hermes-agent.nousresearch.com/docs/user-guide/import-from-other-agents).
 
 ---
 
@@ -185,9 +227,9 @@ See `hermes claw migrate --help` for all options, or use the `openclaw-migration
 
 We welcome contributions! See the [Contributing Guide](https://hermes-agent.nousresearch.com/docs/developer-guide/contributing) for development setup, code style, and PR process.
 
-Start with the [PM developer workflow](website/docs/reference/package-management.md#developer-workflow)
-for activation, daily use, dependency changes, and leaving the environment.
-[Development Setup](CONTRIBUTING.md#development-setup) covers the separate test environment and verification commands.
+Start with [`AGENTS.md`](./AGENTS.md) § Development Environment for the PM environment, activation
+and the `scripts/check` lint gate; the test environment and verification commands are in
+[`tests/AGENTS.md`](./tests/AGENTS.md) and `scripts/run_tests.sh`.
 
 运行 fork 维护者常用的 Dashboard 冒烟检查：
 
@@ -195,7 +237,7 @@ for activation, daily use, dependency changes, and leaving the environment.
 hermes dashboard --no-open
 ```
 
-随后按 [MAINTAINING.zh-CN.md](./MAINTAINING.zh-CN.md) 中的说明验证 fork 专属 Dashboard API。
+随后按 [MAINTAINING.md](./MAINTAINING.md) 中的冒烟检查验证 fork 专属 Dashboard API。
 
 ## 仓库结构
 
@@ -209,8 +251,7 @@ skills/              内置 skills
 optional-skills/     可选 skill packs
 web/                 Dashboard Web 前端资源
 ui-tui/              终端 UI 前端资源
-website/             继承自上游的文档站点
-docs/                fork/runtime 文档
+website/ 仅保留运行时数据（模型目录、插件图、图标、OAuth 元数据）
 .github/workflows/   测试、upstream watch、runtime release 和安全扫描流水线
 ```
 
@@ -225,18 +266,18 @@ docs/                fork/runtime 文档
 - `upstream-pr/*` 用于基于上游 `main` 准备官方 upstream PR。
 - `runtime-v*` tag 用于发布桌面端使用的签名 runtime artifact。
 
-完整维护流程见 [MAINTAINING.zh-CN.md](./MAINTAINING.zh-CN.md)。
+完整维护流程见 [MAINTAINING.md](./MAINTAINING.md)；上游同步使用 `python scripts/git_merge.py`。
 
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request。请注意：
 
-1. fork 专属行为变更需要写入 [FORK_NOTES.zh-CN.md](./FORK_NOTES.zh-CN.md)。
+1. fork 专属行为变更需要写入 [FORK_NOTES.md](./FORK_NOTES.md)。
 2. 适合贡献给上游的通用修复，尽量整理成干净的 `upstream-pr/*` 分支。
 3. 不要把无关的 upstream 同步和 CN fork 补丁 squash 到一个提交里。
 4. 不要提交真实 API key、用户配置、本地 `.env` 文件或 runtime 签名私钥。
 
-较大变更请先阅读 [CONTRIBUTING.md](./CONTRIBUTING.md) 和 [MAINTAINING.zh-CN.md](./MAINTAINING.zh-CN.md)。
+较大变更请先阅读 [AGENTS.md](./AGENTS.md) 和 [MAINTAINING.md](./MAINTAINING.md)。
 
 ## 安全
 

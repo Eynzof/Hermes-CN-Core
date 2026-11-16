@@ -440,6 +440,65 @@ def test_true_positive_shapes_stay_hardline_blocked(command):
     assert desc
 
 
+# eval hands its joined arguments back to the shell exactly like `sh -c`, so the
+# command-position rules must see that code too (#102317).
+@pytest.mark.parametrize("command", [
+    'eval "rm -rf /"',
+    "eval rm -rf /",
+    "eval -- 'rm -rf /'",
+    'sudo eval "rm -rf /"',
+    "ls; eval 'shutdown -h now'",
+    "bash -c \"eval 'rm -rf /'\"",
+    "eval \"eval 'mkfs.ext4 /dev/sda1'\"",
+    "echo $(eval 'reboot') done",
+    "echo `eval 'reboot'` done",
+    "echo $(eval \"eval 'reboot'\") done",
+    'x=$(eval "rm -rf /")',
+    # Quotes inside eval code are removed when eval re-parses it, as with `bash -c`.
+    "eval \"'rm' -rf /\"",
+    "eval '\"reboot\"'",
+    "eval \"$'\\x72\\x6d' -rf /\"",
+    "eval \"eval \\\"$'\\x72\\x6d' -rf /\\\"\"",
+])
+def test_eval_payload_reaches_hardline_floor(command):
+    is_hl, desc = detect_hardline_command(command)
+    assert is_hl, f"eval payload leaked past the hardline floor: {command!r}"
+    assert desc
+
+
+@pytest.mark.parametrize("command", [
+    'eval "$(ssh-agent -s)"',
+    "eval \"echo 'rm -rf / is fatal'\"",
+    "echo eval rm -rf /",
+    "eval 'ls -la'",
+    # A nested eval ends at its substitution's closer; the outer command's
+    # quoted arguments are data, not eval code.
+    "echo $(eval 'printf ready') '(reboot)'",
+    "echo `eval 'printf ready'` '(reboot)'",
+    "(eval 'printf ready') '(reboot)'",
+])
+def test_eval_payload_data_is_not_hardline(command):
+    assert detect_hardline_command(command) == (False, None)
+
+
+def test_eval_payload_hardline_survives_yolo(clean_session, monkeypatch):
+    monkeypatch.setenv("HERMES_YOLO_MODE", "1")
+    result = check_all_command_guards('eval "rm -rf /"', "local")
+    assert result["approved"] is False
+    assert result.get("hardline") is True
+
+
+@pytest.mark.parametrize("level", ["eval ", "eval command ", "sudo eval "])
+def test_deep_eval_nesting_fails_closed(level):
+    """Each nested eval rescans the rest of the command, so `eval eval … ls` made detection quadratic.
+    Past the nesting cap detection stops and blocks rather than letting uninspected code run."""
+    from tools.approval_detection import _PARSER_LIMIT_DESCRIPTION
+    assert detect_hardline_command(level * 2 + "ls") == (False, None)
+    deep = level * 64 + "ls"
+    assert detect_hardline_command(deep) == (True, _PARSER_LIMIT_DESCRIPTION)
+    assert detect_dangerous_command(deep)[2] == _PARSER_LIMIT_DESCRIPTION
+
+
 # DANGEROUS-tier duplicates of the mkfs/dd rules must be anchored the same
 # way: quoted prose must not even require approval, while real invocations
 # stay flagged (yolo can still bypass this tier — that's what yolo is for).
@@ -616,7 +675,7 @@ def test_container_backends_still_bypass(clean_session):
 
     Hardline only protects environments with real host impact (local, ssh).
     """
-    for env in ("docker", "singularity", "modal", "daytona", "vercel_sandbox"):
+    for env in ("docker", "modal", "daytona", "vercel_sandbox"):
         r1 = check_dangerous_command("rm -rf /", env)
         assert r1["approved"] is True, f"container {env} should still bypass"
         r2 = check_all_command_guards("rm -rf /", env)
@@ -696,7 +755,7 @@ def test_sudo_stdin_guard_detects_without_password():
 
 def test_sudo_stdin_guard_container_bypass(clean_session):
     """Containerized backends still bypass — they can't touch the host."""
-    for env in ("docker", "singularity", "modal", "daytona", "vercel_sandbox"):
+    for env in ("docker", "modal", "daytona", "vercel_sandbox"):
         for cmd in _SUDO_STDIN_BLOCK:
             result = check_all_command_guards(cmd, env)
             assert result["approved"] is True, f"container {env} should bypass sudo guard on {cmd!r}"

@@ -38,7 +38,7 @@ def win_local_ops(monkeypatch):
 
 class TestDecodeFileBytes:
     def test_utf8_decodes_directly(self):
-        assert _decode_file_bytes("héllo 中文".encode("utf-8")) == "héllo 中文"
+        assert _decode_file_bytes("héllo 中文".encode()) == "héllo 中文"
 
     def test_legacy_fallback_decodes_cleanly(self):
         data = "你好世界".encode("gbk")
@@ -60,7 +60,7 @@ class TestDecodeFileBytes:
 
     def test_utf8_preferred_over_fallback(self):
         # Valid UTF-8 must decode as UTF-8 even when a fallback is offered.
-        data = "数据".encode("utf-8")
+        data = "数据".encode()
         assert _decode_file_bytes(data, fallbacks=("latin-1",)) == "数据"
 
 

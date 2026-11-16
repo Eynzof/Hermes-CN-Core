@@ -2,6 +2,7 @@
 {
   lib,
   callPackage,
+  fetchurl,
   uv2nix,
   pyproject-nix,
   pyproject-build-systems,
@@ -68,6 +69,42 @@ let
         ] (_: null)
       )
     // {
+      # Python 3.15 builds httptools from source. Its backend explicitly caps
+      # setuptools at 82.0.1; keep that build-only pin out of the runtime set.
+      httptools = prev.httptools.overrideAttrs (old: {
+        nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [
+          (final.setuptools.overrideAttrs (_: {
+            version = "82.0.1";
+            src = fetchurl {
+              url = "https://files.pythonhosted.org/packages/9d/76/f789f7a86709c6b087c5a2f52f911838cad707cc613162401badc665acfe/setuptools-82.0.1-py3-none-any.whl";
+              hash = "sha256-pZ42JlLwjc1HfHi7bnvZ2Ap5lbxzzncwUCKKNIzi5bs=";
+            };
+          }))
+        ];
+      });
+      # Its locked wheels stop at Python 3.14. Match the sdist's declared
+      # backend requirements when uv2nix builds it for Python 3.15.
+      zstandard = prev.zstandard.overrideAttrs (old: {
+        nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ final.resolveBuildSystem {
+          setuptools = [ ];
+          packaging = [ ];
+          cffi = [ ];
+        };
+      });
+      lz4 = prev.lz4.overrideAttrs (old: {
+        nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ final.resolveBuildSystem {
+          setuptools = [ ];
+          wheel = [ ];
+          setuptools-scm = [ ];
+          pkgconfig = [ ];
+        };
+      });
+      ruamel-yaml-clib = prev.ruamel-yaml-clib.overrideAttrs (old: {
+        nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ final.resolveBuildSystem {
+          setuptools = [ ];
+          wheel = [ ];
+        };
+      });
       # The locked sdist has no build-system metadata; setup.py imports
       # setuptools and uses CFFI to compile the bundled libolm.
       python-olm = prev.python-olm.overrideAttrs (old: {

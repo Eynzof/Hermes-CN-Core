@@ -3,6 +3,8 @@
 from pathlib import Path
 import tomllib
 
+import pytest
+
 def _load_optional_dependencies():
     pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
     with pyproject_path.open("rb") as handle:
@@ -10,7 +12,8 @@ def _load_optional_dependencies():
     return project["optional-dependencies"]
 
 
-def test_wake_dependencies_and_runtime_gate_agree_on_supported_targets():
+@pytest.mark.parametrize("python_version,sherpa_supported", [("3.14", True), ("3.15", False)])
+def test_wake_dependencies_and_runtime_gate_agree_on_supported_targets(python_version, sherpa_supported):
     from packaging.markers import Marker, default_environment
     from packaging.requirements import Requirement
 
@@ -28,7 +31,8 @@ def test_wake_dependencies_and_runtime_gate_agree_on_supported_targets():
     ]
     for system, platform_system, machine, supported in targets:
         environment = {**default_environment(), "sys_platform": system,
-                       "platform_system": platform_system, "platform_machine": machine}
+                       "platform_system": platform_system, "platform_machine": machine,
+                       "python_version": python_version, "python_full_version": python_version + ".0"}
         for extra in ("wake", "wake-openwakeword"):
             requirement = next(req for spec in optional[extra]
                                if (req := Requirement(spec)).name == "pyopen-wakeword")
@@ -36,15 +40,18 @@ def test_wake_dependencies_and_runtime_gate_agree_on_supported_targets():
         assert Marker(gates["wake-openwakeword"]).evaluate(environment) is supported
         selected = {req.name for spec in optional["wake"]
                     if (req := Requirement(spec)).marker is None or req.marker.evaluate(environment)}
-        assert {"sherpa-onnx", "pvporcupine", "sentencepiece", "pypinyin"} <= selected
+        sherpa_names = {"sherpa-onnx", "sherpa-onnx-core", "sentencepiece", "pypinyin"}
+        assert "pvporcupine" in selected
+        assert (sherpa_names <= selected) is sherpa_supported
         sherpa_deps = {req.name for spec in optional["wake-sherpa"]
                        if (req := Requirement(spec)).marker is None or req.marker.evaluate(environment)}
-        assert {"sherpa-onnx", "sentencepiece", "pypinyin"} <= sherpa_deps
+        assert sherpa_deps == (sherpa_names if sherpa_supported else set())
         for extra in ("wake-sherpa", "wake-porcupine"):
+            expected = sherpa_supported if extra == "wake-sherpa" else True
             assert all(req.marker is None or req.marker.evaluate(environment)
-                       for req in map(Requirement, optional[extra]))
+                       for req in map(Requirement, optional[extra])) is expected
             gate = gates.get(extra)
-            assert gate is None or Marker(gate).evaluate(environment)
+            assert (gate is None or Marker(gate).evaluate(environment)) is expected
 
 
 def test_direct_overrides_preserve_the_declared_exact_version():

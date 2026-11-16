@@ -134,7 +134,7 @@ jobs:
 
       - name: Install locked chat driver dependencies
         shell: bash
-        run: pnpm install --frozen-lockfile --filter "{./tests-js}..." --prod --ignore-scripts
+        run: just js-install-tests
 
       - name: Start screen recording
         uses: ./.github/actions/e2e-screen-record
@@ -225,6 +225,7 @@ jobs:
   bundled-e2e:
     name: packaged bundle (open-app-update)
     if: inputs.install-method == 'packaged-app' && inputs.update-method == 'open-app-update'
+    # Not macos-15: v0.22.0 gives Squirrel.Mac 120 s to unpack and verify an update, and macos-15 takes 112-149 s.
     runs-on: macos-15
     timeout-minutes: ${{ inputs.timeout-minutes }}
 
@@ -256,7 +257,7 @@ jobs:
 
       - name: Install locked chat driver dependencies
         shell: bash
-        run: pnpm install --frozen-lockfile --filter "{./tests-js}..." --prod --ignore-scripts
+        run: just js-install-tests
 
       - name: Start screen recording
         uses: ./.github/actions/e2e-screen-record

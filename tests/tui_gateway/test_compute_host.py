@@ -50,6 +50,7 @@ def test_compute_host_line_json_hello_and_shutdown():
         from tui_gateway.host_supervisor import _HELLO_TIMEOUT_SECS
 
         hello = _read_json_line(out, timeout=_HELLO_TIMEOUT_SECS)
+
         assert hello["type"] == "hello"
         if sys.platform == "win32":
             # uv-venv python.exe is a shim that spawns the real interpreter

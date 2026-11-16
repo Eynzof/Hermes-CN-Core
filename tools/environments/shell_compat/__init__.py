@@ -1,10 +1,13 @@
-"""shell_compat — the lossless tolerant-IR Git Bash compatibility package.
+"""shell_compat — the lossless tolerant-IR implementation package of the
+``bash_fix`` stable facade.
 
-This package is the implementation behind the stable ``tools/environments/
-bash_fix.py`` facade.  ``bash_fix.py`` holds no scanner logic: it re-exports the
-historical module-level surface (explicit imports, no ``*``) and applies the
-Windows-platform gate, while every rule lives HERE — one module, one
-responsibility:
+Layout (facade vs implementation):
+  ``tools/environments/bash_fix.py`` is the STABLE COMPATIBILITY FACADE: it
+  holds no scanner logic, it re-exports the complete historical module-level
+  surface (explicit imports, no ``*``) of the 195-name ``__all__``, and stays a
+  loadable *file* because tests import it both as a module and directly by path
+  with ``importlib.util.spec_from_file_location``.  Every rule lives HERE, in
+  this package — one module, one responsibility:
 
   models / spans      lossless IR node types and source-coordinate primitives
                       (spans, edits, diagnostics); nodes reference the original
@@ -19,6 +22,21 @@ responsibility:
                       wrapper-operand, runtime-reparse and shell-unwrap rules.
   cmd_translator      cmd.exe ``@`` / ``if`` / ``for`` translations and the
                       jump refusals.
+  cmd_script_paths    relative-path repair inside a ``cmd /c`` command
+                      string (``cmd /c tools/build.bat`` -> ``cmd /c
+                      "tools\\build.bat"``): cmd.exe splits its command string at
+                      ``/``, so a POSIX-spelled relative path is read as a switch,
+                      and the quoted rewrite keeps bash from eating the backslashes.
+                      Also the shared traversal (``for_each_cmd_command_string``)
+                      every cmd command-string rule visits.
+  cmd_command_string  bash-quoting repair of the same command string: ONE
+                      bash-quoted word with ``\\"`` escapes
+                      (``cmd /c "\\"prog\\" args"``) -> the cmd-level words it
+                      described (``cmd /c "prog" args``), because the shell hands
+                      a ``"`` inside a Bash word to cmd.exe as a literal
+                      backslash + quote.
+  native_flags        doubled-slash flag repair for native Windows tools
+                      (``msiexec //a`` -> ``msiexec /a``).
   heredoc             heredoc trailing-operator repair plus the IR event model.
   translator          the ordered Git Bash compatibility translator: the single
                       ``translate`` orchestration entry, the ``EditPlan`` render
@@ -31,6 +49,8 @@ responsibility:
                       ``unquoted``; bash_core keeps thin delegates so the facade
                       and intra-module callers resolve unchanged).
   unquoted            ``_process_unquoted`` lexer-driven emitter.
+  pwsh_fix            PwshFix, _PwshScanner, fix_pwsh_command.
+  pwsh_transform      PS7 -> PS5.1 source transforms and pwsh_transform.
 
 Conservative pass-through policy (the whole package): an already Git Bash
 compatible command passes through BYTE-FOR-BYTE — no fallback definitions, no
@@ -41,13 +61,21 @@ malformed, adversarial or deeply nested input is passed through for Bash to
 diagnose instead of being repaired, and unsupported commands keep their source
 and flow through the ``unsupported`` refusal channel.
 
-Consumers import ``tools.environments.bash_fix`` (the stable ``bash_fix`` facade); this
-``__init__`` re-exports the public entry points for convenience and is
-intentionally NOT the full historical surface.
+External consumers should keep importing tools.environments.bash_fix (the
+stable facade). This __init__ re-exports the public entry points for
+convenience; it is intentionally NOT the full historical surface.
 """
 
 from __future__ import annotations
 
+from .cmd_command_string import (
+    cmd_command_string_edits,
+    cmd_command_string_fix,
+)
+from .cmd_script_paths import (
+    cmd_script_path_edits,
+    cmd_script_path_fix,
+)
 from .bash_core import (
     BashFix,
     _apply_heredoc_operator_move,
@@ -68,4 +96,13 @@ from .fallback_data import (
     _fallback_definition,
     _single_quote,
     _wrapper_runner,
+)
+from .pwsh_fix import (
+    PwshFix,
+    _PwshScanner,
+    fix_pwsh_command,
+)
+from .pwsh_transform import (
+    _build_region_mask,
+    pwsh_transform,
 )

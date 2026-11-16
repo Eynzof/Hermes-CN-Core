@@ -93,7 +93,11 @@ def test_web_build_prepares_once_and_skips_a_current_product(source_products):
     root, acquired = source_products
     assert _build_web_ui(root / "web", fatal=True)
     assert [event["step"] for event in _events(root)] == ["deps", "web"]
+    assert "esbuild" not in _events(root)[0]
+    assert (root / "ui-tui/node_modules/fixture-dep").exists()
+    assert (root / "web/node_modules/fixture-dep").exists()
     assert acquired == ["pnpm"]
+
     assert not _web_ui_build_needed(root / "web")
     assert _build_web_ui(root / "web", fatal=True)
     assert acquired == ["pnpm"]

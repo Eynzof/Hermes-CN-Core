@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import stat
 import sys
@@ -335,12 +336,29 @@ def digest_matches(root: Path, recorded: str | None) -> bool:
         tree_digest(root) == recorded or _tree_digest(root, skip_metadata=False) == recorded)
 
 
+
+def _link_target_text(target: str) -> str:
+    """A symlink target with the Windows separator folded to '/' (POSIX: unchanged).
+
+    One archive has to hash the same whichever interpreter extracted it. CPython 3.15
+    normalises a tarfile symlink target to the native separator on Windows, so
+    ``share/terminfo/1/1178 -> ../a/adm1178`` lands as ``..\\a\\adm1178`` there; hashed
+    raw, every digest a 3.14-era install recorded stops matching and pm re-extracts the
+    whole store. A backslash is a separator on Windows and never a filename byte, so
+    folding is lossless there -- on POSIX it IS a filename byte, so the text is returned
+    untouched.
+    """
+    return target.replace("\\", "/") if os.name == "nt" else target
+
 def _tree_digest(root: Path, *, skip_metadata: bool) -> str:
     """Deterministic sha256 over a directory tree: walk every file, sort
     by posix relpath, hash `relpath\\0<content>` per entry. No mtimes, no
     mode bits. Symlinks contribute their LINK TARGET TEXT (os.readlink),
     not the target's bytes — the link is the data. Directory symlinks and
     junctions are not followed.
+    A Windows separator inside that text is folded to '/' (_link_target_text):
+    CPython 3.15 normalises tarfile symlink targets to the native separator, and
+    a digest a 3.14 toolchain recorded must still match afterwards.
 
     ``__pycache__`` directories are skipped: CPython writes .pyc caches
     into them the first time the staged interpreter runs (uv venv/uv sync
@@ -370,12 +388,31 @@ def _tree_digest(root: Path, *, skip_metadata: bool) -> str:
         digest.update(rel.encode("utf-8"))
         digest.update(b"\0")
         if path.is_symlink() or is_junction(path):
-            digest.update(os.readlink(path).encode("utf-8"))
+            digest.update(_link_target_text(os.readlink(path)).encode("utf-8"))
         else:
             with open(path, "rb") as f:
                 for block in iter(lambda: f.read(1024 * 1024), b""):
                     digest.update(block)
     return digest.hexdigest()
+
+
+def entry_component(name: str) -> str:
+    """A store entry name built from lock fields (package name, version,
+    target) that is removed or published must be exactly one component, or
+    the rmtree/rename aims outside the store root (#138359)."""
+    if (not isinstance(name, str) or name in ("", ".", "..") or "/" in name or "\\" in name
+            or Path(name).name != name):
+        raise ValueError(f"store entry name is not a single path component: {name!r}")
+    return name
+
+
+def fetch_entry_name(digest: str) -> str:
+    """Fetch-cache entries are keyed `fetch-<sha256>` and the digest becomes
+    a path component under the store root, so anything off the 64-hex shape
+    fails closed here instead of traversing out of the store (#138359)."""
+    if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest):
+        raise ValueError(f"malformed artifact sha256: {digest!r}")
+    return f"fetch-{digest}"
 
 
 class Store:
@@ -411,7 +448,7 @@ class Store:
             if pause_event is not None and pause_event.is_set():
                 raise DownloadPaused("download paused")
             url, digest = artifact["url"], artifact["sha256"]
-            entry_name = f"fetch-{digest}"
+            entry_name = fetch_entry_name(digest)
             entry = self.entry(entry_name)
             files = list(entry.iterdir()) if entry.is_dir() else []
             if len(files) == 1 and files[0].is_file():
@@ -419,7 +456,10 @@ class Store:
             else:
                 if entry.exists():
                     shutil.rmtree(entry)
-                destination = scratch / entry_name / url.rsplit("/", 1)[-1]
+                filename = url.rsplit("/", 1)[-1]
+                if filename in ("", ".", "..") or "\\" in filename or Path(filename).name != filename:
+                    raise ValueError(f"artifact url does not end in a file name: {url}")
+                destination = scratch / entry_name / filename
             sources.append(pinned_source(url, destination, digest))
 
         # Progress keeps the lockfile URL even when the transport is a mirror (#123132).
@@ -435,8 +475,8 @@ class Store:
             # Only finalized, hash-verified files can exist at these paths.
             for source in sources:
                 if source.dest.is_relative_to(scratch) and source.dest.is_file():
-                    self.publish(source.dest.parent, f"fetch-{source.sha256}")
-        return [self.entry(f"fetch-{source.sha256}") / source.dest.name for source in sources]
+                    self.publish(source.dest.parent, fetch_entry_name(source.sha256))
+        return [self.entry(fetch_entry_name(source.sha256)) / source.dest.name for source in sources]
 
     @contextmanager
     def scratch(self):

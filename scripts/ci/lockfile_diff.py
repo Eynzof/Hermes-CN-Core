@@ -9,7 +9,7 @@ to ``{package: version}`` and set-diffs the two dicts. Reordering and hash
 churn vanish; what's left is the actual dependency change.
 
 pnpm locks the workspace (``pnpm-lock.yaml``, lockfileVersion 9.0); the
-standalone npm projects (website/, the sidecars) keep a ``package-lock.json``
+standalone npm projects (the sidecars) keep a ``package-lock.json``
 (lockfileVersion 2/3). A pnpm lock has no install paths, so besides its
 ``{package: versions}`` rows the report lists a project's direct dependency
 (``semver *(web)*``) or a package's dependency (``semver *(via node-gyp@10.3.1)*``)
@@ -116,7 +116,7 @@ def _reference(name: str, ref: object, where: str) -> str:
 
 def _target(name: str, reference: str) -> tuple[str, str]:
     """The ``packages`` entry a reference points to: ``(real name, version)``."""
-    if reference.startswith("@") or "@" in reference.split(":", 1)[0]:
+    if "@" in reference.split(":", 1)[0]:
         return _split_key(reference)
     return name, reference
 

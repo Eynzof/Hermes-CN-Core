@@ -747,6 +747,50 @@ class TestRootLevelProviderOverride:
         assert result["model"]["provider"] == "openai"
         assert "model" not in result["model"]
 
+    @pytest.mark.parametrize("model_key", ["default", "model", "name"])
+    def test_nested_dict_default_extra_keys_warn_on_whole_file_save(
+        self, tmp_path, caplog, monkeypatch, model_key
+    ):
+        """#153296: disclose discarded paths, not secret values or new runtime settings."""
+        import os
+        from unittest.mock import patch
+
+        import hermes_yaml as yaml
+        from hermes_cli import config_providers
+        from hermes_cli.config import load_config, save_config
+
+        monkeypatch.setattr(config_providers, "_PROVIDER_NORMALIZE_WARNED", set())
+        (tmp_path / "config.yaml").write_text(yaml.safe_dump({"model": {
+            model_key: {"model": "x/y", "provider": "openrouter", "newer_field": "keepme",
+                        "name": "discarded-name-value", "base_url": "https://nested.example/v1"},
+            "base_url": "https://outer.example/v1",
+        }}), encoding="utf-8")
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            save_config(load_config())
+        model = yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))["model"]
+        assert model["default"] == "x/y" and model["provider"] == "openrouter"
+        assert "newer_field" not in model
+        assert caplog.text.count(f"unsupported model.{model_key}.newer_field") == 1
+        assert caplog.text.count(f"unsupported model.{model_key}.base_url") == 1
+        assert caplog.text.count(f"unsupported model.{model_key}.name") == 1
+        assert "discarded-name-value" not in caplog.text
+        assert "keepme" not in caplog.text
+        assert "https://nested.example/v1" not in caplog.text
+        assert "https://outer.example/v1" not in caplog.text
+        assert model["base_url"] == "https://outer.example/v1"
+
+    def test_nested_extras_do_not_change_endpoint_precedence(self):
+        from hermes_cli.config import _normalize_root_model_keys
+
+        result = _normalize_root_model_keys({"model": {
+            "api_base": "https://outer.invalid",
+            "default": {"model": "chosen", "base_url": "https://nested.invalid"},
+            "name": {"model": "ignored", "api_mode": "other-protocol"},
+        }})["model"]
+        assert result["default"] == "chosen"
+        assert result["base_url"] == "https://outer.invalid"
+        assert "api_mode" not in result
+
     def test_flat_string_default_untouched(self):
         """Plain string defaults keep existing behavior exactly."""
         from hermes_cli.config import _normalize_root_model_keys
@@ -795,3 +839,28 @@ def test_openrouter_startup_key_never_holds_a_real_openai_key(env, expected):
     # so it must already follow the sk-or- gate for openrouter.ai.
     cli = _make_cli(env_overrides=env)
     assert (cli.api_key or "") == expected
+
+
+def test_the_profile_config_is_read_at_import_time(tmp_path):
+    """``CLI_CONFIG`` is built while ``cli`` is still importing, so every reader that first read calls
+    must be bound by then. A helper imported at the bottom of the module made it a ``NameError`` that
+    ``load_cli_config`` swallows -- every launch then ran on built-in defaults instead of the profile's
+    ``config.yaml``. A fresh process is the only place that first read is observable.
+    """
+    import json
+    import subprocess
+    from pathlib import Path
+
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.yaml").write_text("display: {compact: true}\n", encoding="utf-8")
+    repo = Path(__file__).resolve().parents[2]
+    env = {k: os.environ[k] for k in ("PATH", "SYSTEMROOT", "LANG", "TZ", "HOME", "USERPROFILE") if k in os.environ}
+    env.pop("HERMES_IGNORE_USER_CONFIG", None)
+    env.update(HERMES_HOME=str(home), PYTHONPATH=str(repo))
+    probe = "import json, cli; print(json.dumps({'compact': cli.CLI_CONFIG.get('display', {}).get('compact')}))"
+    result = subprocess.run(
+        [sys.executable, "-c", probe], cwd=repo, env=env, stdin=subprocess.DEVNULL,
+        capture_output=True, text=True, timeout=180, check=False)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip().splitlines()[-1])["compact"] is True, result.stdout + result.stderr

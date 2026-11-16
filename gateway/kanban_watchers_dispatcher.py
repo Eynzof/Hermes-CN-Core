@@ -306,14 +306,15 @@ def _default_profile_secret_scope():
     LLM reads ``auxiliary.*`` from ``get_hermes_home()``, so its credentials come
     from that same home. No-op for single-profile gateways.
     """
-    from agent.secret_scope import is_multiplex_active, reset_secret_scope, set_secret_scope
+    from agent.secret_scope import is_multiplex_active, reset_secret_scope
+    from agent.runtime_scope import bind_state, scope_for_profile
     from hermes_constants import get_hermes_home
     from tui_gateway.launch_profile_policy import owner_secret_scope
 
     if not is_multiplex_active():
         yield
         return
-    token = set_secret_scope(owner_secret_scope(Path(get_hermes_home())), profile_home=str(get_hermes_home()))
+    token = bind_state(scope_for_profile(Path(get_hermes_home())), secrets=owner_secret_scope(Path(get_hermes_home())), hydrate_secrets=False)
     try:
         yield
     finally:

@@ -75,17 +75,17 @@ jobs:
             pyproject.toml
             uv.lock
 
-      - name: Set up Python 3.14
+      - name: Set up Python 3.15
         if: steps.gate.outputs.configured != '0'
         uses: ./.github/actions/retry
         with:
-          command: uv python install 3.14
+          command: uv python install 3.15
 
       - name: Install dependencies
         if: steps.gate.outputs.configured != '0'
         uses: ./.github/actions/retry
         with:
-          command: uv sync --locked --python 3.14 --extra all --group dev --extra anthropic
+          command: uv sync --locked --python 3.15 --extra all --group dev --extra anthropic
 
       - name: Run live canaries
         if: steps.gate.outputs.configured != '0'

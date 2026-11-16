@@ -149,6 +149,7 @@ def test_script_killed_before_publishing_the_delegate_runs_no_update(tmp_path: P
             assert watch.exited_within(60), 'the never-resumed update child outlived its script'
         finally:
             watch.close()
+
         assert not ran.exists(), 'the update child ran before it was published as the delegate'
         lines = marker.read_bytes().decode().split('\n')
         assert lines[0] == _custodian(home, script.pid), lines

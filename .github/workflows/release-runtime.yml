@@ -134,7 +134,7 @@ jobs:
         # followed whatever patch the runner shipped, and the 3.50.4 DLL in
         # runtime 0.20.0-cn.8/cn.9 carries the WAL-reset corruption bug
         # (#181). pm/lock.json pins the build-standalone artifact
-        # (3.14.9+20261021) whose DLL is 3.53.1 with FTS5/FTS3/FTS4/RTREE/
+        # (3.15.2+20261110) whose DLL is 3.53.1 with FTS5/FTS3/FTS4/RTREE/
         # MATH_FUNCTIONS; the contract step below re-checks version + options
         # on whatever interpreter lands here, and the frozen binary is
         # checked again after PyInstaller.

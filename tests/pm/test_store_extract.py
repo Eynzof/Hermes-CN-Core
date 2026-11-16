@@ -4,6 +4,7 @@ tarballs carry relative terminfo symlinks (``share/terminfo/1/1178 -> ../a/adm11
 import io
 import os
 import tarfile
+from pathlib import Path
 
 import pytest
 
@@ -31,7 +32,10 @@ def test_relative_symlinks_resolve_from_their_own_directory(tmp_path):
     dest = tmp_path / "out"
     extract(archive, dest)
     link = dest / "python/share/terminfo/1/1178"
-    assert os.readlink(link) == "../a/adm1178"
+    # CPython 3.15 normalises a symlink target to the native separator on Windows
+    # (3.14 kept the archive's POSIX spelling), so compare as paths, not as text:
+    # the contract is that the link resolves, not how it is spelled.
+    assert Path(os.readlink(link)) == Path("../a/adm1178")
     assert link.resolve() == (dest / "python/share/terminfo/a/adm1178").resolve()
 
 

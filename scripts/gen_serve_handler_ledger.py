@@ -170,11 +170,12 @@ def render(facts: dict | None = None) -> str:
 
 
 def check(out: Path = OUT) -> int:
+    facts = _facts()
     committed = out.read_text(encoding="utf-8-sig") if out.exists() else ""
-    if committed == render():
-        return 0
-    print(f"{out.relative_to(ROOT)} is stale; run scripts/gen_serve_handler_ledger.py", file=sys.stderr)
-    return 1
+    stale = [] if committed == render(facts) else [out]
+    for path in stale:
+        print(f"{path.relative_to(ROOT)} is stale; run scripts/gen_serve_handler_ledger.py", file=sys.stderr)
+    return 1 if stale else 0
 
 
 def main(argv) -> int:
@@ -183,7 +184,8 @@ def main(argv) -> int:
         return 0
     if "--check" in argv:
         return check()
-    OUT.write_text(render(), encoding="utf-8")
+    facts = _facts()
+    OUT.write_text(render(facts), encoding="utf-8")
     print(f"wrote {OUT.relative_to(ROOT)}")
     return 0
 

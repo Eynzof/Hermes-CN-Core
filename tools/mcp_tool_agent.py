@@ -340,9 +340,12 @@ def restore_agent_tool_prefix(agent, saved) -> bool:
     from tools.registry import registry
     fresh_defs = _agent_tool_defs(agent)
     fresh = {_def_name(t): t for t in fresh_defs}
-    carried = {_def_name(d) for d in pinned_defs if _def_name(d) not in fresh
-               and registry.get_entry(_def_name(d)) is not None}
     registered_names = set(registry.get_all_tool_names())
+    # A carried built-in may not have been imported on this surface yet (lazy tool discovery,
+    # P-045): get_entry() imports its module before the lookup, get_all_entries() cannot see it.
+    carried = {_def_name(d) for d in pinned_defs
+               if _def_name(d) not in fresh
+               and (_def_name(d) in registered_names or registry.get_entry(_def_name(d)) is not None)}
     carried &= _config_permitted_names(agent) if carried else set()
     pinned_here, held = _pin_restore_held(agent, registered_names)
     if pinned_here:  # same conversation: the synthesized bridge keeps its slot, as in _merge_preserving_prefix

@@ -35,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # The Python that actually ships in the running agent.  Kept explicit (rather
 # than "the whole repo") so the default pass does not walk ``.venv`` /
-# ``node_modules`` / ``website`` and so it never compiles test-only trees.
+# ``node_modules`` and so it never compiles test-only trees.
 DEFAULT_TARGETS: tuple[str, ...] = (
     "agent",
     "tools",

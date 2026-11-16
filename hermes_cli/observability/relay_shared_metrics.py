@@ -14,7 +14,6 @@ from time import monotonic_ns
 from typing import Any, Callable, Iterator
 
 from agent import relay_runtime
-from hermes_constants import reset_hermes_home_override, set_hermes_home_override
 from agent.portal_tags import get_conversation_context
 from hermes_cli.version_info import get_version_info
 
@@ -658,11 +657,9 @@ class _Runtime:
     @contextlib.contextmanager
     def _owner_scope(self) -> Iterator[None]:
         """Bind this runtime's profile home for work that can run outside its own turns."""
-        token = set_hermes_home_override(self.host.profile_key)
-        try:
+        from tui_gateway.launch_profile_policy import profile_config_scope
+        with profile_config_scope(self.host.profile_key):
             yield
-        finally:
-            reset_hermes_home_override(token)
 
     def _deregister(self) -> None:
         self._safe(self.relay.subscribers.deregister, self._subscriber_name)

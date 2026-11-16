@@ -60,45 +60,38 @@ def plane_token(home: Path) -> str:
 
 
 def _nous_token(home: Path) -> str:
-    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
-
     try:
         from hermes_cli.auth import resolve_nous_access_token
     except Exception as exc:
         raise PlaneCredentialError(f"cannot load the Nous auth module: {exc}", retryable=False) from exc
-    token = set_hermes_home_override(home)  # auth.json is per profile home
-    scope_token = None
     try:
-        scope_token = _bind_owner_secret_scope(home)  # inside the try: a failed build still resets the home
-        return resolve_nous_access_token()
+        with _bind_owner_secret_scope(home):
+            return resolve_nous_access_token()
     except Exception as exc:
         # A missing login or a revoked session needs a human; a refresh that hit the network can retry.
         fatal = bool(getattr(exc, "relogin_required", False)) or getattr(exc, "code", None) == "nous_auth_missing"
         raise PlaneCredentialError(
             f"no Nous access token for {home} (auth.json): {exc}", retryable=not fatal) from exc
-    finally:
-        if scope_token is not None:
-            from agent.secret_scope import reset_secret_scope
-            reset_secret_scope(scope_token)
-        reset_hermes_home_override(token)
 
 
 def _bind_owner_secret_scope(home: Path):
-    """Under multiplexing, bind ``home``'s own secret scope for the token resolution; None otherwise.
+    """Bind ``home`` and its own credentials without loading the config they are used to fetch.
 
     The resolver reads the Portal override (``HERMES_PORTAL_BASE_URL``) through the profile secret
     scope. The poller thread, and any caller resolving another profile's token, has no scope (or
     the wrong profile's), so the read fails closed, the override counts as absent and the refresh
     token is sent to the default Portal. Bound always, not only when nothing is bound: a turn for
-    profile A resolving B's token must route on B's override. Only the secret scope is bound, and
-    secret sources are not hydrated here: both read the profile's config, which this token is used
-    to fetch.
+    profile A resolving B's token must route on B's override. Terminal config and secret sources
+    are not loaded here: both read the profile's config, which this token is used to fetch.
     """
-    from agent.secret_scope import is_multiplex_active, set_secret_scope
+    from agent.runtime_scope import bind_state, scope_for_profile
+    from agent.secret_scope import is_multiplex_active
     if not is_multiplex_active():
-        return None  # single-profile: get_secret reads the process env, which is this profile's
+        # Single-profile auth retains ambient credentials and does not load config or secrets.
+        from hermes_scope import push_state
+        return push_state(scope=scope_for_profile(home), home=str(home))
     from tui_gateway.launch_profile_policy import owner_secret_scope
-    return set_secret_scope(owner_secret_scope(home), profile_home=str(home))
+    return bind_state(scope_for_profile(home), secrets=owner_secret_scope(home), terminal=False)
 
 
 def _idp_token() -> str:

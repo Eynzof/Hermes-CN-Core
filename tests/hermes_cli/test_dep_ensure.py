@@ -106,7 +106,7 @@ def test_find_rg_prefers_managed_on_windows(tmp_path):
     """On Windows, _find_rg returns the managed rg.exe when it runs."""
     managed = tmp_path / "tools" / "rg.exe"
     managed.parent.mkdir(parents=True)
-    managed.write_text("fake")
+    managed.write_text("fake", encoding="utf-8")
     from hermes_cli.dep_ensure import _find_rg
     with patch("hermes_cli.dep_ensure._IS_WINDOWS", True), \
          patch("hermes_cli.dep_ensure.get_managed_tools_dir", return_value=managed.parent), \
@@ -123,7 +123,7 @@ def test_find_rg_prefers_managed_on_posix(tmp_path):
     """On POSIX, _find_rg returns the managed rg when it runs."""
     managed = tmp_path / "tools" / "rg"
     managed.parent.mkdir(parents=True)
-    managed.write_text("fake")
+    managed.write_text("fake", encoding="utf-8")
     from hermes_cli.dep_ensure import _find_rg
     with patch("hermes_cli.dep_ensure._IS_WINDOWS", False), \
          patch("hermes_cli.dep_ensure.get_managed_tools_dir", return_value=managed.parent), \
@@ -140,7 +140,7 @@ def test_find_rg_falls_back_to_path_when_managed_broken(tmp_path):
     """When managed rg is broken, _find_rg falls back to PATH rg."""
     managed = tmp_path / "tools" / "rg.exe"
     managed.parent.mkdir(parents=True)
-    managed.write_text("fake")
+    managed.write_text("fake", encoding="utf-8")
     from hermes_cli.dep_ensure import _find_rg
 
     def _run_side_effect(cmd, **kwargs):
@@ -161,7 +161,7 @@ def test_find_rg_returns_none_when_all_broken(tmp_path):
     """_find_rg returns None when both managed and PATH rg are unusable."""
     managed = tmp_path / "tools" / "rg.exe"
     managed.parent.mkdir(parents=True)
-    managed.write_text("fake")
+    managed.write_text("fake", encoding="utf-8")
     from hermes_cli.dep_ensure import _find_rg
     with patch("hermes_cli.dep_ensure._IS_WINDOWS", True), \
          patch("hermes_cli.dep_ensure.get_managed_tools_dir", return_value=managed.parent), \
@@ -174,7 +174,7 @@ def test_find_rg_falls_back_to_legacy_bin(tmp_path):
     """_find_rg falls back to the legacy HERMES_HOME/bin location."""
     legacy = tmp_path / "bin" / "rg"
     legacy.parent.mkdir(parents=True)
-    legacy.write_text("fake")
+    legacy.write_text("fake", encoding="utf-8")
     from hermes_cli.dep_ensure import _find_rg
     with patch("hermes_cli.dep_ensure._IS_WINDOWS", False), \
          patch("hermes_cli.dep_ensure.get_managed_tools_dir", return_value=tmp_path / "tools"), \
@@ -219,7 +219,7 @@ def test_ensure_dependency_uses_powershell_on_windows(tmp_path, monkeypatch):
     monkeypatch.setattr("hermes_cli.dep_ensure.refresh_env_from_registry", lambda *a, **k: None)
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir(parents=True)
-    (scripts_dir / "install.ps1").write_text("# fake")
+    (scripts_dir / "install.ps1").write_text("# fake", encoding="utf-8")
     with patch("hermes_cli.dep_ensure._DEP_CHECKS", {"node": lambda: False}), \
          patch("hermes_cli.dep_ensure._find_install_script", return_value=(scripts_dir / "install.ps1", "powershell")), \
          patch("hermes_cli.dep_ensure.shutil") as mock_shutil, \

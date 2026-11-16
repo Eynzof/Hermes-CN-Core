@@ -55,6 +55,8 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(REPO_ROOT))
+from hermes_agent.compat.paths import current_path, original_path
 
 SUPPRESS_MARKER = re.compile(r"#\s*windows-footgun\s*:\s*ok\b", re.IGNORECASE)
 
@@ -94,7 +96,6 @@ EXCLUDED_DIRS = {
     ".mypy_cache",
     ".pytest_cache",
     "site-packages",
-    "website/build",
     "optional-skills",  # external skills
 }
 
@@ -123,11 +124,9 @@ EXCLUDED_SUFFIXES = {
     ".min.css",
 }
 
-# Files we never scan (self-referential — this script mentions the
-# patterns it detects — and the CONTRIBUTING docs that list them).
+# Files we never scan (self-referential — this script mentions the patterns it detects).
 EXCLUDED_FILES = {
     "scripts/check-windows-footguns.py",
-    "CONTRIBUTING.md",
 }
 
 
@@ -678,7 +677,7 @@ def should_scan_file(path: Path) -> bool:
             return False
     # Skip self and docs that intentionally mention the patterns
     rel = path.relative_to(REPO_ROOT).as_posix()
-    if rel in EXCLUDED_FILES:
+    if original_path(rel) in EXCLUDED_FILES:
         return False
     # Only scan text files (rough heuristic — .py, .md, .sh, .ps1, .yaml, etc.)
     if path.suffix in {".py", ".pyw", ".pyi"}:
@@ -1084,14 +1083,8 @@ def format_baseline(counts: dict[tuple[str, str], int]) -> str:
 def _full_repo_roots() -> list[Path]:
     """Main packages + scripts scanned by ``--all`` (and by --print-baseline)."""
     roots = [
-        REPO_ROOT / "hermes_cli",
-        REPO_ROOT / "gateway",
-        REPO_ROOT / "tools",
-        REPO_ROOT / "cron",
-        REPO_ROOT / "agent",
-        REPO_ROOT / "plugins",
-        REPO_ROOT / "scripts",
-        REPO_ROOT / "acp_adapter",
+        REPO_ROOT / current_path(top)
+        for top in ("hermes_cli", "gateway", "tools", "cron", "agent", "plugins", "scripts", "acp_adapter")
     ]
     return [r for r in roots if r.exists()]
 

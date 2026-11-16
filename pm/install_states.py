@@ -62,13 +62,10 @@ def _retention_seconds(data_root: Path) -> float | None:
     for the others: a named profile without the key would apply the default to a state the root
     opted out of reclaiming."""
     from hermes_cli.config import cfg_get, load_config_readonly
-    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+    from tui_gateway.launch_profile_policy import profile_config_scope
 
-    token = set_hermes_home_override(data_root)
-    try:
+    with profile_config_scope(data_root):
         days = cfg_get(load_config_readonly(), "worktrees", "install_state_retention_days", default=14)
-    finally:
-        reset_hermes_home_override(token)
     return days * 86400 if isinstance(days, (int, float)) and days > 0 else None
 
 

@@ -23,10 +23,11 @@ GOOD = (
 BROKEN = "approvals:\n  deny: [unclosed\n"
 
 
-def _fresh_load(home: Path) -> tuple[dict, str]:
+def _fresh_load(home: Path, preamble: str = "") -> tuple[dict, str]:
     env = {**os.environ, "HERMES_HOME": str(home), "PYTHONPATH": str(REPO), "LKG_TOKEN": "expanded-secret"}
     proc = subprocess.run(
-        [sys.executable, "-c", "import json; from hermes_cli.config import load_config; print(json.dumps(load_config()))"],
+        [sys.executable, "-c",
+         f"{preamble}import json; from hermes_cli.config import load_config; print(json.dumps(load_config()))"],
         cwd=REPO, env=env, text=True, capture_output=True, check=True, stdin=subprocess.DEVNULL,
     )
     return json.loads(proc.stdout), proc.stderr
@@ -57,3 +58,24 @@ def test_good_backup_keeps_env_templates_and_dedupes_repeat_loads(tmp_path):
     assert len(good) == 1
     text = good[0].read_text(encoding="utf-8")
     assert "${LKG_TOKEN}" in text and "expanded-secret" not in text
+
+def test_a_broken_moa_module_does_not_break_the_last_good_recovery(tmp_path):
+    """The recovery must not re-raise the very import that sent it down the fallback.
+
+    ``moa_config`` is imported twice -- by the normal load, and again by the fresh-process
+    last-known-good branch. When that module is what broke the load (its ``orjson`` extension
+    missing from a mixed-ABI environment: ``ModuleNotFoundError: No module named
+    'orjson.orjson'``), the second import raised out of the ``except`` handler and took down
+    ``hermes chat``, turning a recoverable config error into a crash. The MoA presets are an
+    enrichment: the last-known-good config stands without them.
+    """
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(GOOD, encoding="utf-8")
+    _fresh_load(tmp_path)  # leaves the good backup a fresh process falls back to
+    config_path.write_text(BROKEN, encoding="utf-8")
+
+    recovered, _ = _fresh_load(
+        tmp_path, preamble="import sys; sys.modules['hermes_cli.moa_config'] = None; ")
+
+    assert recovered["approvals"]["deny"] == ["curl*evil*"]
+    assert recovered["model"]["default"] == "test/secure"

@@ -102,22 +102,24 @@ def notify_memory_provider(profile_dir: Path, call: Callable[[MemoryProvider], N
     provider, or an unreadable config, is logged and never fails the create/rename that called it
     (the directory is already published). A plugin host the hook started for that profile is
     stopped afterwards (``plugins.isolation: host``), so a long-lived dashboard keeps none behind."""
-    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+    from agent.runtime_scope import bind_state, scope_for_profile
 
     name = None
-    home_token = set_hermes_home_override(str(profile_dir))
+    # Preflight only reads stored provider names, without secrets or terminal config.
+    home_token = bind_state(scope_for_profile(profile_dir), secrets={}, terminal=False)
     secret_token = None
     try:
         if not _names_external_provider(profile_dir):
             return  # the common case: no provider, so no secret scope, effective config or load
-        from agent.secret_scope import build_profile_secret_scope, set_secret_scope
+        from agent.secret_scope import build_profile_secret_scope
         from hermes_cli.plugin_isolation import transient_plugin_host
         from plugins.memory import load_memory_provider, provider_registration_scope
         # Secrets first: the effective config (managed scope, ``${VAR}`` refs) expands through them.
         # Its configured secret sources too (1Password etc.); a brand-new profile was never hydrated.
         from hermes_cli.env_loader import hydrate_profile_secret_sources
         hydrate_profile_secret_sources(profile_dir)
-        secret_token = set_secret_scope(build_profile_secret_scope(profile_dir), profile_home=str(profile_dir))
+        secret_token = bind_state(scope_for_profile(profile_dir), secrets=build_profile_secret_scope(profile_dir),
+                                  defer_terminal=True)
         from hermes_cli.config import load_config_readonly
         name = active_memory_provider(load_config_readonly())
         if not name:
@@ -132,7 +134,7 @@ def notify_memory_provider(profile_dir: Path, call: Callable[[MemoryProvider], N
         if secret_token is not None:
             from agent.secret_scope import reset_secret_scope
             reset_secret_scope(secret_token)
-        reset_hermes_home_override(home_token)
+        home_token.reset()
 
 
 def cloned_memory_provider(profile_dir: Path) -> Optional[str]:

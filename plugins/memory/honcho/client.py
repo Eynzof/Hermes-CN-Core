@@ -454,7 +454,7 @@ class HonchoClientConfig:
         derives it from the active Hermes profile."""
         resolved_host = host or resolve_active_host()
         path = config_path or resolve_config_path()
-        if not path.exists():
+        if not path.exists():  # config-reader: ok — Honcho plugin honcho.json, not config.yaml
             logger.debug("No global Honcho config at %s, falling back to env", path)
             return cls.from_env(host=resolved_host)
         try:

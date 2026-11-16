@@ -232,4 +232,5 @@ registry.register(
     handler=lambda args, **kw: clarify_tool(args.get("questions"), callback=kw.get("callback")),
     check_fn=check_clarify_requirements,
     emoji="❓",
+    self_checked_args=("questions",),
 )

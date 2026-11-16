@@ -34,13 +34,10 @@ def grant_home_scope(grant):
     if grant is None:
         yield
         return
-    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+    from tui_gateway.launch_profile_policy import profile_config_scope
     home = Path(grant['profile_id'])
-    token = set_hermes_home_override(str(home))
-    try:
+    with profile_config_scope(str(home)):
         yield
-    finally:
-        reset_hermes_home_override(token)
 
 
 def _own_profile(value, profile_id, *, current=True):

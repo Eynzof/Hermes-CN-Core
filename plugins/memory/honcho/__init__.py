@@ -696,7 +696,7 @@ class HonchoMemoryProvider(DialecticMixin, MemoryProvider):
         try:
             path = resolve_config_path()
             try:
-                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()  # config-reader: ok — Honcho plugin honcho.json, not config.yaml
             except OSError:
                 digest = None
             memo_key = (str(path), digest)

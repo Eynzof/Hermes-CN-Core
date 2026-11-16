@@ -1,28 +1,38 @@
 #!/usr/bin/env bash
 # Sync this fork from NousResearch/hermes-agent upstream.
 #
-# This script never merges upstream directly into main. It creates a
-# chore/sync-upstream-* branch, merges upstream/main there, and leaves the
-# result for smoke testing and a PR back into origin/main.
-
+# Kept as the short entry point everyone already knows; the merge itself lives in
+# scripts/git_merge.py, because a plain `git merge upstream/main` cannot express
+# this fork's deletions: every upstream edit to a deleted path becomes a
+# modify/delete conflict and every new file under a deleted tree is re-added.
+# See scripts/upstream-deletions.txt and MAINTAINING.md.
+#
+# The script never merges upstream directly into main. It creates a
+# chore/sync-upstream-* branch, merges upstream/main there, and leaves the result
+# for smoke testing and a PR back into origin/main.
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UPSTREAM_REMOTE="${UPSTREAM_REMOTE:-upstream}"
 ORIGIN_REMOTE="${ORIGIN_REMOTE:-origin}"
 BASE_BRANCH="${BASE_BRANCH:-main}"
 SYNC_BRANCH="${SYNC_BRANCH:-chore/sync-upstream-$(date +%Y%m%d)}"
+UPSTREAM_URL="${UPSTREAM_URL:-https://github.com/NousResearch/hermes-agent}"
+PYTHON="${PYTHON:-python3}"
+
+cd "$REPO_ROOT"
 
 if ! git remote get-url "$UPSTREAM_REMOTE" >/dev/null 2>&1; then
-  echo "ERROR: no '$UPSTREAM_REMOTE' remote configured. Run:"
-  echo "  git remote add upstream https://github.com/NousResearch/hermes-agent.git"
-  echo "  git remote set-url --push upstream no_push"
-  exit 1
+  echo "WARNING: no '$UPSTREAM_REMOTE' remote configured. scripts/git_merge.py fetches"
+  echo "         upstream itself, so the sync works; add the remote for reference:"
+  echo "         git remote add upstream $UPSTREAM_URL"
+  echo "         git remote set-url --push upstream no_push"
 fi
 
 UPSTREAM_PUSH_URL="$(git remote get-url --push "$UPSTREAM_REMOTE" 2>/dev/null || true)"
-if [[ "$UPSTREAM_PUSH_URL" != "no_push" ]]; then
+if [[ -n "$UPSTREAM_PUSH_URL" && "$UPSTREAM_PUSH_URL" != "no_push" ]]; then
   echo "ERROR: '$UPSTREAM_REMOTE' push URL is not blocked."
-  echo "Run: git remote set-url --push upstream no_push"
+  echo "Run: git remote set-url --push $UPSTREAM_REMOTE no_push"
   exit 1
 fi
 
@@ -38,23 +48,18 @@ if [[ "$CURRENT_BRANCH" != "$BASE_BRANCH" ]]; then
   exit 1
 fi
 
-echo "Fetching origin and upstream..."
+echo "Fetching $ORIGIN_REMOTE..."
 git fetch --prune "$ORIGIN_REMOTE"
-git fetch --prune "$UPSTREAM_REMOTE"
 git pull --ff-only "$ORIGIN_REMOTE" "$BASE_BRANCH"
 
-AHEAD="$(git rev-list --count "$BASE_BRANCH..$UPSTREAM_REMOTE/$BASE_BRANCH")"
-BEHIND="$(git rev-list --count "$UPSTREAM_REMOTE/$BASE_BRANCH..$BASE_BRANCH")"
-
-echo ""
-echo "Status:"
-echo "  $UPSTREAM_REMOTE/$BASE_BRANCH is $AHEAD commits ahead of $BASE_BRANCH"
-echo "  $BASE_BRANCH is $BEHIND commits ahead of $UPSTREAM_REMOTE/$BASE_BRANCH (fork patches)"
-
-if [[ "$AHEAD" -eq 0 ]]; then
+# Upstream is fetched by git_merge.py into .cache/upstream/hermes-agent; this
+# remote is only used for the status line and for --base overrides.
+if git remote get-url "$UPSTREAM_REMOTE" >/dev/null 2>&1; then
+  git fetch --prune "$UPSTREAM_REMOTE"
+  AHEAD="$(git rev-list --count "$BASE_BRANCH..$UPSTREAM_REMOTE/$BASE_BRANCH")"
   echo ""
-  echo "Already up to date with $UPSTREAM_REMOTE/$BASE_BRANCH. Nothing to do."
-  exit 0
+  echo "Status:"
+  echo "  $UPSTREAM_REMOTE/$BASE_BRANCH is $AHEAD commits ahead of $BASE_BRANCH"
 fi
 
 if git show-ref --verify --quiet "refs/heads/$SYNC_BRANCH"; then
@@ -64,36 +69,32 @@ if git show-ref --verify --quiet "refs/heads/$SYNC_BRANCH"; then
 fi
 
 echo ""
-echo "Upstream commits since last sync:"
-git log --oneline --max-count=20 "$BASE_BRANCH..$UPSTREAM_REMOTE/$BASE_BRANCH"
-TOTAL_LINES="$(git log --oneline "$BASE_BRANCH..$UPSTREAM_REMOTE/$BASE_BRANCH" | wc -l | tr -d ' ')"
-if [[ "$TOTAL_LINES" -gt 20 ]]; then
-  echo "... and $((TOTAL_LINES - 20)) more"
-fi
-
-echo ""
-read -r -p "Create '$SYNC_BRANCH' and merge $UPSTREAM_REMOTE/$BASE_BRANCH? [y/N] " ANSWER
+read -r -p "Create '$SYNC_BRANCH' and merge upstream into it? [y/N] " ANSWER
 if [[ "$ANSWER" != "y" && "$ANSWER" != "Y" ]]; then
   echo "Aborted."
   exit 0
 fi
 
-git switch -c "$SYNC_BRANCH" "$BASE_BRANCH"
+set +e
+"$PYTHON" scripts/git_merge.py \
+  --url "$UPSTREAM_URL" \
+  --branch "$SYNC_BRANCH"
+STATUS=$?
+set -e
 
 echo ""
-if git merge --no-ff "$UPSTREAM_REMOTE/$BASE_BRANCH"; then
-  echo ""
+if [[ $STATUS -eq 0 ]]; then
   echo "Merge clean. NEXT STEPS:"
-  echo "  1. Run smoke tests from MAINTAINING.md"
-  echo "  2. Push the sync branch: git push -u origin $SYNC_BRANCH"
-  echo "  3. Open a PR from $SYNC_BRANCH into $BASE_BRANCH"
-  echo "  4. After merge, tag a runtime-v<kernelVersion>-cn.<revision> release only from verified $BASE_BRANCH"
+  echo "  1. Review the diff and run the smoke test from MAINTAINING.md"
+  echo "  2. git commit -m 'chore: sync upstream $(date +%Y-%m-%d)'"
+  echo "  3. git push -u origin $SYNC_BRANCH"
+  echo "  4. Open a PR from $SYNC_BRANCH into $BASE_BRANCH"
+elif [[ $STATUS -eq 1 ]]; then
+  echo "MERGE CONFLICTS. Resolve the paths listed above, then:"
+  echo "  git add -A && git commit"
+  echo "  $PYTHON scripts/git_merge.py --url $UPSTREAM_URL    # advances the recorded base"
+  echo "See MAINTAINING.md -> Conflict Handling."
 else
-  echo ""
-  echo "MERGE CONFLICT. Resolve manually on '$SYNC_BRANCH', then commit."
-  echo "See MAINTAINING.md -> Conflict scenarios."
-  echo ""
-  echo "Conflicted files:"
-  git diff --name-only --diff-filter=U
-  exit 2
+  echo "git_merge.py refused or failed before changing anything (exit $STATUS)."
 fi
+exit $STATUS

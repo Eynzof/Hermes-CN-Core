@@ -11,6 +11,7 @@ import importlib.util
 import io
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -39,7 +40,6 @@ DEFAULT = {
     "e2e_upgrade": True,
     "e2e_desktop_core": True,
     "e2e_desktop_update": True,
-    "site": True,
     "scan": True,
     "deps": True,
     "uv_lock": True,
@@ -54,7 +54,7 @@ DEFAULT = {
 SLOW_LANES = {"docker", "nix", "e2e", "e2e_upgrade", "e2e_desktop_core", "e2e_desktop_update"}
 
 
-def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, uv_lock=False, npm_lock=False, bootstrap=False, desktop_updater=False, rust=False, docker_meta=False, python_prod=None, nix=False, docker=None, e2e=False, e2e_upgrade=False, e2e_desktop_core=False, e2e_desktop_update=False, remote_backends=False, catalog=False) -> dict[str, bool]:
+def _lanes(python=False, frontend=False, scan=False, deps=False, uv_lock=False, npm_lock=False, bootstrap=False, desktop_updater=False, rust=False, docker_meta=False, python_prod=None, nix=False, docker=None, e2e=False, e2e_upgrade=False, e2e_desktop_core=False, e2e_desktop_update=False, remote_backends=False, catalog=False) -> dict[str, bool]:
     # python_prod tracks python except for tests-only diffs; default it to
     # python so the majority of cases don't need to spell it out.
     #
@@ -74,7 +74,6 @@ def _lanes(python=False, frontend=False, site=False, scan=False, deps=False, uv_
         "e2e_desktop_update": e2e_desktop_update,
         "frontend": frontend,
         "docker_meta": docker_meta,
-        "site": site,
         "scan": scan,
         "deps": deps,
         "uv_lock": uv_lock,
@@ -124,15 +123,13 @@ CASES = {
     "root lockfile → frontend, not python": (["pnpm-lock.yaml"], _lanes(frontend=True, npm_lock=True, docker=True, nix=True)),
     # The workspace config (overrides, release-age policy) shifts the same trees.
     "workspace config → frontend, not python": (["pnpm-workspace.yaml"], _lanes(frontend=True, docker=True, nix=True)),
-    "nested lockfile → npm_lock": (["website/package-lock.json"], _lanes(site=True, npm_lock=True)),
-    # A website file the Python suite cannot read stays site-only.
-    "website config → site": (["website/docusaurus.config.ts"], _lanes(site=True)),
+    "nested lockfile → npm_lock": (["apps/desktop/package-lock.json"], _lanes(frontend=True, npm_lock=True)),
     # uv lock --check re-resolves against PyPI, so it must stay off for any
     # diff that can't desync the lockfile — a registry blip on a docs PR
     # otherwise shows up as a blocking "uv.lock out of sync" red X.
     "docs → no uv_lock": (
-        ["website/docs/developer-guide/plugins/index.md"],
-        _lanes(python=True, site=True),
+        ["SECURITY.md"],
+        _lanes(),
     ),
     "frontend → no uv_lock": (["apps/desktop/src/store/profile.ts"], _lanes(frontend=True)),
     # Cross-language contract JSON under apps/: the pytest that pins it against
@@ -159,25 +156,29 @@ CASES = {
     ),
     # The published CIMD document is asserted about by the Python suite, so a
     # lone edit there must not skip the lane that would catch a bad edit.
-    "cimd document → python + site": (
+    "cimd document → python": (
         ["website/static/oauth/client-metadata.json"],
-        _lanes(python=True, site=True),
+        _lanes(python=True),
     ),
-    # A new docs page must reach llms.txt, and the generator that puts it there
-    # has its own tests. Skipping Python on either is how the index drifted to
-    # 53% coverage while every PR stayed green.
-    "docs page → python + site": (
-        ["website/docs/user-guide/bot-mode.md"],
-        _lanes(python=True, site=True),
+    # The bundled model catalog is data under website/, read by the picker and
+    # pinned by test_model_catalog.py, so editing it alone must run Python.
+    "bundled model catalog → python": (
+        ["website/static/api/model-catalog.json"],
+        _lanes(python=True),
     ),
-    "docs generator → python + site": (
-        ["website/scripts/generate-llms-txt.py"],
-        _lanes(python=True, scan=True, site=True),
+    # Artwork under website/static/img/ is only read by the frontend build.
+    "catalog artwork → no python": (
+        ["website/static/img/catalog/official-art.jpg"],
+        _lanes(),
     ),
     # SKILL.md reads like docs, but the skill-doc tests read skills/, so a
     # skill edit must still run Python.
-    "skill md → python + site": (["skills/github/SKILL.md"], _lanes(python=True, site=True)),
+    "skill md → python": (["skills/github/SKILL.md"], _lanes(python=True)),
     "dockerfile → docker meta": (["Dockerfile"], _lanes(docker_meta=True)),
+    # The hadolint step runs it, so editing it alone must still run that step.
+    "docker lint script → docker meta, no image build": (
+        ["scripts/ci/lint_docker.sh"], _lanes(python=True, docker_meta=True, docker=False),
+    ),
     # Only the flake reads these, so they run nix alone. No Python test opens
     # them, unlike pyproject.toml and uv.lock below.
     "nix module → nix only": (["nix/homeManagerModules.nix"], _lanes(nix=True)),
@@ -445,10 +446,6 @@ CASES = {
     ),
     # Catalog entry data runs the catalog tests INSTEAD of the Python suite.
     "catalog entry → catalog only": (["plugin-catalog/foo.yaml"], _lanes(catalog=True)),
-    "catalog entry + email map → catalog only": (
-        ["plugin-catalog/foo.yaml", "contributors/emails/a@example.com"],
-        _lanes(catalog=True),
-    ),
     # The rules README is mirrored by a docs-page test, so it keeps the suite.
     "catalog README → python": (["plugin-catalog/README.md"], _lanes(python=True)),
     # Its code examples are held to the plugin API by a Python test.
@@ -487,21 +484,22 @@ def test_every_slow_lane_path_matches_a_tracked_file():
     """A renamed file silently stops starting its lane on pull requests.
 
     Every prefix in the slow-lane tables must still match something in the
-    tree, or the lane only ever runs on main.
+    tree, or the lane only ever runs on main. A package init listed above a routed
+    module counts when its directory does: it may be a namespace directory.
     """
     tracked = subprocess.run(
         ["git", "ls-files"], cwd=_REPO, capture_output=True, text=True, check=False,
     )
     if tracked.returncode != 0:
         pytest.skip("not a git checkout")
-    files = tracked.stdout.splitlines()
+    files = [_mod.original_path(f) for f in tracked.stdout.splitlines()]
     tables = {**_mod._E2E_LANES, "docker": _mod._DOCKER_PATHS, "nix": _mod._NIX_LANE_PATHS,
               "remote_backends": _mod._REMOTE_BACKEND_PATHS}
     dead = {
         (lane, prefix)
         for lane, prefixes in tables.items()
         for prefix in prefixes
-        if not any(f.startswith(prefix) for f in files)
+        if not any(f.startswith(prefix.removesuffix("__init__.py")) for f in files)
     }
     assert dead == set()
 
@@ -561,14 +559,14 @@ _DESKTOP_UPDATE_PATH_FILES = (
 
 @pytest.mark.parametrize("path", _UPDATE_PATH_FILES)
 def test_every_update_path_file_starts_the_real_update_suite(path):
-    assert (_REPO / path).is_file(), f"{path} moved: update the classifier and this table"
-    assert classify([path])["e2e_upgrade"], path
+    assert (_REPO / _mod.current_path(path)).is_file(), f"{path} is gone: update the classifier and this table"
+    assert classify([_mod.current_path(path)])["e2e_upgrade"], path
 
 
 @pytest.mark.parametrize("path", _DESKTOP_UPDATE_PATH_FILES)
 def test_every_desktop_update_path_file_starts_the_desktop_update_suite(path):
-    assert (_REPO / path).is_file(), f"{path} moved: update the classifier and this table"
-    assert classify([path])["e2e_desktop_update"], path
+    assert (_REPO / _mod.current_path(path)).is_file(), f"{path} is gone: update the classifier and this table"
+    assert classify([_mod.current_path(path)])["e2e_desktop_update"], path
 
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -586,6 +584,24 @@ def test_every_lane_reaches_the_composite_action():
     lanes = set(classify(["run_agent.py"]))
     action_outputs = set(_yaml(".github/actions/detect-changes/action.yml")["outputs"])
     assert lanes - action_outputs == set(), "lane(s) missing from the composite action's outputs"
+
+
+def test_classifier_runs_in_the_detect_jobs_sparse_checkout(tmp_path):
+    """The detect job checks out only its sparse list; an import outside it fails CI on every PR."""
+    steps = _yaml(".github/workflows/ci.yaml")["jobs"]["detect"]["steps"]
+    sparse = next(s["with"]["sparse-checkout"] for s in steps if "sparse-checkout" in s.get("with", {}))
+    for rel in sparse.split():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        if (_REPO / rel).is_dir():
+            shutil.copytree(_REPO / rel, tmp_path / rel, ignore=shutil.ignore_patterns("__pycache__"))
+        else:
+            shutil.copy2(_REPO / rel, tmp_path / rel)
+    # -I -S: only the sparse tree, never the repo or an installed copy, as on the runner.
+    run = subprocess.run([sys.executable, "-I", "-S", "scripts/ci/classify_changes.py"], cwd=tmp_path,
+                         input="gateway/__init__.py\n", capture_output=True, text=True, timeout=60, check=False)
+    assert run.returncode == 0, run.stderr
+    assert "python=true" in run.stdout.splitlines()
+    assert "e2e_upgrade=true" in run.stdout.splitlines()
 
 
 def test_ci_jobs_only_gate_on_detect_outputs_that_detect_actually_declares():
@@ -798,8 +814,6 @@ def test_catalog_lane_runs_every_test_that_reads_the_shipped_catalog():
     for must in (
         "tests/hermes_cli/test_plugin_catalog.py",
         "tests/scripts/test_validate_plugin_catalog.py",
-        "tests/scripts/test_contributor_map.py",
-        "tests/website/test_extract_plugins.py",
     ):
         assert must in files
     assert not any(f.startswith("tests/e2e/") for f in files)

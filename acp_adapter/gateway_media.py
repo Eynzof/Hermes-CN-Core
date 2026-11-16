@@ -53,12 +53,9 @@ async def stage_user_content(content, home=None):
     if isinstance(content, str):
         return content, []
     if home is not None:
-        from hermes_constants import reset_hermes_home_override, set_hermes_home_override
-        token = set_hermes_home_override(home)
-        try:
+        from tui_gateway.launch_profile_policy import profile_config_scope
+        with profile_config_scope(home):
             return await stage_user_content(content)
-        finally:
-            reset_hermes_home_override(token)
     import base64
     import binascii
     from gateway.platforms.base import cache_image_from_bytes

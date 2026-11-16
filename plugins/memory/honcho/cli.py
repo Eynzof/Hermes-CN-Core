@@ -148,7 +148,7 @@ def _write_config(cfg: dict, path: Path | None = None) -> None:
         if isinstance(cfg, _ReadConfig):
             if cfg.path == path:
                 out = _apply_edits(cfg.snapshot, cfg, disk)
-            elif path.exists():
+            elif path.exists():  # config-reader: ok — Honcho plugin honcho.json, not config.yaml
                 out = _apply_edits(cfg.snapshot, cfg, _overlay_local(cfg.snapshot, disk))
         from hermes_constants import mkdir_under_hermes_home
         mkdir_under_hermes_home(path.parent)
@@ -835,7 +835,7 @@ def _setup_wizard(args) -> None:
     write_path, read_path = _local_config_path(), _config_path()
     _refuse_unparseable(write_path)  # before the questions, not after them
     print(f"\nHoncho memory setup\n{RULE}\n  Honcho gives Hermes persistent cross-session memory.\n  Config: {write_path}")
-    if read_path != write_path and read_path.exists():
+    if read_path != write_path and read_path.exists():  # config-reader: ok — Honcho plugin honcho.json, not config.yaml
         print(f"  (seeding from existing config at {read_path})")
     print()
     if not _ensure_sdk_installed():

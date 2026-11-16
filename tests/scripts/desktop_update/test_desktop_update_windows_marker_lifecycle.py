@@ -63,8 +63,8 @@ def test_ui_profile_sweep_keeps_dirs_of_live_handoffs(tmp_path: Path, sleeper: s
         ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(SCRIPT), '-SelfTestUi', '-NoUi'],
         check=False, cwd=tmp_path, env={**os.environ, 'HERMES_HOME': str(home), 'TEMP': str(tmp_path),
                            'HERMES_SELFTEST_HOLD_SECONDS': '0'},
-        capture_output=True, text=True, timeout=120,
-    )
+          capture_output=True, text=True, timeout=120,
+      )
     assert result.returncode == 0, result.stdout + result.stderr
     assert live.exists(), 'another live hand-off lost its browser profile'
     assert not dead.exists()

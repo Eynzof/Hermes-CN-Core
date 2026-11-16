@@ -238,3 +238,15 @@ _SCALAR_COERCERS = {
     "array": lambda v: _coerce_json(v, list),
     "object": lambda v: _coerce_json(v, dict),
 }
+
+
+def decode_tool_args(value):
+    """Decode transport JSON arguments, preserving already-native values for schema coercion."""
+    if not isinstance(value, str):
+        return value
+    import orjson
+    try:
+        parsed = orjson.loads(value)
+    except (ValueError, TypeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}

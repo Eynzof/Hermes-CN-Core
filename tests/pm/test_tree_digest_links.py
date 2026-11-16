@@ -86,3 +86,25 @@ def test_junctions_bind_target_text_without_walking_outside(tmp_path, monkeypatc
         junction.rmdir()
     assert (left / "content").read_bytes() == b"changed outside the tree"
     assert (right / "content").read_bytes() == b"same bytes"
+
+
+@pytest.mark.platforms("windows")
+def test_link_text_separator_does_not_change_the_digest(tmp_path):
+    """CPython 3.15 normalises a tarfile symlink target to the native separator on Windows
+    (``../a/x`` lands as ``..\\a\\x``), so an install whose facts were recorded by a 3.14
+    toolchain would re-extract its whole store after the interpreter bump. The digest binds
+    the target's meaning, not its spelling."""
+    digests = []
+    for index, spelling in enumerate(("nested/target.txt", "nested\\target.txt")):
+        root = tmp_path / f"tree{index}"
+        (root / "nested").mkdir(parents=True)
+        (root / "nested" / "target.txt").write_bytes(b"x")
+        try:
+            os.symlink(spelling, root / "link")
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 1314:
+                pytest.skip("symlinks require Windows Developer Mode or privilege")
+            raise
+        assert os.readlink(root / "link") == spelling
+        digests.append(tree_digest(root))
+    assert digests[0] == digests[1]

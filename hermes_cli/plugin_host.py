@@ -40,6 +40,7 @@ from hermes_cli.plugin_host_wire import (
     Channel, Opaque, PluginHostUnavailable, PluginHostUnsupported, declared_return, decode, encode, restore,
     signature_from,
 )
+from hermes_cli._startup_fast import project_root_str
 
 logger = logging.getLogger("hermes_cli.plugins")
 
@@ -56,13 +57,14 @@ def _hosted_ambient_credentials(home: Path) -> dict[str, str]:
     """``env_vars`` of this home's hosted ``ambient_credentials`` providers (``GH_TOKEN``-style names the
     child-env scrub always strips), read the way that provider reads them in-process: ``get_secret``
     under the home's scope, so the launch home keeps its shell value and a routed home never gets it."""
-    from agent.secret_scope import build_profile_secret_scope, get_secret, reset_secret_scope, set_secret_scope
+    from agent.secret_scope import build_profile_secret_scope, get_secret, reset_secret_scope
+    from agent.runtime_scope import bind_state, scope_for_profile
     from hermes_cli.plugin_host_profiles import is_hosted_profile
     from providers import list_providers
     names = {name for p in list_providers() if p.ambient_credentials and is_hosted_profile(p) for name in p.env_vars}
     if not names:
         return {}
-    token = set_secret_scope(build_profile_secret_scope(home), profile_home=str(home))
+    token = bind_state(scope_for_profile(home), secrets=build_profile_secret_scope(home), hydrate_secrets=False)
     try:
         return {name: value for name in sorted(names) if (value := get_secret(name))}
     finally:
@@ -132,7 +134,7 @@ class PluginHost:
         from tools.environments.local import served_profile_child_env
         env = self._base_context.run(served_profile_child_env, target_home=self._home, inherit_credentials=True)
         env.update(self._base_context.run(_hosted_ambient_credentials, self._home))
-        repo_root = str(Path(__file__).resolve().parents[1])
+        repo_root = project_root_str()
         env["PYTHONPATH"] = os.pathsep.join(p for p in (repo_root, env.get("PYTHONPATH", "")) if p)
         env.setdefault("HERMES_PLUGIN_HOST_LOG_LEVEL", "WARNING")
         from hermes_cli.plugin_isolation import HOST_PROCESS_ENV
@@ -442,7 +444,7 @@ class PluginHost:
         Sent as the plugin whose code made the call (``plugin``, in its load ``load``); False, as before
         this was forwarded, unless that load is the plugin's current one and ``plugin_id`` is its own."""
         from hermes_cli.plugin_events import emit_plugin_session_event
-        from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+        from tui_gateway.launch_profile_policy import profile_config_scope
         plugin = str(params.get("plugin") or "")
         ctx = self._contexts.get(plugin)
         if ctx is None or getattr(ctx, "plugin_id", None) != params.get("plugin_id") \
@@ -450,12 +452,9 @@ class PluginHost:
             logger.warning("Plugin host session event %r refused: sender %r (load %r) is not that loaded plugin",
                            params.get("plugin_id"), params.get("plugin"), params.get("load"))
             return False
-        token = set_hermes_home_override(self._home)
-        try:
+        with profile_config_scope(self._home):
             return emit_plugin_session_event(str(params.get("plugin_id")), params.get("session_id"),
                                              str(params.get("event")), params.get("payload"))
-        finally:
-            reset_hermes_home_override(token)
 
     def _serve_facade(self, params: dict[str, Any]) -> Any:
         from hermes_cli.plugin_isolation import HOST_REMOTE_FACADES

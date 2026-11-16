@@ -82,19 +82,16 @@ class HostedRoomServerRPC:
                                 on_terminal, member_id, images=())
         from gateway.session_hosted_attachments import bound_submission_payload, prepare_before_submit
         from gateway.session_ingress_media import capture_lease
-        from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+        from contextlib import nullcontext
+        from tui_gateway.launch_profile_policy import profile_config_scope
         home = self.server._profile_home(profile)
         # The member's own caches receive its files (the gateway route's owner scope), and the
         # capture lease holds them until prompt.submit has persisted the row that names them.
         with capture_lease():
-            token = set_hermes_home_override(str(home)) if home is not None else None
-            try:
+            with profile_config_scope(home) if home is not None else nullcontext():
                 inputs = prepare_before_submit(lambda: bound_submission_payload(
                     self.db_path, room_id=task.room_id, member_id=member_id, prompt=prompt,
                     attachments=list(attachments)))
-            finally:
-                if token is not None:
-                    reset_hermes_home_override(token)
             return self._submit(profile, session_id, inputs["text"], source, task, execution_generation,
                                 on_terminal, member_id,
                                 images=[item["path"] for item in inputs.get("attachments", ())])

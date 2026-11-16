@@ -74,18 +74,6 @@ def _creation_time(pid: int) -> str:
         kernel.CloseHandle(handle)
 
 
-def _alive(pid: int) -> bool:
-    return psutil.pid_exists(pid)
-
-
-@pytest.fixture
-def sleeper():
-    proc = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'])
-    yield proc
-    proc.kill()
-    proc.wait()
-
-
 class _ProcessWatch:
     """A SYNCHRONIZE handle on a process, opened while it lives. The handle pins the pid (Windows
     cannot hand it to a new process while it is open) and is signalled exactly when the process
@@ -101,14 +89,26 @@ class _ProcessWatch:
         self._k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
         self._k.WaitForSingleObject.restype = wintypes.DWORD
         self._k.CloseHandle.argtypes = [wintypes.HANDLE]
-        self._handle = self._k.OpenProcess(0x00100000 | 0x1000, False, pid)   # SYNCHRONIZE | QUERY_LIMITED
+        self._handle = self._k.OpenProcess(0x00100000 | 0x1000, False, pid) # SYNCHRONIZE | QUERY_LIMITED
         assert self._handle, f'could not open pid {pid} (winerror={ctypes.get_last_error()})'
 
     def exited_within(self, seconds: float) -> bool:
-        return self._k.WaitForSingleObject(self._handle, int(seconds * 1000)) == 0   # WAIT_OBJECT_0
+        return self._k.WaitForSingleObject(self._handle, int(seconds * 1000)) == 0 # WAIT_OBJECT_0
 
     def close(self) -> None:
         self._k.CloseHandle(self._handle)
+
+
+def _alive(pid: int) -> bool:
+    return psutil.pid_exists(pid)
+
+
+@pytest.fixture
+def sleeper():
+    proc = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'])
+    yield proc
+    proc.kill()
+    proc.wait()
 
 
 def _dead_pid() -> int:

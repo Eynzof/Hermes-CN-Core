@@ -786,12 +786,13 @@ def _tool_defs_cache_key(
         _shell_fp = _detect_shell_for_description()
     except Exception:
         _shell_fp = "bash"
+    from tools.environments.sandbox_scope import hosted_scope
     return (
         registry.current_scope_key(), frozenset(enabled_toolsets) if enabled_toolsets is not None else None,
         frozenset(disabled_toolsets) if disabled_toolsets else None, registry._generation, cfg_fp,
         bool(os.environ.get("HERMES_KANBAN_TASK")), bool(skip_tool_search_assembly),
-_is_delegated_child_context(), _is_dispatcher_owned_worker(), profile_scope, check_fn_cache_epoch(),
-        _shell_fp,
+        _is_delegated_child_context(), _is_dispatcher_owned_worker(), profile_scope, check_fn_cache_epoch(),
+        _shell_fp, hosted_scope() is not None,
     )
 
 
@@ -1080,7 +1081,10 @@ def _compute_tool_definitions(enabled_toolsets: Optional[list[str]] = None, disa
     except Exception as e:  # pragma: no cover — never break tool loading
         logger.warning("Tool search assembly skipped: %s", e)
 
-    return filtered_tools
+    from tools.hosted_tool_policy import hosted_tool_refusal
+    # A hosted scope runs only its allowlist (the tool_search bridge included): advertising the
+    # rest would only earn refusals.
+    return [tool for tool in filtered_tools if hosted_tool_refusal(tool["function"]["name"]) is None]
 
 
 def _active_model_config() -> tuple[str, dict[str, Any]]:
@@ -1568,11 +1572,17 @@ def _execute_tool(function_name: str, function_args: dict[str, Any], original_ar
         "conversation_id": ids.conversation_id,
     }
     if function_name == "execute_code":
+        dispatch_kwargs["turn_id"] = ids.turn_id
         # Prefer the caller's list so subagents can't overwrite the parent's
         # tool set via the process-global.
         dispatch_kwargs["enabled_tools"] = enabled_tools if enabled_tools is not None else _last_resolved_tool_names
     else:
         dispatch_kwargs["user_task"] = user_task
+    from agent.plugin_session_fork import current_turn_origin
+    if (turn_origin := current_turn_origin()) is not None:
+        # Only inside a plugin session fork ("plugin_fork:<plugin id>"), so a plugin's tool can
+        # refuse calls the live agent makes; live-turn handlers see no new kwarg.
+        dispatch_kwargs["turn_origin"] = turn_origin
 
     def _dispatch(next_args: dict[str, Any]) -> Any:
         from tools.connectors import dispatch_connector_call, is_connector_name
@@ -1637,12 +1647,8 @@ def handle_function_call(
     # agent-loop path) or a JSON string (some transports hand
     # ``tool_call.arguments`` straight through). Parse a string payload once here
     # so its arguments are preserved instead of being silently dropped to ``{}``.
-    if isinstance(function_args, str):
-        try:
-            _parsed_args = orjson.loads(function_args)
-        except (ValueError, TypeError):
-            _parsed_args = None
-        function_args = _parsed_args if isinstance(_parsed_args, dict) else {}
+    from tools.arg_coercion import decode_tool_args
+    function_args = decode_tool_args(function_args)
 
     # Coerce string arguments to their schema-declared types (e.g. "42"->42)
     function_args = coerce_tool_args(function_name, function_args)
@@ -1652,6 +1658,11 @@ def handle_function_call(
     function_name = _legacy_tool_aliases().get(function_name, function_name)
     ids = _CallIds(task_id, session_id, tool_call_id, turn_id, api_request_id, conversation_id)
     start = time.monotonic()
+    from tools.hosted_tool_policy import hosted_tool_refusal
+    if refusal := hosted_tool_refusal(function_name):
+        # Callers outside the agent loop (execute_code RPC, the session kernel, the MCP bridge,
+        # connector batches) meet the same allowlist before bridges, connectors or the registry.
+        return tool_error(refusal)
 
     def _emit(result: Any, **extra: Any) -> Any:
         """Emit post_tool_call with this call's identity fields; returns *result*."""
@@ -1674,10 +1685,14 @@ def handle_function_call(
                 enabled_tools=enabled_tools, middleware_trace=trace,
                 enabled_toolsets=enabled_toolsets, disabled_toolsets=disabled_toolsets,
             ), duration_ms=_elapsed_ms(start))
+        # The caller's skip_* flags describe the WRAPPER call it already policed, never the
+        # underlying tool: forwarding them left the real tool with no pre_tool_call hook,
+        # no request middleware and no execution middleware at all. Same rule as the
+        # connector batch re-dispatch (tools/connectors/dispatch.py).
         return handle_function_call(
             *underlying, **asdict(ids), user_task=user_task, enabled_tools=enabled_tools,
-            skip_pre_tool_call_hook=skip_pre_tool_call_hook, skip_tool_request_middleware=skip_tool_request_middleware,
-            skip_tool_execution_middleware=skip_tool_execution_middleware, tool_request_middleware_trace=list(trace),
+            skip_pre_tool_call_hook=False, skip_tool_request_middleware=False,
+            skip_tool_execution_middleware=False, tool_request_middleware_trace=list(trace),
             enabled_toolsets=enabled_toolsets, disabled_toolsets=disabled_toolsets,
         )
 

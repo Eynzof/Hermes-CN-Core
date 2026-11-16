@@ -64,12 +64,12 @@ class _Open:
         while self.unsettled:
             await asyncio.wait(set(self.unsettled))
         from hermes_cli.lifecycle import hook_known_unused
-        from hermes_constants import reset_hermes_home_override, set_hermes_home_override
-        token = set_hermes_home_override(self.ref.profile_id)
-        try:  # the owning profile's loaded plugins, read without discovery or config: no consumer, no thread
+        from agent.runtime_scope import bind_state, scope_for_profile
+        from tui_gateway.launch_profile_policy import owner_secret_scope
+        # Read loaded hook registrations without hydrating secrets or reading terminal config.
+        with bind_state(scope_for_profile(self.ref.profile_id), secrets=owner_secret_scope(self.ref.profile_id),
+                        terminal=False):
             unused = hook_known_unused('on_session_open')
-        finally:
-            reset_hermes_home_override(token)
         if self.opened is not None and not unused:
             from gateway.session_commands import _on_own_thread
             await _on_own_thread(lambda: self._deliver(*self.opened))

@@ -5,7 +5,7 @@
     "properties": {
       "background": {
         "default": false,
-        "description": "Keep running after this call returns; returns a session_id.",
+        "description": "Only for commands that must keep running after this call returns; returns a session_id.",
         "type": "boolean"
       },
       "command": {

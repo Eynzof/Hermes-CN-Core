@@ -205,13 +205,14 @@ def load_profile_config(home=None):
 def profile_env_scope(home=None):
     """Bind the profile's current ``.env`` (see ``load_profile_config``) unless a scope is bound."""
     from pathlib import Path
-    from agent.secret_scope import build_profile_secret_scope, current_secret_scope, reset_secret_scope, set_secret_scope
+    from agent.secret_scope import build_profile_secret_scope, current_secret_scope, reset_secret_scope
+    from agent.runtime_scope import bind_state, scope_for_profile
     from gateway.run import _gateway_config_home
     if current_secret_scope() is not None:
         yield
         return
     home = Path(home) if home is not None else _gateway_config_home()  # default: the active gateway home
-    token = set_secret_scope(build_profile_secret_scope(home), profile_home=str(home))
+    token = bind_state(scope_for_profile(home), secrets=build_profile_secret_scope(home), hydrate_secrets=False)
     try:
         yield
     finally:
@@ -442,7 +443,7 @@ def effort_fields(config, tier, model, provider, base_url, api_mode=None):
         effort = 'none' if config.get('enabled') is False else str(config.get('effort') or '')
     wire = ''
     if effort and effort != 'none':
-        wire = str(clamp_effort(effort, route_supported_efforts(provider, model, api_mode)) or '')
+        wire = str(clamp_effort(effort, route_supported_efforts(provider, model, api_mode, base_url)) or '')
     try:
         fast = tier in STATIC_TIERS and resolve_fast_mode_overrides(
             model, provider=provider or None, base_url=base_url or None, tier=tier) is not None

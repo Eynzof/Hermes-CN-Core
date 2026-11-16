@@ -104,9 +104,7 @@ def resolve_argv(
     from gateway.run import _profile_runtime_scope
     from hermes_cli import __version__
     from hermes_cli.config import TERMINAL_CONFIG_ENV_MAP
-    from hermes_constants import (
-        get_process_hermes_home, reset_hermes_home_override, set_hermes_home_override,
-    )
+    from hermes_constants import get_process_hermes_home
     from hermes_platform.host.facts import os_family
     from tools.environments.local import build_subprocess_env, served_profile_child_env
     from tools.terminal_scope import enforce_no_refusal, get_terminal_scope
@@ -122,19 +120,15 @@ def resolve_argv(
     # The startup eager-multiplex guard applies even before a secondary's first
     # request. Home alone cannot authorize passthrough reads; both shell paths
     # need the same complete scope, including the frozen launch environment.
-    override_token = set_hermes_home_override(str(home))
-    try:
-        with scope:
-            enforce_no_refusal()
-            base_env = served_profile_child_env(target_home=home)
-            for env_var in TERMINAL_CONFIG_ENV_MAP.values():
-                base_env.pop(env_var, None)
-            terminal_scope = get_terminal_scope()
-            assert terminal_scope is not None  # both runtime scopes bind the complete policy
-            base_env.update(terminal_scope)
-            env = build_subprocess_env(base=base_env, scrub_secrets=True)
-    finally:
-        reset_hermes_home_override(override_token)
+    with scope:
+        enforce_no_refusal()
+        base_env = served_profile_child_env(target_home=home)
+        for env_var in TERMINAL_CONFIG_ENV_MAP.values():
+            base_env.pop(env_var, None)
+        terminal_scope = get_terminal_scope()
+        assert terminal_scope is not None  # both runtime scopes bind the complete policy
+        base_env.update(terminal_scope)
+        env = build_subprocess_env(base=base_env, scrub_secrets=True)
 
     # A dashboard started through `pnpm run` carries the package manager's
     # settings; the user's own shell (and pnpm) must not inherit them. Package

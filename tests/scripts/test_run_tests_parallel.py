@@ -590,6 +590,22 @@ def test_interpreter_crash_is_reported_as_a_crash_not_as_no_tests_ran(tmp_path: 
     assert "NO TESTS RAN" not in proc.stdout
 
 
+def test_failed_assertion_quoting_child_crash_is_not_an_interpreter_crash(tmp_path: Path) -> None:
+    probe_dir = tmp_path / "probe"
+    probe_dir.mkdir()
+    (probe_dir / "test_child_failure.py").write_text(
+        'def test_child_failure():\n'
+        '    assert False, "Fatal Python error: Segmentation fault"\n',
+        encoding="utf-8",
+    )
+
+    proc = _run_runner(probe_dir, "--file-retries", "0")
+
+    assert proc.returncode != 0
+    assert "1 failed" in proc.stdout
+    assert "CRASHED" not in proc.stdout
+
+
 def test_parse_summary_counts_setup_errors() -> None:
     """"41 passed, 7 errors" parses both counts (the input the Summary relies on)."""
     import importlib.util
@@ -1039,20 +1055,6 @@ def test_files_start_slowest_cached_first_and_keep_order_without_a_cache() -> No
     assert rtp._longest_first(files, {}, root) == files
 
 
-def test_failed_assertion_quoting_child_crash_is_not_an_interpreter_crash(tmp_path: Path) -> None:
-    probe_dir = tmp_path / "probe"
-    probe_dir.mkdir()
-    (probe_dir / "test_child_failure.py").write_text(
-        'def test_child_failure():\n'
-        '    assert False, "Fatal Python error: Segmentation fault"\n',
-        encoding="utf-8",
-    )
-
-    proc = _run_runner(probe_dir, "--file-retries", "0")
-
-    assert proc.returncode != 0
-    assert "1 failed" in proc.stdout
-    assert "CRASHED" not in proc.stdout
 
 
 # ── --files-from: file-backed explicit file lists ───────────────────────────

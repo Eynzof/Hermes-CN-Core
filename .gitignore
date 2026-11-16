@@ -68,7 +68,6 @@ node_modules
 # a new standalone npm project must add its own `!` line here, or git silently skips its lock.
 **/package-lock.json
 **/npm-shrinkwrap.json
-!/website/package-lock.json
 !/scripts/whatsapp-bridge/package-lock.json
 !/plugins/platforms/photon/sidecar/package-lock.json
 browser-use/
@@ -148,22 +147,11 @@ mini-swe-agent/
 .direnv/
 .nix-stamps/
 result
+# website/ keeps only runtime data in this fork (the Docusaurus site, its docs,
+# its i18n tree and the generators that fed them are deleted — see
+# scripts/upstream-deletions.txt). website/static/api/skills-index.json is still
+# emitted by scripts/build_skills_index.py, so it stays local.
 website/static/api/skills-index.json
-# skills.json + skills-meta.json are build artifacts emitted by
-# website/scripts/extract-skills.py during prebuild — keep them out of
-# git for the same reason as skills-index.json (large, generated, change
-# every build).
-website/static/api/skills.json
-website/static/api/skills-meta.json
-# plugins.json + plugins-meta.json are build artifacts emitted by
-# website/scripts/extract-plugins.py during prebuild (Plugin Catalog page).
-website/static/api/plugins.json
-website/static/api/plugin-stars.json
-website/static/api/plugin-catalog.json
-website/static/api/plugins-meta.json
-# automation-blueprints-index.json is a build artifact emitted by
-# website/scripts/extract-automation-blueprints.py during prebuild.
-website/static/api/automation-blueprints-index.json
 models-dev-upstream/
 
 # Local editor / agent tooling (machine-specific; keep in global config, not the repo)

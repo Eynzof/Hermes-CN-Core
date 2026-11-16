@@ -73,8 +73,11 @@ def test_looks_like_path():
     ("linux", "x86_64", "openwakeword"),
     ("linux", "aarch64", "openwakeword"),
 ])
+@pytest.mark.parametrize("python_version", ["3.14", "3.15"])
 @pytest.mark.parametrize("saved", [None, "wake_word: {}\n", "wake_word:\n  provider: auto\n"])
-def test_loaded_wake_defaults_resolve_supported_provider(tmp_path, monkeypatch, system, machine, expected, saved):
+def test_loaded_wake_defaults_resolve_supported_provider(
+    tmp_path, monkeypatch, system, machine, expected, saved, python_version,
+):
     from functools import partial
 
     from pm.extras import extra_supported
@@ -85,7 +88,10 @@ def test_loaded_wake_defaults_resolve_supported_provider(tmp_path, monkeypatch, 
         path.write_text(saved, encoding="utf-8")
     cfg = ww.load_wake_word_config()
     assert cfg["provider"] == "auto"
-    supported = partial(extra_supported, environment={"sys_platform": system, "platform_machine": machine},
+    if expected == "sherpa" and python_version == "3.15":
+        expected = "porcupine"
+    supported = partial(extra_supported, environment={"sys_platform": system, "platform_machine": machine,
+                                                    "python_version": python_version},
                         importable=lambda _: False)
     assert ww._provider(cfg, supported=supported) == expected
     assert ww._provider({}, supported=supported) == expected

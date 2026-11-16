@@ -22,7 +22,8 @@ command. A hook with no concrete consumer is speculative infrastructure and is r
   `hermes_cli/memory_provider_migration.py` for homes still configured for them. Core keeps no
   provider-specific code for them: a provider owns its profile setup through
   `MemoryProvider.on_profile_created` / `on_profile_renamed` and its dashboard config file through
-  `storage=STORAGE_PROVIDER` + `read_config_fields` / `write_config_fields`. Host-side code that
+  `storage=STORAGE_PROVIDER` + `read_config_fields` / `write_config_fields`. The pure-data
+  `plugins.memory.config_schema` module is part of the published plugin API. Host-side code that
   still needs a provider module resolves it through `plugins.memory.import_provider_module`,
   never a `plugins.memory.<name>` import. New
   backends ship as standalone repos implementing the same `MemoryProvider` ABC, discovered through

@@ -391,7 +391,8 @@ def check_wake_word_requirements(cfg: Optional[dict[str, Any]] = None, *,
     if not platform_ok:
         alternatives = [name for name in ("sherpa", "porcupine")
                         if supported(_PROVIDERS[name][1])]
-        hint = f"The {provider} wake engine is not supported on this platform."
+        hint = (f"The {provider} wake engine is not supported on this platform "
+                f"(Python {sys.version_info.major}.{sys.version_info.minor}).")
         if alternatives:
             hint += f" Set wake_word.provider to {' or '.join(alternatives)}."
     elif provider == "porcupine" and not (os.getenv("PORCUPINE_ACCESS_KEY") or "").strip():

@@ -91,6 +91,30 @@ def memo(fn, *args):
     return budget.memo[key]
 
 
+def memo_iter(fn, *args):
+    """Reuse a fully consumed pure scan, keeping its lazy yields and scan-budget boundary."""
+    budget = active()
+    if budget is None:
+        yield from fn(*args)
+        return
+    key = (fn, *args)
+    if key in budget.memo:
+        values, tail_cost = budget.memo[key]
+        for cost, value in values:
+            budget.spend(cost)
+            yield value
+        budget.spend(tail_cost)
+        return
+    values = []
+    before = budget.remaining
+    for value in fn(*args):
+        values.append((before - budget.remaining, value))
+        yield value
+        # Consumer work between yields belongs to the caller, not the cached scan.
+        before = budget.remaining
+    budget.memo[key] = (tuple(values), before - budget.remaining)
+
+
 # Whether the last hardline scan of a command finished, so the dangerous scan and the approval
 # gate that follow it in the same guard pass need not repeat that (up to ~1.5 s) scan.
 _scans: dict[bytes, bool] = {}

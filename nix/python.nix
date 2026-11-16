@@ -63,6 +63,7 @@ let
           "alibabacloud-gateway-dingtalk"
           "alibabacloud-gateway-spi"
           "alibabacloud-tea"
+          "ciso8601"
           "ripgrepy"
         ] (_: null)
       )

@@ -852,9 +852,10 @@ class SearchMixin:
         # (``os.listdir``/``os.path.isdir``) — the POSIX ``test -d`` and
         # ``ls | head`` probes can't run under Windows PowerShell.
         if self._is_local_env():
-            if basename_query and os.path.isdir(parent):
+            local_parent = self._abs_local(parent)
+            if basename_query and os.path.isdir(local_parent):
                 try:
-                    entries = sorted(os.listdir(parent))[:200]
+                    entries = sorted(os.listdir(local_parent))[:200]
                 except OSError:
                     entries = []
                 lower_q = basename_query.lower()

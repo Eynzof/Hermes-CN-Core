@@ -175,7 +175,8 @@ class TestTranscribeLocal:
 
 
     def test_not_installed(self):
-        with patch("tools.transcription_tools._HAS_FASTER_WHISPER", False):
+        with patch("tools.transcription_tools._HAS_FASTER_WHISPER", False), \
+             patch("pm.extras.extra_supported", return_value=True):
             from tools.transcription_tools import _transcribe_local
             result = _transcribe_local("/tmp/test.ogg", "base")
         assert result["success"] is False

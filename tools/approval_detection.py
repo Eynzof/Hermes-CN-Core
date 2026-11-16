@@ -1705,9 +1705,7 @@ def _command_detection_variants(command: str, eval_depth: int = 0, capped: list[
     # Payloads parsed from NORMALIZED text lost their escapes before their own quote expansion ran
     # (`bash -c "$'\\x72\\x6d' -rf /"` reached the patterns as `$'x72x6d'`). Parse the raw argument
     # too and treat it as new shell input; each payload is shorter than its source, so recursion ends.
-    # The normalized walk already consumed identical raw text, including its nested payloads.
-    raw_payloads = _nested_payloads(masked, eval_depth, capped) if masked != normalized else ()
-    for payload, payload_depth in raw_payloads:
+    for payload, payload_depth in _nested_payloads(masked, eval_depth, capped):
         if payload != command:
             for variant in _command_detection_variants(payload, payload_depth, capped):
                 if fresh(variant):

@@ -193,9 +193,8 @@ Background is only for commands that must keep running after this call returns: 
 """
 
 
-# [CN-fork] P-058/P-073: the description and the `shell` enum follow what this host can
-# run. The logic lives in `tools/terminal_tool_shell_mode` (one topical sibling); these
-# names are re-exported here so `tools.terminal_tool.<name>` stays the import/patch target.
+# [CN-fork] P-058/P-073/P-075: the logic lives in `tools/terminal_tool_shell_mode` (one
+# topical sibling); re-exported so `tools.terminal_tool.<name>` stays the import/patch target.
 from tools.terminal_tool_shell_mode import (
     SHELL_PROPERTY,
     build_dynamic_description as _build_dynamic_terminal_description,
@@ -203,10 +202,10 @@ from tools.terminal_tool_shell_mode import (
     interactive_shell_command as _interactive_shell_command,
     resolve_shell_mode as _resolve_shell_mode,
     shell_probes as _shell_probes,
+    shell_result_fields as _shell_result_fields,
 )
 
-# Kept addressable on this module for callers/tests that probe the description
-# (same facade contract as the other terminal_tool_* companions).
+# Kept addressable for callers/tests that probe the description (the facade contract).
 _SHELL_MODE_FACADE = (_detect_shell_for_description, _shell_probes)
 
 
@@ -1355,9 +1354,10 @@ class _ExecPlan:
     # Set when a foreground `cmd &` (the trailing `&` its only backgrounding) is run as
     # terminal(command="cmd", background=true) instead of being refused: the command to run.
     auto_background_command: Optional[str] = None
-    # [CN-fork] P-073: shell mode this call runs under ("bash"/"pwsh"), or None for the
-    # environment's configured default. Validated against what this host can run.
+    # [CN-fork] P-073/P-075: the mode this call runs under ("bash"/"pwsh"; None = the
+    # environment's own), and the shell `auto` picked on a two-shell host (the result names it).
     shell_mode: Optional[str] = None
+    shell_notice: Optional[str] = None
 
 
 _PROMOTED_NOTE = (
@@ -1478,7 +1478,7 @@ def _plan_execution(
         config=config, env_type=env_type, effective_task_id=effective_task_id,
         image=image, cwd=cwd, host_cwd=host_cwd, effective_timeout=timeout or config["timeout"],
         promoted_from_foreground_timeout=promoted, auto_background_command=auto_bg,
-        shell_mode=_resolve_shell_mode(shell, env_type),
+                  **_resolve_shell_mode(shell, env_type, command).plan_fields(),
     )
 
 
@@ -1554,16 +1554,17 @@ def _yield_kwargs(command: str, **ctx) -> dict:
     return {"yield_handler": handler} if handler is not None else {}
 
 
-def _merge_result_metadata(result_json: str, **fields) -> str:
-    """[CN-fork] P-061: attach result metadata (elapsed_seconds, wait_matched, cwd,
-    original_path) to a finalized terminal result; anything None is skipped, and a
-    non-dict payload or an error envelope is returned unchanged."""
+def _merge_result_metadata(result_json: str, plan=None, **fields) -> str:
+    """[CN-fork] P-061/P-075: attach result metadata (elapsed_seconds, wait_matched, cwd,
+    original_path, and the shell `auto` picked) to a finalized terminal result; anything
+    None is skipped, and a non-dict payload or an error envelope is returned unchanged."""
     try:
         data = json.loads(result_json)
     except (TypeError, ValueError):
         return result_json
     if not isinstance(data, dict) or data.get("error"):
         return result_json
+    fields.update(_shell_result_fields(plan))
     for key, value in fields.items():
         if value is not None:
             data[key] = value
@@ -1579,11 +1580,9 @@ def _run_foreground(
     token_kill: bool = True, max_lines: Optional[int] = None,
     tool_call_id: Optional[str] = None,
 ) -> str:
-    """Execute in the foreground with retry on transient errors, then finalize. ``metered``
-    is False for Hermes' own control-plane commands (``_host_local``)."""
-    from hermes_cli.observability.shared_metrics_harness import record_terminal_outcome
     """Execute in the foreground with retry on transient errors, then finalize.
 
+    ``metered`` is False for Hermes' own control-plane commands (``_host_local``).
     [CN-fork] P-061: ``promote_on_timeout`` / ``wait_for_pattern`` (local backend)
     prepare an unregistered registry session up front and stream the live output
     into it, so a still-running process is ADOPTED at the timeout (or on the
@@ -1592,6 +1591,7 @@ def _run_foreground(
     live-output sink (P-054), and ``token_kill`` / ``max_lines`` drive the rtk
     post-processing pipeline (P-049).
     """
+    from hermes_cli.observability.shared_metrics_harness import record_terminal_outcome
     max_retries = 3
     env_type, eff, effective_timeout = plan.env_type, plan.effective_task_id, plan.effective_timeout
     started = time.monotonic()
@@ -1759,7 +1759,7 @@ def _run_foreground(
         command_cwd=command_cwd, approval_note=approval_note,
     )
     return _merge_result_metadata(
-        finalized,
+        finalized, plan=plan,
         elapsed_seconds=round(time.monotonic() - started, 2),
         wait_matched=(bool(result.get("pattern_matched")) if wait_for_pattern else None),
         original_path=(post_result.original_path if post_result else None),
@@ -2016,7 +2016,7 @@ def terminal_tool(
                 # [CN-fork] P-058: report the background session's working directory
                 # (the shell's resolved cwd) so later calls don't have to re-prefix `cd`.
                 return _metered(None if _host_local else plan, _merge_result_metadata(
-                    result, cwd=_resolve_command_cwd(
+                    result, plan=plan, cwd=_resolve_command_cwd(
                         workdir=workdir, default_cwd=cwd, session_key=session_key, env_type=env_type,
                     ),
                 ))

@@ -31,14 +31,22 @@ POSIX_BASH = "/usr/bin/bash"
 
 
 def _probes(
-    *, windows: bool, bash: str | None = None, pwsh: str | None = None
+    *,
+    windows: bool,
+    bash: str | None = None,
+    pwsh: str | None = None,
+    powershell: str | None = None,
 ) -> sm.ShellProbes:
+    """A host shape. `powershell` defaults to the 5.1 that ships with Windows, so a
+    Windows shape without `pwsh` still has a PowerShell; pass "" for "none at all"."""
+    if powershell is None and windows:
+        powershell = PS51
     return sm.ShellProbes(
         is_windows=windows,
         find_bash=lambda **_: bash,
         find_bash_posix=lambda: bash or POSIX_BASH,
         find_pwsh=lambda: pwsh,
-        find_powershell=lambda: PS51 if windows else "powershell",
+        find_powershell=lambda: powershell or "",
     )
 
 
@@ -115,26 +123,43 @@ def test_build_names_both_modes_and_keeps_them_in_the_enum():
     out = _build_dynamic_terminal_description(WINDOWS_BOTH)
     desc = out["description"]
     assert 'shell="bash"' in desc and 'shell="pwsh"' in desc
+    # [CN-fork P-075] `auto` is the default and is always offered first.
     assert out["parameters"]["properties"]["shell"]["enum"] == [
+        sm.MODE_AUTO,
         sm.MODE_BASH,
         sm.MODE_PWSH,
     ]
+    assert out["parameters"]["properties"]["shell"]["default"] == sm.MODE_AUTO
+    # The model must know the default is decided per command, not fixed.
+    assert "ONE shell per command" in desc
+
+
+def test_build_dual_host_leading_sentence_promises_neither_shell():
+    """A two-shell host may not be described as "a bash box" (P-075)."""
+    desc = _build_dynamic_terminal_description(WINDOWS_BOTH)["description"]
+    assert "bash (Git Bash / MSYS) or PowerShell on Windows" in desc
+    assert "`shell=\"auto\"` (the default) picks one per command" in desc
+    assert "bash (Git Bash / MSYS) environment on Windows" not in desc
+    assert "Linux environment" not in desc
 
 
 def test_build_windows_without_git_bash_drops_bash_from_the_enum():
     out = _build_dynamic_terminal_description(WINDOWS_PWSH_ONLY)
     desc = out["description"]
-    assert out["parameters"]["properties"]["shell"]["enum"] == [sm.MODE_PWSH]
+    assert out["parameters"]["properties"]["shell"]["enum"] == [sm.MODE_AUTO, sm.MODE_PWSH]
     assert "bash mode is disabled" in desc
     assert "Git Bash" in desc  # the reason, so the model knows how to enable it
+    # With one shell there is nothing to detect, and the description says so.
+    assert "no detection" in desc
 
 
 def test_build_posix_without_powershell_drops_pwsh_from_the_enum():
     out = _build_dynamic_terminal_description(POSIX_BASH_ONLY)
     desc = out["description"]
-    assert out["parameters"]["properties"]["shell"]["enum"] == [sm.MODE_BASH]
+    assert out["parameters"]["properties"]["shell"]["enum"] == [sm.MODE_AUTO, sm.MODE_BASH]
     assert 'Only `shell="bash"`' in desc
     assert "PowerShell mode is disabled" in desc
+    assert "no detection" in desc
 
 
 def test_build_powershell_uses_powershell_sentence_and_cmdlet_refs():
@@ -161,7 +186,9 @@ def test_build_posix_bash_keeps_linux_references():
 
 
 def test_build_windows_bash_uses_git_bash_sentence():
-    desc = _build_dynamic_terminal_description(WINDOWS_BOTH)["description"]
+    """A Git-Bash-only Windows host (no PowerShell at all) gets the bash (MSYS) sentence."""
+    one_shell = _probes(windows=True, bash=GIT_BASH, pwsh=None, powershell="")
+    desc = _build_dynamic_terminal_description(one_shell)["description"]
     assert "bash (Git Bash / MSYS) environment on Windows" in desc
     assert "Linux environment" not in desc
     assert "Do NOT use cat/head/tail (use read_file)" in desc
@@ -200,7 +227,8 @@ def test_windows_host_description_matches_its_own_availability():
     out = _build_dynamic_terminal_description()
     available = sm.available_modes()
     assert out["parameters"]["properties"]["shell"]["enum"] == [
-        m for m in sm.MODES if m in available
+        sm.MODE_AUTO,
+        *(m for m in sm.MODES if m in available),
     ]
     # PowerShell mode is always runnable on Windows (5.1 ships with the OS).
     assert sm.MODE_PWSH in available
@@ -211,7 +239,8 @@ def test_windows_host_description_matches_its_own_availability():
 def test_posix_host_offers_bash_and_says_so():
     out = _build_dynamic_terminal_description()
     assert sm.MODE_BASH in sm.available_modes()
-    assert out["parameters"]["properties"]["shell"]["enum"][0] == sm.MODE_BASH
+    # [CN-fork P-075] `auto` leads the enum (it is the default); bash follows when runnable.
+    assert out["parameters"]["properties"]["shell"]["enum"][:2] == [sm.MODE_AUTO, sm.MODE_BASH]
 
 
 # --------------------------------------------------------------------------- #
@@ -238,4 +267,4 @@ def test_registry_schema_carries_the_shell_parameter():
     )
     shell_spec = schema["parameters"]["properties"]["shell"]
     assert shell_spec["type"] == "string"
-    assert set(shell_spec["enum"]) <= set(sm.MODES)
+    assert set(shell_spec["enum"]) <= set(sm.SCHEMA_MODES)

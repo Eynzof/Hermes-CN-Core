@@ -12,7 +12,7 @@ The terminal tool runs commands through one of two shell *modes*:
     :func:`tools.environments.pwsh_fix.pwsh_transform` down-levels PS7 syntax
     first.
 
-One module answers the three questions the consumers kept answering differently:
+One module answers the four questions the consumers kept answering differently:
 
 1. **What can this host run?** (:func:`availability`) — the tool schema must only
    advertise modes the host actually has, and must SAY which one is missing.
@@ -20,7 +20,12 @@ One module answers the three questions the consumers kept answering differently:
    ``LocalEnvironment`` needs ``(shell_type, shell_path)``; an explicit request
    for a missing mode raises :class:`ShellModeUnavailable` instead of silently
    running the other shell under the caller's syntax.
-3. **What does the model see?** (:func:`describe_modes`) — the schema sentence
+3. **What does an ``auto`` call run?** (:func:`resolve_auto_shell`) — one runnable
+   mode means that mode, a pinned ``terminal.shell`` means that mode, and only a host
+   with BOTH and no pin lets the command's own syntax decide
+   (:mod:`tools.environments.shell_detect`).  ``AutoResolution.dual`` is what tells the
+   tool whether the choice is worth reporting back.
+4. **What does the model see?** (:func:`describe_modes`) — the schema sentence
    naming the available modes, the default, and what happens if a disabled mode
    is requested anyway.
 
@@ -42,6 +47,12 @@ MODE_PWSH = "pwsh"
 
 #: Modes the tool can actually execute, in description order.
 MODES: Tuple[str, ...] = (MODE_BASH, MODE_PWSH)
+
+#: What the tool schema advertises, in description order: ``auto`` first, because it is
+#: the default — a call that names no mode lets the command decide (see
+#: :func:`resolve_auto_shell`).  Only these spellings reach ``normalize_mode`` from the
+#: model; the alias table below is for the sloppier ones a model writes anyway.
+SCHEMA_MODES: Tuple[str, ...] = (MODE_AUTO,) + MODES
 
 #: LLM-friendly spellings mapped onto the two real modes.  Models emit whatever
 #: the surrounding docs used (``powershell``, ``ps7``, ``git-bash`` …); a synonym
@@ -73,14 +84,14 @@ _MODE_LABELS = {
 
 
 class UnknownShellMode(ValueError):
-    """The caller asked for a shell mode that is not one of :data:`MODES`."""
+    """The caller asked for a shell mode that is not one of :data:`SCHEMA_MODES`."""
 
     def __init__(self, raw: str):
         self.raw = raw
-        self.valid = MODES
+        self.valid = SCHEMA_MODES
         super().__init__(
-            f"Unknown shell mode {raw!r}. Use 'bash' or 'pwsh' "
-            "(or omit `shell` to use the configured default)."
+            f"Unknown shell mode {raw!r}. Use 'auto' (pick per command), 'bash' or 'pwsh' "
+            "(or omit `shell` to use the default)."
         )
 
 
@@ -340,48 +351,110 @@ def resolve_shell_for_mode(
     return shell_type, path
 
 
+@dataclass(frozen=True)
+class AutoResolution:
+    """What ``shell="auto"`` resolves to for one command.
+
+    ``mode``/``shell_type`` are what will run (``"bash"``, ``"pwsh"`` or — PowerShell 7
+    absent — ``"powershell"``).  ``detected`` says the command parser made the call, and
+    ``dual`` says this host could have run either shell: exactly then has the choice to be
+    reported back, because on a one-shell host there is nothing to report.
+    """
+
+    mode: str
+    shell_type: str
+    detected: bool
+    dual: bool
+
+
+def resolve_auto_shell(
+    command: object, probes: Optional[ShellProbes] = None
+) -> AutoResolution:
+    """The shell ``auto`` (or an omitted ``shell``) runs *command* under.
+
+    Three rules, in order:
+    1. **One runnable mode → that mode.**  A POSIX box without PowerShell, or a Windows
+       box without Git Bash, has nothing to choose: the parser is not consulted at all
+       (``detected=False``, ``dual=False``) and nothing is reported back.  ``auto`` can
+       only ever point at the mode that works here.
+    2. **A mode pinned by ``terminal.shell`` → that mode.**  An explicit configured shell
+       is a user preference, not a guess to be overruled by a command's spelling.
+    3. **Both modes runnable and nothing pinned → parse the command**
+       (:func:`tools.environments.shell_detect.detect_command_shell`).  An undecided
+       command keeps :func:`default_mode`, which is the pre-P-075 behaviour.
+    """
+    try:
+        available = available_modes(probes)
+    except Exception:  # health: allow BLE001 -- a description/plan must never raise
+        # A host where the bash probe itself raises (no `sh` anywhere) used to fail
+        # inside the environment; keep that failure there instead of here.
+        return AutoResolution(MODE_BASH, "bash", False, False)
+    if len(available) < len(MODES):
+        mode = available[0] if available else MODE_BASH
+        shell_type = _resolve(mode, probes)[0] or ("bash" if mode == MODE_BASH else "pwsh")
+        return AutoResolution(mode, shell_type, False, False)
+    configured = configured_mode()
+    if configured != MODE_AUTO:
+        return AutoResolution(configured, _resolve(configured, probes)[0], False, True)
+    from tools.environments.shell_detect import detect_command_shell
+
+    guess = detect_command_shell(command, default=default_mode(probes))
+    return AutoResolution(guess.shell, _resolve(guess.shell, probes)[0], guess.detected, True)
+
+
 def describe_modes(probes: Optional[ShellProbes] = None) -> str:
     """One schema sentence: the available modes, the default, and the disabled one.
 
     The model has to know three things before it writes a command: which mode it
     gets by default, which modes it may ask for, and — when one is missing — that
-    asking for it is a hard error rather than a silent switch.
+    asking for it is a hard error rather than a silent switch.  With both modes
+    runnable the default is *the command's own syntax*, so that sentence has to say
+    so: a model that believes the box is "a bash box" writes POSIX for a host that
+    would have read a cmdlet happily.
     """
     probes = probes or default_probes()
     found = availability(probes)
     available = [mode for mode in MODES if found[mode][0]]
-    default = default_mode(probes)
     pieces: list[str] = []
-
     if len(available) == len(MODES):
         pieces.append(
             'Both modes work here: `shell="bash"` (POSIX via Git Bash, native commands '
             'auto-translated) and `shell="pwsh"` (PowerShell 7, else 5.1 with 7-syntax '
             "auto-down-levelled)."
         )
-    elif available == [MODE_BASH]:
+        pinned = configured_mode()
+        if pinned in MODES:
+            pieces.append(
+                f"Default (`shell` omitted or \"auto\"): {_MODE_LABELS[pinned]}, pinned by "
+                "`terminal.shell` — pass the other mode explicitly to use it."
+            )
+        else:
+            pieces.append(
+                'Default (`shell` omitted or "auto"): ONE shell per command, chosen from its '
+                "syntax — POSIX/bash gets bash, a cmdlet or `$var`/`@{…}`/PS operators gets "
+                "PowerShell; a command that both shells run keeps bash."
+            )
+        return " ".join(pieces)
+    if available == [MODE_BASH]:
         pieces.append(
             'Only `shell="bash"` (POSIX) works on this host: '
             f'{found[MODE_PWSH][1]}. PowerShell mode is disabled — `shell="pwsh"` returns '
             'an error instead of running your command, so write POSIX bash syntax.'
         )
-    elif available == [MODE_PWSH]:
+        pieces.append('Default (`shell` omitted or "auto"): bash — always, no detection.')
+        return " ".join(pieces)
+    if available == [MODE_PWSH]:
         pieces.append(
             'Only `shell="pwsh"` (PowerShell) works on this host — bash mode is disabled: '
             f'{found[MODE_BASH][1]}. `shell="bash"` returns an error instead of running '
             'your command, so write PowerShell syntax.'
         )
-    else:  # pragma: no cover - no host has zero shells; the guard keeps the text total
-        pieces.append(
-            "No shell mode could be resolved on this host; terminal calls will fail "
-            "until bash or PowerShell is installed."
-        )
-
-    if available:
-        label = _MODE_LABELS.get(default, default)
-        pieces.append(f"Default (no `shell` argument): {label}.")
-
-    return " ".join(pieces)
+        pieces.append('Default (`shell` omitted or "auto"): pwsh — always, no detection.')
+        return " ".join(pieces)
+    return (  # pragma: no cover - no host has zero shells; the guard keeps the text total
+        "No shell mode could be resolved on this host; terminal calls will fail "
+        "until bash or PowerShell is installed."
+    )
 
 
 __all__ = [
@@ -389,6 +462,8 @@ __all__ = [
     "MODE_BASH",
     "MODE_PWSH",
     "MODES",
+    "SCHEMA_MODES",
+    "AutoResolution",
     "ShellModeUnavailable",
     "ShellProbes",
     "UnknownShellMode",
@@ -402,6 +477,7 @@ __all__ = [
     "describe_modes",
     "is_available",
     "normalize_mode",
+    "resolve_auto_shell",
     "resolve_shell_for_mode",
     "shell_mode_scope",
     "shell_for_spawn",

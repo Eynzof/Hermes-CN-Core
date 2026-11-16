@@ -94,7 +94,14 @@ def test_unknown_shell_mode_is_refused_with_the_valid_names(isolated_home):
     assert result.get("exit_code") is None
 
 
-def test_omitted_shell_means_the_configured_default():
+def test_omitted_shell_resolves_to_a_runnable_mode():
+    """[CN-fork P-075] no `shell=` is `auto`: a mode this host can run, never None.
+
+    `echo hi` is syntax both shells accept, so the parser must not claim it — the mode
+    is the host's default one.  On a host with both shells that choice is worth
+    reporting, on a one-shell host it is not.
+    """
+    dual = len(sm.available_modes()) > 1
     plan = _plan_execution(
         "echo hi",
         task_id="t-default",
@@ -102,11 +109,13 @@ def test_omitted_shell_means_the_configured_default():
         background=False,
         _host_local=False,
     )
-    assert plan.shell_mode is None
+    assert plan.shell_mode in sm.MODES
+    assert plan.shell_mode in sm.available_modes()
+    assert (plan.shell_notice is not None) is dual
 
 
 @pytest.mark.parametrize("value", [None, "", "   ", "auto", "AUTO"])
-def test_auto_and_blank_are_treated_as_unset(value):
+def test_auto_and_blank_are_all_the_same_request(value):
     plan = _plan_execution(
         "echo hi",
         task_id="t-auto",
@@ -115,7 +124,15 @@ def test_auto_and_blank_are_treated_as_unset(value):
         _host_local=False,
         shell=value,
     )
-    assert plan.shell_mode is None
+    omitted = _plan_execution(
+        "echo hi",
+        task_id="t-auto",
+        timeout=None,
+        background=False,
+        _host_local=False,
+    )
+    assert plan.shell_mode == omitted.shell_mode
+    assert plan.shell_notice == omitted.shell_notice
 
 
 def test_shell_alias_resolves_to_its_mode():
@@ -257,7 +274,8 @@ def test_run_foreground_hands_the_mode_to_the_local_environment(monkeypatch):
     assert seen.get("shell_mode") == sm.MODE_BASH
 
 
-def test_run_foreground_omits_the_mode_when_not_requested():
+def test_run_foreground_hands_the_auto_mode_when_not_requested():
+    """[CN-fork P-075] `auto` reaches the environment as the resolved mode, not as None."""
     seen: dict = {}
 
     class _StubEnv:
@@ -268,7 +286,7 @@ def test_run_foreground_omits_the_mode_when_not_requested():
             return {"output": "ok", "returncode": 0}
 
     plan = _plan_execution(
-        "echo hi",
+        "Write-Output ('ps:' + (2+2))",
         task_id="t-thread-none",
         timeout=None,
         background=False,
@@ -287,7 +305,11 @@ def test_run_foreground_omits_the_mode_when_not_requested():
         clear_interrupt=False,
         metered=False,
     )
-    assert "shell_mode" not in seen
+    # `Write-Output …` is PowerShell syntax, so `auto` must reach the environment as the
+    # PowerShell mode on a host that has one (and as bash when it is the only shell).
+    assert seen.get("shell_mode") in sm.MODES
+    if sm.MODE_PWSH in sm.available_modes():
+        assert seen["shell_mode"] == sm.MODE_PWSH
 
 
 # --------------------------------------------------------------------------- #

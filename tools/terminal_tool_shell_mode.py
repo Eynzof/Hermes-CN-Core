@@ -4,15 +4,20 @@ The terminal tool offers two shell modes and runs them through
 :mod:`tools.environments.shell_modes`.  This sibling owns everything that turns
 that availability into the model-facing surface:
 
-* :func:`detect_shell_for_description` — the shell a call WITHOUT ``shell=`` runs
-  (the configured mode when the host can run it, else git-bash → pwsh → 5.1).
+* :func:`detect_shell_for_description` — the shell an UNDECIDED command runs (the
+  configured mode when the host can run it, else git-bash → pwsh → 5.1).  With both
+  shells runnable it is only the fallback: ``auto`` reads each command first (P-075).
 * :func:`build_dynamic_description` — the schema override registered as the
   terminal tool's ``dynamic_schema_overrides``: the platform sentence, the
   PowerShell-adapted command examples, and a ``shell`` enum narrowed to the modes
   this host can actually run.
 * :func:`resolve_shell_mode` — validation of the ``shell=`` argument: unknown
   spelling, a mode the host cannot run, or a non-local backend are all refused
-  with an actionable error instead of quietly running the other shell.
+  with an actionable error instead of quietly running the other shell.  ``auto``
+  (or no argument at all) is not an error and not a fixed mode: on a host that runs
+  both shells it is resolved from the command itself
+  (:func:`tools.environments.shell_modes.resolve_auto_shell`), and only that case
+  earns a mention in the result (:func:`shell_result_fields`).
 * :func:`interactive_shell_command` — the REPL a bare ``mode="interactive"`` call
   starts, in the mode the call asked for.
 
@@ -25,19 +30,62 @@ from __future__ import annotations
 
 import copy
 import sys
+from dataclasses import dataclass
 from typing import Optional
 
 from tools.environments.shell_modes import (
+    MODE_AUTO,
     MODES,
+    SCHEMA_MODES,
     ShellModeUnavailable,
     available_modes,
     default_mode,
     default_probes,
     describe_modes,
     normalize_mode,
+    resolve_auto_shell,
     resolve_shell_for_mode,
     unavailability_reason,
 )
+
+
+@dataclass(frozen=True)
+class ShellChoice:
+    """What one call's ``shell`` argument resolved to, and what the result says about it.
+
+    ``mode`` is the mode to run (``None`` → the environment's own shell, which is what a
+    non-local backend always gets).  ``shell_type`` names the binary family that will
+    answer — ``pwsh`` and ``powershell`` are different binaries, and only the caller's
+    report distinguishes them.  ``notice`` is the P-075 rule in one field: report the
+    shell back only when ``auto`` had two shells to choose between, because a one-shell
+    host has no choice to explain.
+    """
+
+    mode: Optional[str] = None
+    shell_type: Optional[str] = None
+    auto: bool = False
+    detected: bool = False
+    notice: bool = False
+
+    def plan_fields(self) -> dict[str, Optional[str]]:
+        """The ``_ExecPlan`` fields this choice contributes (see ``_plan_execution``)."""
+        return {
+            "shell_mode": self.mode,
+            "shell_notice": self.shell_type if self.notice else None,
+        }
+
+
+def shell_result_fields(plan) -> dict[str, str]:
+    """Result metadata naming the shell ``auto`` ran (empty unless this host has both).
+
+    A command run under ``shell="auto"`` may have gone to bash or to PowerShell and the
+    model cannot tell from the output alone, so the result carries
+    ``{"shell": "<what ran>", "shell_mode": "auto"}``.  On a host with one shell, and for
+    an explicitly requested mode, this returns nothing: there the schema already said
+    which shell it would be, and restating it on every call is noise.
+    """
+    notice = getattr(plan, "shell_notice", None)
+    return {"shell": notice, "shell_mode": MODE_AUTO} if notice else {}
 
 
 def shell_probes():
@@ -46,7 +94,7 @@ def shell_probes():
 
 
 def detect_shell_for_description(probes=None) -> str:
-    """The shell type (``bash`` / ``pwsh`` / ``powershell``) a call WITHOUT ``shell=`` runs.
+    """The shell type (``bash`` / ``pwsh`` / ``powershell``) an UNDECIDED command runs.
 
     Resolution lives in :mod:`tools.environments.shell_modes` — one source of truth
     shared with the call validator and ``LocalEnvironment``, so the description can
@@ -58,12 +106,14 @@ def detect_shell_for_description(probes=None) -> str:
       PowerShell 7 (``pwsh``) → Windows PowerShell 5.1.
 
     On a host without Git Bash the answer is therefore ``pwsh``/``powershell`` and
-    the description says bash mode is disabled.
+    the description says bash mode is disabled.  With both shells runnable the answer
+    is the *fallback* — the shell ``auto`` uses for a command whose syntax does not
+    name either one (P-075) — which is why the description then says both, not one.
     """
     mode = default_mode(probes)
     try:
         shell_type, _ = resolve_shell_for_mode(mode, probes)
-    except Exception:
+    except Exception:  # health: allow BLE001 -- a schema override must never break registration
         # A description must never raise; the un-runnable mode's own name is still
         # the best answer for "which shell would a call use".
         return "bash" if mode == "bash" else "powershell"
@@ -78,7 +128,17 @@ def build_dynamic_description(probes=None) -> dict:
     shell_type = detect_shell_for_description(probes)
     available = available_modes(probes)
 
-    if shell_type == "pwsh":
+    if len(available) > 1:
+        # Both shells run here, so the leading sentence may not promise either one:
+        # `auto` reads each command (P-075).
+        platform_env = (
+            "Execute shell commands in bash (Git Bash / MSYS) or PowerShell on Windows — "
+            '`shell="auto"` (the default) picks one per command'
+            if probes.is_windows
+            else "Execute shell commands in bash or PowerShell — "
+            '`shell="auto"` (the default) picks one per command'
+        )
+    elif shell_type == "pwsh":
         platform_env = (
             "Execute powershell commands in a PowerShell 7 (pwsh) environment"
         )
@@ -140,49 +200,72 @@ def _powershell_references(description: str) -> str:
 
 
 def _narrow_shell_enum(shell_spec: dict, available) -> None:
-    """Restrict the schema's ``shell`` enum to *available*, explaining a missing mode."""
-    shell_spec["enum"] = [mode for mode in MODES if mode in available] or list(MODES)
+    """Restrict the schema's ``shell`` enum to ``auto`` plus the modes this host can run.
+
+    ``auto`` is always offered: it can never be unavailable, because on a one-shell host
+    it *is* that shell (P-075).  A model that copies a disabled mode out of an old
+    transcript hits the error path, but the schema stops advertising it in the first place.
+    """
+    runnable = [mode for mode in MODES if mode in available] or list(MODES)
+    shell_spec["enum"] = [MODE_AUTO, *runnable]
     missing = [mode for mode in MODES if mode not in available]
     if not missing:
         return
     shell_spec["description"] = (
-        f"Shell mode for THIS command. Available here: {', '.join(shell_spec['enum'])}. "
-        f"{' and '.join(missing)} is NOT available on this host — asking for it returns "
-        "an error rather than running under another shell; omit this argument to use the "
-        "configured default."
+        f"Shell for THIS command. 'auto' (the default) always runs {runnable[0]} here — "
+        f"this host cannot run {' and '.join(missing)}, so nothing is detected and "
+        f"{' and '.join(missing)} returns an error instead of running another shell. "
+        f"Available: {', '.join(shell_spec['enum'])}."
     )
 
 
-def resolve_shell_mode(shell: Optional[str], env_type: str) -> Optional[str]:
-    """Validate a per-call ``shell=`` for *env_type*; ``None`` means "the default"."""
+def resolve_shell_mode(
+    shell: Optional[str], env_type: str, command: object = None
+) -> ShellChoice:
+    """Validate a per-call ``shell=`` and resolve ``auto`` from *command*.
+
+    ``None``, a blank string and ``"auto"`` all mean the same thing: let this module
+    pick.  On a one-shell host that is trivially that shell; on a two-shell host it is
+    the command's own syntax (:func:`tools.environments.shell_modes.resolve_auto_shell`),
+    which is the whole point of ``auto`` being the default (P-075).  An EXPLICIT mode
+    stays strict — a mode this host cannot run is an error, never a silent switch.
+    """
     from tools.registry import tool_error
     from tools.terminal_tool import _Rejected
 
-    if shell is None or (isinstance(shell, str) and not shell.strip()):
-        return None
     try:
         mode = normalize_mode(shell)
     except ValueError as exc:
         raise _Rejected(tool_error(str(exc))) from exc
-    if mode == "auto":
-        return None
     if env_type != "local":
-        raise _Rejected(
-            tool_error(
-                f"shell='{mode}' applies to the local terminal backend only; this session "
-                f"runs commands in the '{env_type}' sandbox, whose shell is fixed by that "
-                "environment. Drop the `shell` argument (or switch terminal.backend to "
-                "local) to run the command."
+        if mode != MODE_AUTO:
+            raise _Rejected(
+                tool_error(
+                    f"shell='{mode}' applies to the local terminal backend only; this session "
+                    f"runs commands in the '{env_type}' sandbox, whose shell is fixed by that "
+                    "environment. Drop the `shell` argument (or switch terminal.backend to "
+                    "local) to run the command."
+                )
             )
+        # The sandbox owns its shell: there is no host shell to choose and nothing to report.
+        return ShellChoice(None, None, auto=True)
+    if mode == MODE_AUTO:
+        resolution = resolve_auto_shell(command)
+        return ShellChoice(
+            resolution.mode,
+            resolution.shell_type,
+            auto=True,
+            detected=resolution.detected,
+            notice=resolution.dual,
         )
     try:
-        resolve_shell_for_mode(mode)
+        shell_type, _ = resolve_shell_for_mode(mode)
     except ShellModeUnavailable:
         reason = unavailability_reason(mode) or "the shell could not be started"
         raise _Rejected(
             _shell_unavailable_error(mode, reason, available_modes())
         ) from None
-    return mode
+    return ShellChoice(mode, shell_type)
 
 
 def _shell_unavailable_error(mode: str, reason: str, available) -> str:
@@ -218,14 +301,14 @@ def interactive_shell_command(shell_mode: Optional[str] = None) -> str:
     if shell_mode:
         try:
             shell_type, _ = resolve_shell_for_mode(shell_mode)
-        except Exception:
+        except Exception:  # health: allow BLE001 -- an interactive call must still get a REPL
             shell_type = "powershell"
     elif sys.platform == "win32":
         try:
             from tools.environments.local import _resolve_shell
 
             shell_type, _ = _resolve_shell()
-        except Exception:
+        except Exception:  # health: allow BLE001 -- an interactive call must still get a REPL
             shell_type = "powershell"
     if shell_type == "bash":
         return "bash -i"
@@ -237,10 +320,12 @@ def interactive_shell_command(shell_mode: Optional[str] = None) -> str:
 #: The schema property advertised for ``shell``; the enum is narrowed per host.
 SHELL_PROPERTY = {
     "type": "string",
-    "enum": list(MODES),
+    "enum": list(SCHEMA_MODES),
+    "default": MODE_AUTO,
     "description": (
-        "Shell mode for THIS command (local backend): 'bash' (POSIX/Git Bash) or 'pwsh' "
-        "(PowerShell 7, else 5.1 with 7-syntax down-levelled). Omit for the configured "
-        "default; a mode this host cannot run errors instead of running another shell."
+        "Shell for THIS command (local backend). 'auto' (default) picks bash or PowerShell "
+        "from the command's syntax when this host runs both; 'bash' (POSIX/Git Bash) and "
+        "'pwsh' (PowerShell 7, else 5.1 with 7-syntax down-levelled) force one. A mode "
+        "this host cannot run errors instead of running the other shell."
     ),
 }

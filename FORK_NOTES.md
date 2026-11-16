@@ -14,6 +14,7 @@ The consolidated repository guard keeps both blocking supply-chain patterns and 
 
 | ID | Target file | What it does | Why we need it | Upstream status |
 |---|---|---|---|---|
+| **P-075** | `tools/environments/shell_detect.py` (new), `tools/environments/shell_modes.py`, `tools/terminal_tool_shell_mode.py`, `tools/terminal_tool.py`, `tools/code_execution_tool.py`, `tests/tools/test_shell_detect.py` (new), `tests/tools/test_shell_detect_corner_cases.py` (new), `tests/tools/test_terminal_auto_shell.py` (new), `tests/tools/test_terminal_shell_mode.py`, `tests/tools/test_terminal_dynamic_description.py`, `tests/fixtures/prompt_surface/` | **`shell` defaults to `auto`, and the command picks the shell.** On a host that can run both, the command text is parsed — POSIX/bash syntax runs in Git Bash, a cmdlet / `$var` / `@{…}` / PowerShell operator runs in PowerShell, and a command both shells accept keeps the configured default — and the result names what answered (`"shell": "bash"`, `"shell_mode": "auto"`). On a host with one shell there is nothing to detect and nothing is said. | P-073 gave the tool a per-call shell but left the choice to the model, which had to know its host before writing a line; guessing wrong costs a turn (POSIX text in PowerShell, a cmdlet in bash). Detection is what makes `auto` a safe default. | Worth upstreaming: the parser is generic and a tool that reads its own command is a real gain |
 | **P-074** | `agent/prompt_builder.py`, `tools/terminal_tool.py`, `tools/terminal_tool_shell_mode.py`, `tools/environments/shell_modes.py`, `tools/code_execution_tool.py`, `tools/browser_use_cli.py`, `scripts/ci/prompt_surface.py`, `tests/fixtures/prompt_surface/`, `tests/agent/test_oneshot_footprint.py` | **The prompt surface is measured, and the verbose blocks are back to their dieted size.** All 9 system-prompt surfaces and 25 tool schemas were rendered and audited; every rule was kept and restated once, in one place: `terminal` 2,068 to 1,328 chars, `execute_code` 2,444 to 1,699, `browser_exec` 2,532 to 1,975, the `## Skills` preamble 1,414 to 752, memory guidance 1,036 to 739, parallel/task/help guidance -256/-97/-52. `scripts/ci/prompt_surface.py` now renders on Windows (psutil import order, USERPROFILE, 8.3 short paths, LF-only output), and the committed snapshot was regenerated to describe this fork's real schema instead of upstream's. | The fork's official prompt snapshot was stale enough that its own CI check could never pass, so no prompt change since the last upstream sync could be reviewed as prompt text. Rendering on Windows is the only way this fork can see what it ships, and the audit found four blocks that had regrown to restate what another block in the same request already said. | Worth upstreaming the renderer fixes and the `_TOOL_STUBS` drift fix; the prose trims follow upstream's own diet commits |
 | **P-073** | `tools/environments/shell_modes.py` (new), `tools/environments/local_shell_mode.py` (new), `tools/terminal_tool_shell_mode.py` (new), `tools/process_registry_shell.py` (new), `tools/environments/local.py`, `tools/terminal_tool.py`, `tools/terminal_tool_background.py`, `tools/process_registry.py`, `tests/tools/test_shell_modes.py` (new), `tests/tools/test_terminal_shell_mode.py` (new), `tests/tools/test_terminal_dynamic_description.py` | **Both shells, one terminal tool.** `terminal(shell="bash"|"pwsh")` runs a single command under Git Bash (native POSIX syntax always translated by `bash_fix`) or PowerShell (7 when installed, else 5.1 with PS7 syntax always down-levelled by `pwsh_fix`/`pwsh_transform`), and a mode the host cannot run is REFUSED with an actionable error instead of silently running the other shell. | Windows users switch between POSIX build scripts and PowerShell tooling in one session; the old surface made that a config-only, session-wide choice, and `terminal.shell: bash` on a box without Git for Windows silently ran PowerShell (POSIX syntax in the wrong shell). | Worth upstreaming — a per-call shell is generic, and the availability-aware schema text is the difference between a retry and a wasted turn |
 | **P-071** | `pm/lock.json`, `pm/pyproject.toml`, `pm/uv.lock`, `pm/package.py`, `pm/store.py`, `.github/workflows/release-runtime.yml`, `tests/pm/test_tree_digest_links.py`, `tests/pm/test_store_extract.py`, `MAINTAINING.md` | **The PM toolchain moves to CPython 3.15.2** — `pm/lock.json`'s `python` pin goes `3.14.9+20261021` → `3.15.2+20261110` across all eight python-build-standalone targets (hashes from the release's own `SHA256SUMS`, re-checked against the downloaded win32-x64 archive, and every locked URL round-trips through `Python.fetch_url`), plus `pm/pyproject.toml` `requires-python` `>=3.14,<3.15` → `>=3.15,<3.16` and a re-resolved `pm/uv.lock` (`==3.15.*`). `linux-arm64-bionic` keeps its Termux `python_3.14.6-1` deb: a separate supplier's manual pin, and `Python.main_bin_rel` follows it. Two 3.15 side effects are handled here: `_tree_digest` folds a Windows separator out of link target text (3.15 normalises tarfile symlink targets, which would have invalidated every recorded store digest), and the symlink regression test compares link targets as paths. | `uv run hermes` on 3.15.2 ran against a dependency generation PM had built with 3.14.9, so the tree's compiled modules could not load (`orjson.cp314-win_amd64.pyd` → `ModuleNotFoundError: No module named 'orjson.orjson'`). P-070 turned that from a crash into a refusal, but the install itself was still on the old interpreter — every `uv run` warned and skipped PM's generation. Pinning 3.15.2 puts the launcher, the generation, the docker image and the sealed runtime P-068 left behind on one interpreter; the artifact's SQLite is 3.53.1 with FTS5/FTS3/FTS4/RTREE/MATH, i.e. still past the 3.51.3 WAL-reset gate and the `release-runtime.yml` contract. | Fork release-timing policy, the toolchain half of P-068: upstream pins one interpreter line per release and never runs a checkout against another. |
@@ -1403,3 +1404,66 @@ P-074: model-facing prompt audit — every system prompt and tool description me
 **Tested.** `tests/ci/test_prompt_surface.py` (the regenerated snapshot matches the render; the diff summary names the changed surface and tool); `tests/agent/test_oneshot_footprint.py` (anchor moved to the new skill-save wording); `tests/tools/test_code_execution.py` (digest still names every enabled tool, subset gating still holds, stub drift clean); `tests/tools/test_terminal_dynamic_description.py`, `tests/tools/test_shell_modes.py`, `tests/tools/test_terminal_shell_mode.py`; `tests/agent/test_prompt_builder.py`, `tests/agent/test_system_prompt.py`, `tests/agent/test_skills_index_format.py`. Pre-existing failures reproduced against HEAD and unchanged: `test_prompt_builder.py::TestBuildContextFilesPrompt::test_home_or_above_is_never_the_containment_root[subdirectory_hint]` (Windows symlink containment) and 4 `test_browser_use_cli.py::TestExecHybridPrivateUrlRouting` cases (no managed browser CLI in this environment).
 
 **Should we upstream?** Yes for the renderer fixes — a snapshot renderer that only works on Linux cannot police the prompt on the platform this fork targets, and the byte-identical guarantee is the whole value of the snapshot. Yes for the `_TOOL_STUBS` drift. The prose trims follow the direction of upstream's own diet commits (`perf(prompt): fixed prefix back under the post-diet size`, `docs(tools): lead every tool description with its key capability`), so they are plausible upstream but not urgent.
+
+P-075: `terminal`'s `shell` defaults to `auto` — the command decides bash vs PowerShell
+**Symptom / need.** P-073 shipped `terminal(shell="bash"|"pwsh")` and left the default as "the configured
+shell". Every call therefore had to be written for the session's shell: on a Windows host with Git Bash the
+default is bash, so a model that wanted `Get-ChildItem` had to pass `shell="pwsh"` — knowledge it cannot
+have before it has seen a single command run. The mirror case (`terminal.shell: pwsh` on a POSIX box, then a
+POSIX build script) is the same bug from the other side, and it half-runs rather than failing.
+**What was implemented.**
+1. **`tools/environments/shell_detect.py` (new).** `detect_command_shell(command, *, default)` → `ShellGuess`
+   (`shell`, `detected`, `reasons`, both scores). Two phases: one left-to-right scan MASKS quoted spans,
+   `#` comments, `<# … #>` blocks, here-document bodies, `$'…'` ANSI-C quotes and backtick spans (length and
+   newlines preserved) and records the constructs only the scan can see (here-doc operator, `#Requires`,
+   backtick/backslash continuation, drive-letter paths); then declarative rule tables score the masked text.
+   Weights are DECISIVE 8 / STRONG 4 / WEAK 1 with the WEAK tier capped at 3, so one strong signal outranks
+   any pile of hints and one decisive signal outranks strong + hints. A decision needs an anchored winner
+   AND a strictly higher score; a tie, a weak-only win, a blank/non-string/huge input, or a line whose first
+   token is itself a shell (`pwsh -c …`, `cmd /c dir`, `bash -lc …`) is `detected=False` and keeps the
+   caller's default. It never raises (`# health: allow BLE001` guard), reads only the first 200 KB, and
+   every pattern is linear — a 200 KB hostile paste costs ~130 ms.
+2. **`tools/environments/shell_modes.py`.** `SCHEMA_MODES = (auto, bash, pwsh)`; `AutoResolution` +
+   `resolve_auto_shell(command)` implement the three rules in order: one runnable mode → that mode
+   (`detected=False`, `dual=False`); a mode pinned by `terminal.shell`/`HERMES_SHELL_TYPE` → that mode
+   (a pin is a preference, not a guess to be overruled by a command's spelling); both runnable and unpinned
+   → the parser, with `default_mode()` for an undecided command. `dual` is the field that decides whether
+   the result says anything. `describe_modes()` now states which rule is in force — "ONE shell per command,
+   chosen from its syntax" on a two-shell host, "bash — always, no detection" on a one-shell host, and a
+   named pin when `terminal.shell` sets one.
+3. **`tools/terminal_tool_shell_mode.py`.** `ShellChoice` (`mode`, `shell_type`, `auto`, `detected`,
+   `notice`, `plan_fields()`), `shell_result_fields(plan)`, and `resolve_shell_mode(shell, env_type,
+   command)` now returns the choice instead of a bare mode (a non-local backend still owns its shell;
+   `auto` there is accepted and reports nothing). `SHELL_PROPERTY` is `enum: [auto, bash, pwsh]` with
+   `default: "auto"`, and `_narrow_shell_enum` keeps `auto` on every host because it can never be
+   unavailable. The leading description sentence on a two-shell host is "bash (Git Bash / MSYS) or
+   PowerShell on Windows — `shell=\"auto\"` (the default) picks one per command", so the description can no
+   longer claim a shell the next call will not use.
+4. **`tools/terminal_tool.py`.** `_ExecPlan.shell_notice` carries the shell `auto` picked, and
+   `_merge_result_metadata(..., plan=plan)` adds `{\"shell\": <bash|pwsh|powershell>, \"shell_mode\":
+   \"auto\"}` to BOTH the foreground and the background result — and to nothing else: an explicit `shell=`
+   and a one-shell host add no fields. The file stays at 2,245 lines (the ratchet only lets it shrink)
+   because the two call sites ride existing lines, and the stray duplicated docstring in `_run_foreground`
+   (a first string literal followed by the real one) is gone, which paid for the additions.
+**Deliberate non-changes.** An explicit `shell="bash"`/`"pwsh"` behaves exactly as P-073 left it (strict,
+no parsing, no report). `terminal.shell` still wins over detection. Non-local backends are untouched.
+Background spawns and interactive REPLs still take their mode from the same resolver, so
+`terminal(shell="auto", background=true)` reports the shell too.
+**Known coin flips (documented in the rule table).** A PowerShell *named parameter* is WEAK: `-Recurse`
+alone is PowerShell, but `head -c 5 -Recurse` is a bash line, and the acceptance suite prefers the tie;
+`Get-ChildItem -Recurse` is unaffected because the cmdlet is decisive. `./x.ps1` at command position is
+DECISIVE PowerShell (a POSIX script that happens to end in `.ps1` would be misread as dot-sourcing).
+`.\lib\x` relative paths stay undecided (no drive letter to anchor on, and bash reads the backslashes as
+escapes). `find . -name '*.ps1'` is bash (quoted, so masked) and `find . -name *.ps1` is bash too, because
+`-name`/`-type`/`-exec`/… are bash-strong while a `.ps1` inside a glob is not evidence.
+**Tested.** `tests/tools/test_shell_detect.py` (new, 382 cases), `tests/tools/test_shell_detect_corner_cases.py`
+(new, 305 cases written by a second author from the spec alone: quoting/comment/heredoc traps, false-positive
+traps such as `grep -e Foo-Bar` and `npm install @angular/core`, mixed lines, fuzz bounds, determinism — it
+found the two real bugs: `$'…'` quoting leaked its body into code, and `@scope/pkg` was read as a splat),
+`tests/tools/test_terminal_auto_shell.py` (new, 24: the three rules over fake hosts, the result envelope, the
+description per host shape, and host-native E2E running POSIX and PowerShell syntax through one session and
+asserting WHICH shell answered), plus the updated `test_shell_modes.py`, `test_terminal_shell_mode.py`,
+`test_terminal_dynamic_description.py`. `tests/fixtures/prompt_surface/` was regenerated (terminal schema
+`tool_tokens` 10,049 → 10,127); `tests/ci/test_prompt_surface.py` is green.
+**Should we upstream?** Yes. `auto` is the only sane default for a per-call shell, the parser has no fork
+specifics in it, and the one-shell silence is what keeps the result envelope free of noise.

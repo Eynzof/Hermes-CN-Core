@@ -200,6 +200,9 @@ def test_foreground_command_prefers_recorded_session_cwd_over_init_time_cwd(monk
     # Upstream's foreground→background handoff passes a yield_handler on the
     # local backend; every other kwarg is still exactly as before.
     assert callable(executed_kwargs.pop("yield_handler", None))
+    # [CN-fork P-075] `auto` (the default) resolves to a concrete shell mode here, so the
+    # spawn no longer leaves the choice to the environment. It is the one extra kwarg.
+    assert executed_kwargs.pop("shell_mode", None) in ("bash", "pwsh")
     assert executed_kwargs == {"timeout": 60, "cwd": "/workspace/live", "bounded_capture": True}
 
 

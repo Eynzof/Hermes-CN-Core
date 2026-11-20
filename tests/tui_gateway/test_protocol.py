@@ -497,6 +497,43 @@ def _start_batch_clarify(server, buf, qids, timeout=None):
     return thread, box, _wait_open(server_requests, buf)
 
 
+def test_turn_watchdog_pauses_for_clarify_then_rearms(capture, monkeypatch):
+    from tui_gateway import server_requests
+
+    server, buf = capture
+    thread, _, req = _start_batch_clarify(server, buf, ["q0"])
+    withdraw_read = server_requests.send_async("window.read", "s1", {}, lambda _: None)
+    interrupted = threading.Event()
+    session = {"running": True, "agent": types.SimpleNamespace(interrupt=lambda _: interrupted.set())}
+    threshold = 0.1
+    monkeypatch.setattr(server, "_turn_watchdog_seconds", lambda: threshold)
+
+    class FastPoll(threading.Event):
+        def wait(self, timeout=None):
+            return super().wait(0.01)
+
+    # Speed up the watchdog's ten-second poll without changing the real
+    # blocking request, its deadline or the thread handling the user's reply.
+    with monkeypatch.context() as setup:
+        setup.setattr(server, "threading", types.SimpleNamespace(Event=FastPoll, RLock=threading.RLock))
+        cancel = server._start_turn_watchdog("s1", session)
+    try:
+        assert not interrupted.wait(3 * threshold), "a pending clarification was interrupted"
+        answered_at = time.monotonic()
+        server.dispatch({"jsonrpc": "2.0", "id": req.id, "result": {}})
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+        assert interrupted.wait(2), "a machine read hid the subsequent stall"
+        assert time.monotonic() - answered_at >= threshold
+        assert not session["running"]
+    finally:
+        cancel()
+        withdraw_read("test cleanup")
+        if thread.is_alive():
+            server.dispatch({"jsonrpc": "2.0", "id": req.id, "result": {}})
+            thread.join(timeout=2)
+
+
 def test_clarify_batch_locks_resolve_in_order_and_keep_partial_on_timeout(capture):
     """Per-question locks (clarify.lock) are editable until every qid is locked; the last lock resolves the
     request with the full answer set. Only wire fields reach the renderer."""

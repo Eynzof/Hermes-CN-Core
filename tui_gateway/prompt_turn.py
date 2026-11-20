@@ -1159,12 +1159,23 @@ def _start_turn_watchdog(sid: str, session: dict) -> Callable[[], None]:
     history_lock = session.get("history_lock") or threading.RLock()
 
     def _watch() -> None:
+        waiting_for_reply = False
         while not cancel_event.is_set():
             # Sleep in short chunks so cancellation is responsive.
             if cancel_event.wait(timeout=10.0):
                 return
             if not session.get("running"):
                 return
+            if any(req["method"] in ("clarify", "approval", "sudo", "secret")
+                   for req in _open_requests(sid)):
+                waiting_for_reply = True
+                continue
+            if waiting_for_reply:
+                # The request has its own deadline. Give the resumed turn a
+                # full inactivity window after the renderer answers or cancels.
+                session["last_turn_activity"] = time.time()
+                waiting_for_reply = False
+                continue
             last = session.get("last_turn_activity", started_at)
             if time.time() - last < threshold:
                 continue

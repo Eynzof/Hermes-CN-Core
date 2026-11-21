@@ -385,6 +385,46 @@ def _drain_batch_block(server, qids, timeout=5, payload=None):
     raise AssertionError("batch clarify request never registered")
 
 
+def test_turn_watchdog_pauses_for_clarify_then_rearms(capture, monkeypatch):
+    server, _ = capture
+    # A concurrent GUI read must neither mask a human prompt nor pause a genuine stall.
+    monkeypatch.setitem(server._pending, "window-read", ("s1", threading.Event()))
+    monkeypatch.setitem(server._pending_prompt_payloads, "window-read", ("window.read.request", {}))
+    thread, _, rid = _drain_batch_block(server, ["q0"])
+
+    def answer():
+        server.handle_request({"id": "reply", "method": "clarify.respond", "params": {"request_id": rid, "answer": ""}})
+
+    interrupted = threading.Event()
+    session = {"running": True, "agent": types.SimpleNamespace(interrupt=lambda _: interrupted.set())}
+    threshold = 0.1
+    monkeypatch.setattr(server, "_turn_watchdog_seconds", lambda: threshold)
+
+    class FastPoll(threading.Event):
+        def wait(self, timeout=None):
+            return super().wait(0.01)
+
+    # Speed up the watchdog's ten-second poll without changing the real
+    # blocking request, its deadline or the thread handling the user's reply.
+    with monkeypatch.context() as setup:
+        setup.setattr(server, "threading", types.SimpleNamespace(Event=FastPoll, RLock=threading.RLock))
+        cancel = server._start_turn_watchdog("s1", session)
+    try:
+        assert not interrupted.wait(3 * threshold), "a pending clarification was interrupted"
+        answered_at = time.monotonic()
+        answer()
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+        assert interrupted.wait(2), "a subsequent genuine stall went undetected"
+        assert time.monotonic() - answered_at >= threshold
+        assert not session["running"]
+    finally:
+        cancel()
+        if thread.is_alive():
+            answer()
+            thread.join(timeout=2)
+
+
 def test_clarify_batch_resolves_when_all_questions_locked(capture):
     server, buf = capture
     thread, box, rid = _drain_batch_block(server, ["q0", "q1"])

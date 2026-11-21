@@ -9994,12 +9994,22 @@ def _start_turn_watchdog(sid: str, session: dict) -> Callable[[], None]:
     history_lock = session.get("history_lock") or threading.RLock()
 
     def _watch() -> None:
+        waiting_for_reply = False
         while not cancel_event.is_set():
             # Sleep in short chunks so cancellation is responsive.
             if cancel_event.wait(timeout=10.0):
                 return
             if not session.get("running"):
                 return
+            if _session_pending_kind(sid, ("clarify", "approval", "sudo", "secret")):
+                waiting_for_reply = True
+                continue
+            if waiting_for_reply:
+                # The request has its own deadline. Give the resumed turn a
+                # full inactivity window after the renderer answers or cancels.
+                session["last_turn_activity"] = time.time()
+                waiting_for_reply = False
+                continue
             last = session.get("last_turn_activity", started_at)
             if time.time() - last < threshold:
                 continue
@@ -11001,12 +11011,14 @@ def _schedule_resume_hydration(
     threading.Thread(target=_run, daemon=True).start()
 
 
-def _session_pending_kind(sid: str) -> str:
+def _session_pending_kind(sid: str, kinds: tuple[str, ...] | None = None) -> str:
     for rid, (owner_sid, _ev) in list(_pending.items()):
         if owner_sid != sid:
             continue
         event, _payload = _pending_prompt_payloads.get(rid, ("input.request", {}))
-        return str(event).removesuffix(".request")
+        kind = str(event).removesuffix(".request")
+        if kinds is None or kind in kinds:
+            return kind
     return ""
 
 

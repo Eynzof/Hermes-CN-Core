@@ -45,11 +45,15 @@ def verify() -> dict:
                   if Path(path).name in {"libssl.3.dylib", "libcrypto.3.dylib"})
     libraries = []
     for path in sorted(loaded):
-        links = subprocess.check_output(["otool", "-arch", "x86_64", "-L", str(path)], text=True)
+        links = subprocess.check_output(
+            ["otool", "-arch", "x86_64", "-L", str(path)], encoding="utf-8", errors="replace",
+        )
         assert "/usr/local/opt/openssl" not in links and "/usr/local/Cellar/openssl" not in links, links
         if path == Path(_rust.__file__).resolve():
             assert "libssl." not in links and "libcrypto." not in links, "cryptography must link OpenSSL statically"
-        commands = subprocess.check_output(["otool", "-arch", "x86_64", "-l", str(path)], text=True)
+        commands = subprocess.check_output(
+            ["otool", "-arch", "x86_64", "-l", str(path)], encoding="utf-8", errors="replace",
+        )
         minimums = parse_minimums(commands)
         assert minimums and all(version_key(v) <= version_key("14.0") for v in minimums), str(path)
         libraries.append({"path": str(path), "intelMinimumMacOS": minimums, "links": links})
@@ -64,5 +68,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     result = verify()
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, indent=2) + "\n")
+    args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print("Intel static OpenSSL 3.5.8, AES and legacy provider passed; linked libraries require macOS <= 14")

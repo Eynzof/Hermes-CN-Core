@@ -38,7 +38,10 @@ def audit(root: Path) -> dict:
         with path.open("rb") as stream:
             if stream.read(4) not in MACHO_MAGIC:
                 continue
-        result = subprocess.run(["otool", "-arch", "all", "-l", str(path)], capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            ["otool", "-arch", "all", "-l", str(path)],
+            capture_output=True, encoding="utf-8", errors="replace", check=True,
+        )
         minimums = parse_minimums(result.stdout)
         files.append({"path": str(path.relative_to(root)), "minimumMacOSVersions": minimums})
     versions = [version for item in files for version in item["minimumMacOSVersions"]]

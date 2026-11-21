@@ -47,9 +47,14 @@ on:
       artifact_tag:
         description: "Fixed artifact download tag for a manual candidate build (does not publish a Release)"
         required: false
+      recovery_source_sha:
+        description: "Recover runtime-v<version> into a draft; enter the exact 40-character commit SHA of the existing tag"
+        required: false
+        type: string
 
 permissions:
   contents: write  # needed to create the Release + upload assets
+  actions: read    # download the pinned Intel dependency on a cache miss
 
 concurrency:
   group: runtime-${{ inputs.version || github.ref_name }}
@@ -73,9 +78,8 @@ jobs:
             platform: win32
             arch: x64
             ext: .exe
-          # Build and execute on the supported OS floor. A newer runner can
-          # select wheels requiring macOS 15 despite a deployment target of 14.
-          - runner: macos-14
+          # Target macOS 14 when selecting wheels on the supported hosted runner.
+          - runner: macos-15
             platform: darwin
             arch: arm64
             ext: ""
@@ -94,6 +98,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.recovery_source_sha && format('refs/tags/runtime-v{0}', inputs.version) || github.sha }}
 
       - name: Resolve runtime version + channel
         id: meta
@@ -102,6 +108,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_CHANNEL: ${{ inputs.channel }}
           INPUT_ARTIFACT_TAG: ${{ inputs.artifact_tag }}
+          RECOVERY_SHA: ${{ inputs.recovery_source_sha }}
         run: |
           test -n "$RUNTIME_SIGN_PRIVATE_KEY_PEM" || { echo "::error::RUNTIME_SIGN_PRIVATE_KEY_PEM is required; unsigned runtime artifacts cannot be released"; exit 1; }
           if [[ -n "$INPUT_VERSION" ]]; then
@@ -136,6 +143,15 @@ jobs:
           # The mirror uses /<tag>/<asset>, never a mutable latest URL.
           ARTIFACT_TAG="${INPUT_ARTIFACT_TAG:-runtime-v$RUNTIME_VERSION}"
           git check-ref-format "refs/tags/$ARTIFACT_TAG"
+          source_commit=$(git rev-parse HEAD)
+          if [[ -n "$RECOVERY_SHA" ]]; then
+            if [[ "$GITHUB_REF_TYPE" != branch || "$source_commit" != "$RECOVERY_SHA" ||
+                  "$ARTIFACT_TAG" != "runtime-v$RUNTIME_VERSION" || "$CHANNEL" != stable ]]; then
+              echo "::error::Recovery requires the existing stable runtime tag at the requested commit"
+              exit 1
+            fi
+          fi
+          echo "source_commit=$source_commit" >> "$GITHUB_OUTPUT"
           case "$RUNTIME_ARTIFACT_BASE_URL" in
             https://*) ;;
             *) echo "::error::RUNTIME_ARTIFACT_BASE_URL must use HTTPS"; exit 1 ;;
@@ -149,6 +165,7 @@ jobs:
           echo "artifact_tag=$ARTIFACT_TAG" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
+        if: matrix.platform != 'darwin' || matrix.arch != 'arm64'
         with:
           python-version: "3.14"
 
@@ -185,6 +202,14 @@ jobs:
           # and omitted darabonba-core, then PyInstaller failed while copying
           # that package's metadata.
           sync_args=()
+          build_python=3.14
+          if [[ "${{ matrix.platform }}-${{ matrix.arch }}" == "darwin-arm64" ]]; then
+            # The standalone interpreter and deployment-target-aware wheel resolver
+            # keep macOS 15 host libraries out of the macOS 14 payload.
+            uv python install 3.14.7
+            build_python=$(uv python find --managed-python 3.14.7)
+            sync_args+=(--python-platform aarch64-apple-darwin)
+          fi
           if [[ "${{ matrix.platform }}-${{ matrix.arch }}" == "darwin-x64" ]]; then
             # PyPI has no ORT cp314 Intel macOS wheel. Keep the same locked
             # dependency graph; install our pinned-source wheel immediately
@@ -194,7 +219,7 @@ jobs:
             uv cache clean cryptography
             sync_args+=(--no-install-package onnxruntime --no-binary-package cryptography)
           fi
-          uv sync --locked --python 3.14 --extra cn-desktop "${sync_args[@]}"
+          uv sync --locked --python "$build_python" --extra cn-desktop "${sync_args[@]}"
 
           # Install packaging-only tooling into that same locked environment.
           uv pip install --python .venv "pyinstaller==6.*"
@@ -229,12 +254,16 @@ jobs:
           path: ${{ runner.temp }}/onnxruntime-intel-wheel
           key: ort-1.27.0-8f0278c77bf44b0cc83c098c6c722b92a36ac4b5-cp314-macos14-x64-${{ hashFiles('scripts/build_macos_intel_onnxruntime.sh') }}
 
-      - name: Build Intel macOS ONNX Runtime wheel
+      - name: Restore the verified Intel ONNX Runtime wheel from the cn.18 build
         if: matrix.platform == 'darwin' && matrix.arch == 'x64' && steps.intel-ort-cache.outputs.cache-hit != 'true'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          uv pip install --python .venv "wheel==0.45.1"
-          bash scripts/build_macos_intel_onnxruntime.sh "$PWD/.venv/bin/python" "$RUNNER_TEMP/onnxruntime-intel-wheel"
+          archive="$RUNNER_TEMP/onnxruntime-intel-artifact.zip"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/10606123710/zip" > "$archive"
+          echo "96d1ba57cf545836dfa7d72b46fedd5adf0f02498b27d1e913db2f1118708e88  $archive" | shasum -a 256 -c -
+          unzip -q "$archive" -d "$RUNNER_TEMP/onnxruntime-intel-wheel"
 
       - name: Install and verify Intel local speech dependencies
         if: matrix.platform == 'darwin' && matrix.arch == 'x64'
@@ -245,9 +274,13 @@ jobs:
           from pathlib import Path
           root = Path(sys.argv[1])
           record = json.loads((root / "build-record.json").read_text())
+          assert record["sourceRepository"] == "microsoft/onnxruntime" and record["version"] == "1.27.0"
           assert record["sourceCommit"] == "8f0278c77bf44b0cc83c098c6c722b92a36ac4b5"
-          with (root / record["wheel"]).open("rb") as stream:
-              assert hashlib.file_digest(stream, "sha256").hexdigest() == record["sha256"]
+          wheel, = root.glob("*.whl")
+          assert wheel.name == record["wheel"] == "onnxruntime-1.27.0-cp314-cp314-macosx_14_0_x86_64.whl"
+          with wheel.open("rb") as stream:
+              digest = hashlib.file_digest(stream, "sha256").hexdigest()
+          assert digest == record["sha256"] == "b5dd454b55ef29bedbddb3388d19f0d773ee00623acf5c7dbbc5429569d6ac06"
           PY
           uv pip install --python .venv --no-deps "$RUNNER_TEMP"/onnxruntime-intel-wheel/*.whl
           python scripts/smoke_runtime_voice.py
@@ -849,7 +882,7 @@ jobs:
             --artifact-url "$URL" \
             --artifact-path "out/$NAME.zip" \
             --source-repo "${GITHUB_REPOSITORY}" \
-            --source-commit "${GITHUB_SHA}" \
+            --source-commit "${{ steps.meta.outputs.source_commit }}" \
             --output "out/${{ steps.meta.outputs.channel }}-${{ matrix.platform }}-${{ matrix.arch }}.json"
 
       - name: Upload artifacts
@@ -877,11 +910,15 @@ jobs:
           pattern: runtime-*
 
       - name: Verify complete signed release set
+        env:
+          RECOVERY_SHA: ${{ inputs.recovery_source_sha }}
+          RECOVERY_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           python3 - <<'PY'
           import hashlib
           import json
+          import os
           from pathlib import Path
 
           root = Path("dist")
@@ -901,6 +938,8 @@ jobs:
               assert digest == manifest["sha256"], f"archive changed after signing: {archive}"
               identities.add((manifest["runtimeVersion"], manifest["channel"], manifest["sourceCommit"]))
           assert not expected and len(identities) == 1, "runtime artifacts do not share one release identity"
+          if os.environ["RECOVERY_SHA"]:
+              assert identities == {(os.environ["RECOVERY_VERSION"], "stable", os.environ["RECOVERY_SHA"])}, "wrong recovery identity"
           print("All four signed runtime archives and manifests are complete")
           PY
 
@@ -918,3 +957,15 @@ jobs:
           make_latest: "false"
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
         if: startsWith(github.ref, 'refs/tags/runtime-v')
+
+      - name: Create recovery draft for the existing tag
+        if: github.event_name == 'workflow_dispatch' && inputs.recovery_source_sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: runtime-v${{ inputs.version }}
+          EXPECTED_SHA: ${{ inputs.recovery_source_sha }}
+        run: |
+          test "$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)" = "$EXPECTED_SHA"
+          gh release create "$TAG" --draft --latest=false --verify-tag --title "$TAG" \
+            --notes "Four-platform runtime build from $EXPECTED_SHA." dist/*/*.zip dist/*/*.json

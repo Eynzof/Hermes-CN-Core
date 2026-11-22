@@ -4097,6 +4097,14 @@ OPTIONAL_ENV_VARS = {
         "category": "provider",
         "advanced": True,
     },
+    "GLM_CODING_API_KEY": {
+        "description": "GLM Coding Plan subscription key for the China endpoint",
+        "prompt": "GLM Coding Plan API key",
+        "url": "https://open.bigmodel.cn/",
+        "password": True,
+        "category": "provider",
+        "advanced": True,
+    },
     "GLM_API_KEY": {
         "description": "Z.AI / GLM API key (also recognized as ZAI_API_KEY / Z_AI_API_KEY)",
         "prompt": "Z.AI / GLM API key",

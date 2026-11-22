@@ -1000,6 +1000,12 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
 
     config = load_config()
     
+    from hermes_cli.custom_provider_routes import custom_routes, find_custom_route
+
+    entries = get_compatible_custom_providers(config)
+    routes = custom_routes(entries, config.get("providers"))
+    route = find_custom_route(requested_norm, routes)
+    preserve_saved = bool(route and route.conflict)
     # First check providers: dict (new-style user-defined providers)
     providers = config.get("providers")
     if isinstance(providers, dict):
@@ -1023,6 +1029,8 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
                 resolved_api_key = str(entry.get("api_key", "") or "").strip()
 
             display_name = entry.get("name", "")
+            if route and not preserve_saved and route.slug != custom_provider_slug(str(ep_name)):
+                continue
             if requested_norm in custom_provider_aliases(
                 str(display_name or ep_name),
                 str(ep_name),
@@ -1073,20 +1081,17 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
         )
         return None
 
-    custom_providers = get_compatible_custom_providers(config)
-    if not custom_providers:
-        return None
-
-    for entry in custom_providers:
-        if not isinstance(entry, dict):
-            continue
-        name = entry.get("name")
-        base_url = entry.get("base_url")
-        if not isinstance(name, str) or not isinstance(base_url, str):
-            continue
-        provider_key = str(entry.get("provider_key", "") or "").strip()
-        if requested_norm not in custom_provider_aliases(name, provider_key):
-            continue
+    if preserve_saved:
+        # Keep the pre-fix lookup for already-running conversations. New
+        # selections of this identity are rejected by resolve_provider_full.
+        entry = next((item for item in entries if requested_norm in
+                      custom_provider_aliases(str(item.get("name") or ""))), None)
+    else:
+        entry = route.entries[0] if route else None
+    if entry:
+        name = str(entry["name"])
+        base_url = entry["base_url"]
+        provider_key = str(entry.get("provider_key") or "").strip()
         result = {
             "name": name.strip(),
             "base_url": base_url.strip(),

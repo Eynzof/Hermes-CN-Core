@@ -14392,6 +14392,11 @@ def _(rid, params: dict) -> dict:
                     pending_provider = (
                         getattr(parsed, "explicit_provider", "") or ""
                     ).strip()
+                    from hermes_cli.custom_provider_routes import saved_route_warning
+                    with _session_profile_runtime_scope(session):
+                        conflict = saved_route_warning(pending_provider)
+                    if conflict:
+                        return _err(rid, 4002, conflict)
                     confirmed = bool(params.get("confirm_expensive_model", False))
                     # Run the selection guards HERE, not only at apply time.
                     # This branch used to answer confirm_required=False without

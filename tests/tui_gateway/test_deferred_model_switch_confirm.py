@@ -213,3 +213,15 @@ class TestHelperContract:
         server._pending_switch_selection_warning(UNGUARDED_MODEL, "")
 
         assert seen == {"provider": None}
+
+
+def test_busy_session_rejects_conflicting_selection_before_it_is_queued(running_session, tmp_path, monkeypatch):
+    import yaml
+
+    cfg = {"providers": {"map": {"name": "Twin", "base_url": "http://127.0.0.1:19542/v1"}},
+           "custom_providers": [{"name": "Twin", "base_url": "http://127.0.0.1:19541/v1"}]}
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    response = _config_set_model("shared --provider custom:twin", confirm_expensive_model=True)
+    assert "Conflicting provider" in response["error"]["message"]
+    assert "pending_model_switch" not in running_session

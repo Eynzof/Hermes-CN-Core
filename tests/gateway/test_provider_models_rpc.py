@@ -321,3 +321,57 @@ def test_unknown_api_mode_falls_back_to_openai_style(monkeypatch):
     )
     assert seen["headers"] == {"Authorization": "Bearer secret"}
     assert seen["url"] == "http://192.168.31.11:11434/v1/models"
+
+
+@pytest.mark.parametrize(
+    ("saved", "requested", "explicit_key", "target", "expected_key"),
+    [
+        ({}, "", "", "https://open.bigmodel.cn/api/coding/paas/v4", "test-subscription"),
+        ({"api_key": "test-inline"}, "", "", "https://fixture.test/plan", "test-inline"),
+        ({}, "", "", "https://fixture.test/plan", "test-subscription"),
+        ({}, "https://fixture.test/plan/", "", "https://fixture.test/plan", "test-subscription"),
+        ({"api_key": "test-inline"}, "https://edited.test/plan", "", "https://edited.test/plan", ""),
+        ({}, "https://edited.test/plan", "test-draft", "https://edited.test/plan", "test-draft"),
+        ({"api_key": "test-inline"}, "", "", "http://fixture.test/plan", ""),
+    ],
+)
+def test_glm_discovery_credentials(monkeypatch, saved, requested, explicit_key, target, expected_key):
+    from hermes_cli import config
+
+    preset_url = "https://open.bigmodel.cn/api/coding/paas/v4"
+    saved_url = "https://fixture.test/plan" if requested else target
+    entry = {"api": saved_url, **saved} if saved_url != preset_url else {}
+    monkeypatch.setattr(config, "load_config_readonly", lambda: {"providers": {"zai-coding-cn": entry}})
+    monkeypatch.setenv("GLM_CODING_API_KEY", "test-subscription")
+    monkeypatch.setenv("GLM_API_KEY", "test-pay-as-you-go")
+    calls = []
+
+    def get_models(url, **kwargs):
+        calls.append((url, kwargs["headers"]))
+        return _FakeResponse(200, _models_payload("glm-5.3", "glm-5.3-flash"))
+
+    result = _call_models(monkeypatch, get_models, provider="zai-coding-cn",
+                          base_url=requested, api_key=explicit_key)["result"]
+    assert calls == [(target + "/models", {"Authorization": f"Bearer {expected_key}"} if expected_key else {})]
+    assert result["models"] == ["glm-5.3", "glm-5.3-flash"]
+
+
+@pytest.mark.parametrize("key_field", ["api_key", "key_env"])
+def test_glm_listing_keeps_existing_inference_route(tmp_path, monkeypatch, key_field):
+    import yaml
+    from hermes_cli.runtime_provider import resolve_runtime_provider
+
+    base = "https://fixture.test/plan"
+    key = "test-inference"
+    entry = {"name": "GLM Coding Plan", "base_url": base, "model": "glm-5.3",
+             key_field: key if key_field == "api_key" else "GLM_CODING_API_KEY"}
+    cfg = {"model": {"provider": "zai-coding-cn", "default": "glm-5.3", "base_url": base},
+           "providers": {"zai-coding-cn": entry}}
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    if key_field == "key_env":
+        monkeypatch.setenv("GLM_CODING_API_KEY", key)
+    else:
+        monkeypatch.delenv("GLM_CODING_API_KEY", raising=False)
+    route = resolve_runtime_provider(requested="zai-coding-cn", target_model="glm-5.3")
+    assert (route["base_url"], route["api_key"]) == (base, key)

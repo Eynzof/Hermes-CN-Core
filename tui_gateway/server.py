@@ -16533,7 +16533,8 @@ def _parse_probe_api_mode(value: object) -> str | None:
 
 
 def _fetch_provider_model_ids(
-    base_url: str, api_key: str, timeout_s: float, api_mode: str | None = None
+    base_url: str, api_key: str, timeout_s: float, api_mode: str | None = None,
+    *, exact_models_root: bool = False,
 ) -> dict:
     """GET the first responding /models candidate and parse its model ids.
 
@@ -16566,6 +16567,8 @@ def _fetch_provider_model_ids(
     else:
         candidates = _build_probe_url_candidates(base_url)
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    if exact_models_root:
+        candidates = [f"{base_url.rstrip('/')}/models"]
     timeout_ms = int(timeout_s * 1000)
     last_status: int | None = None
     last_error: str | None = None
@@ -16632,6 +16635,44 @@ def _fetch_provider_model_ids(
     }
 
 
+# These desktop presets have credentials for listing, but must keep their
+# existing custom-provider routing for inference.
+_LISTING_PRESETS = {
+    "zai-coding-cn": ("https://open.bigmodel.cn/api/coding/paas/v4", "GLM_CODING_API_KEY"),
+}
+
+
+def _provider_listing_connection(params: dict, provider: str) -> tuple[str, str]:
+    from hermes_cli.auth import PROVIDER_REGISTRY
+
+    api_key = str(params.get("api_key") or "").strip()
+    base_url = str(params.get("base_url") or "").strip().rstrip("/")
+    if provider in _LISTING_PRESETS:
+        from hermes_cli.config import get_env_value, load_config_readonly
+
+        default_url, env_var = _LISTING_PRESETS[provider]
+        saved = (load_config_readonly().get("providers") or {}).get(provider) or {}
+        saved_url = str(saved.get("base_url") or saved.get("api") or default_url).strip().rstrip("/")
+        target_url = base_url or saved_url
+        if not target_url.lower().startswith("https://"):
+            return target_url, ""
+        if api_key or target_url != saved_url:
+            return target_url, api_key
+        saved_key = str(saved.get("api_key") or "").strip()
+        key_env = str(saved.get("key_env") or saved.get("api_key_env") or env_var).strip()
+        return target_url, saved_key or (get_env_value(key_env) or "").strip()
+
+    preset = PROVIDER_REGISTRY.get(provider)
+    if preset:
+        base_url = base_url or (preset.inference_base_url or "").rstrip("/")
+        if not api_key:
+            for env_var in preset.api_key_env_vars or ():
+                api_key = os.getenv(env_var, "").strip()
+                if api_key:
+                    break
+    return base_url, api_key
+
+
 @method("provider.probe")
 def _(rid, params: dict) -> dict:
     """Lightweight connectivity check against a provider's /models endpoint.
@@ -16653,27 +16694,11 @@ def _(rid, params: dict) -> dict:
     JSON-RPC plumbing).
     """
     try:
-        from hermes_cli.auth import PROVIDER_REGISTRY
-
         provider = str(params.get("provider", "")).strip()
         if not provider:
             return _err(rid, 5040, "provider parameter is required")
 
-        # Resolve api_key: caller override → first non-empty env var from
-        # the registry. The dashboard UI will usually pass the key explicitly
-        # (it's testing *this specific input*, not the saved one), but
-        # fallback lets a power user probe a saved provider via plain RPC.
-        api_key = str(params.get("api_key", "")).strip()
-        pconfig = PROVIDER_REGISTRY.get(provider)
-        if not api_key and pconfig and pconfig.api_key_env_vars:
-            for env_var in pconfig.api_key_env_vars:
-                api_key = os.getenv(env_var, "").strip()
-                if api_key:
-                    break
-        # Resolve base_url: caller override → registry default.
-        base_url = str(params.get("base_url", "")).strip().rstrip("/")
-        if not base_url and pconfig:
-            base_url = (pconfig.inference_base_url or "").rstrip("/")
+        base_url, api_key = _provider_listing_connection(params, provider)
         if not base_url:
             return _err(rid, 5041, f"unknown provider: {provider}")
 
@@ -16688,6 +16713,7 @@ def _(rid, params: dict) -> dict:
             api_key,
             timeout_ms / 1000.0,
             api_mode=_parse_probe_api_mode(params.get("api_mode")),
+            exact_models_root=provider in _LISTING_PRESETS,
         )
         model_ids = result["model_ids"]
         return _ok(rid, {
@@ -16729,23 +16755,11 @@ def _(rid, params: dict) -> dict:
         {ok, models, model_count, status_code, error, error_kind}
     """
     try:
-        from hermes_cli.auth import PROVIDER_REGISTRY
-
         provider = str(params.get("provider", "")).strip()
         if not provider:
             return _err(rid, 5043, "provider parameter is required")
 
-        api_key = str(params.get("api_key", "")).strip()
-        pconfig = PROVIDER_REGISTRY.get(provider)
-        if not api_key and pconfig and pconfig.api_key_env_vars:
-            for env_var in pconfig.api_key_env_vars:
-                api_key = os.getenv(env_var, "").strip()
-                if api_key:
-                    break
-
-        base_url = str(params.get("base_url", "")).strip().rstrip("/")
-        if not base_url and pconfig:
-            base_url = (pconfig.inference_base_url or "").rstrip("/")
+        base_url, api_key = _provider_listing_connection(params, provider)
         if not base_url:
             return _err(rid, 5044, f"unknown provider: {provider}")
 
@@ -16760,6 +16774,7 @@ def _(rid, params: dict) -> dict:
             api_key,
             timeout_ms / 1000.0,
             api_mode=_parse_probe_api_mode(params.get("api_mode")),
+            exact_models_root=provider in _LISTING_PRESETS,
         )
         return _ok(rid, {
             "ok": result["ok"],

@@ -27,6 +27,7 @@ import time
 from typing import Any, Dict, Optional
 
 from agent.web_search_provider import WebSearchProvider
+from tools.runtime_compat import python_script_argv
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +185,7 @@ def _run_ddgs_search_bounded(query: str, safe_limit: int) -> list[dict[str, Any]
         extra_kwargs["start_new_session"] = True
 
     proc = subprocess.Popen(
-        [sys.executable, worker_path],
+        python_script_argv(worker_path),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         # DEVNULL avoids the classic deadlock where a chatty child fills the

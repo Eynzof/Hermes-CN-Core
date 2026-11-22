@@ -48,6 +48,13 @@ def hermes_cli_argv(*extra_args: str) -> list[str]:
     return [sys.executable, "-m", "hermes_cli.main", *extra_args]
 
 
+def python_script_argv(script_path: str) -> list[str]:
+    """Start a script in a separate process that the caller can terminate."""
+    if is_frozen_runtime():
+        return hermes_cli_argv("__run-script", script_path)
+    return [sys.executable, script_path]
+
+
 def run_python_script_in_process(
     script_path: str,
     timeout: float,

@@ -1117,3 +1117,9 @@ Windows platform now requires PowerShell 7 (`pwsh`) or Windows PowerShell (syste
 - Runtime dependency baseline: Python 3.14, uv 0.12.10, bundled Node 22.22.0 and compiled TUI/Dashboard assets. Manifest schema remains 2; Desktop 0.9.x targets Core 0.21.x.
 - Focused tests and Windows frozen-runtime checks cover the integration. The full upstream suite and cloud CI were not run in this local-only task.
 - Windows acceptance follow-up: reject the System32/Sysnative/SysWOW64 WSL bash launcher during native Git Bash discovery. Preserve the existing auto/Git Bash preference and explicit PowerShell selection. Included in local Runtime `0.21.0-cn.3`.
+
+### Custom provider IDs in the model picker
+
+Legacy per-model entries share a row when their display prefix, endpoint, credentials, protocol, headers and explicit key match. Mapping keys and explicit list keys reserve their own IDs. Each unkeyed name first gets its unnumbered ID. Additional distinct routes get the next available numbered ID in configuration order. Reordering unkeyed entries can change those suffixes; set distinct `provider_key` values for permanent IDs. The v12 mapping-only picker still groups equivalent per-model endpoints for display and preserves every mapping key for lookup.
+
+In cn.19 a mapping and a legacy entry sharing a display name could send a saved conversation to the mapping while a new model selection described the legacy endpoint. Existing turns keep their destination. The picker, switch command and config validator report the ambiguous name, and the mapping's independent ID remains available.

@@ -2241,3 +2241,106 @@ def test_legacy_sentinel_catalog_still_resolves_and_migrates(tmp_path, monkeypat
     assert list(saved["models"]) == _LOCAL_CATALOG
     assert "__discovered_model_catalog__" not in saved["models"]
     assert "__explicit_model_allowlist__" not in saved["models"]
+
+
+def _route_entry(name, port, key=None, **values):
+    entry = {"name": name, "base_url": f"http://127.0.0.1:{port}/v1",
+             "model": "shared", "discover_models": False, **values}
+    if key:
+        entry["provider_key"] = key
+    return entry
+
+
+def test_numbered_custom_routes_round_trip_without_changing_config():
+    from copy import deepcopy
+    from hermes_cli.config import get_compatible_custom_providers
+    from hermes_cli.providers import resolve_provider_full
+
+    one = _route_entry("Twin", 19541)
+    two = _route_entry("Twin", 19542)
+    explicit = _route_entry("Pinned", 19543, "twin-2")
+    domain = _route_entry("api.example.com", 19544)
+    cfg = {"custom_providers": [one, two, explicit, domain]}
+    initial = deepcopy(cfg)
+    entries = get_compatible_custom_providers(cfg)
+    rows = list_authenticated_providers(custom_providers=entries, probe_custom_providers=False)
+    by_slug = {row["slug"]: row for row in rows if row.get("is_user_defined")}
+    for slug, entry in [("custom:twin", one), ("custom:twin-3", two),
+                        ("custom:twin-2", explicit), ("custom:api.example.com", domain)]:
+        assert by_slug[slug]["api_url"] == resolve_provider_full(slug, {}, entries).base_url == entry["base_url"]
+    for name, entry in [("twin", one), ("api.example.com", domain)]:
+        assert resolve_provider_full(name, {}, entries).base_url == entry["base_url"]
+    assert cfg == initial
+
+
+def test_group_models_by_route_and_explicit_key():
+    from hermes_cli.config import get_compatible_custom_providers, validate_config_structure
+    from hermes_cli.providers import resolve_custom_provider
+
+    a = _route_entry("Twin", 19541, "a")
+    b = _route_entry("Twin", 19541, "b")
+    cfg = {"custom_providers": [a, {**a, "model": "another"}, b]}
+    entries = get_compatible_custom_providers(cfg)
+    rows = list_authenticated_providers(custom_providers=entries, probe_custom_providers=False)
+    by_slug = {row["slug"]: row for row in rows if row.get("is_user_defined")}
+    assert by_slug["custom:a"]["models"] == ["shared", "another"]
+    assert by_slug["custom:b"]["models"] == ["shared"]
+    for slug in ("custom:a", "custom:b"):
+        assert resolve_custom_provider(slug, entries).base_url == a["base_url"]
+    assert not any("Conflicting provider" in issue.message for issue in validate_config_structure(cfg))
+
+
+@pytest.mark.parametrize("change", [
+    {"base_url": "http://127.0.0.1:19542/v1"}, {"key_env": "TEST_OTHER"},
+    {"api_key": "test-other-inline"}, {"api_mode": "anthropic_messages"},
+    {"extra_headers": {"X-Tenant": "two"}}, {"name": "Different"},
+])
+def test_conflicting_explicit_key_is_visible_and_unselectable(change):
+    from hermes_cli.config import get_compatible_custom_providers, validate_config_structure
+    from hermes_cli.providers import resolve_provider_full
+
+    first = _route_entry("Twin", 19541, "explicit")
+    cfg = {"custom_providers": [first, {**first, **change}]}
+    entries = get_compatible_custom_providers(cfg)
+    rows = list_authenticated_providers(custom_providers=entries, probe_custom_providers=False)
+    matches = [row for row in rows if row["slug"] == "custom:explicit"]
+    assert len(matches) == 2 and all(r["route_conflict"] and r["warning"] for r in matches)
+    assert resolve_provider_full("custom:explicit", {}, entries) is None
+    warnings = [issue for issue in validate_config_structure(cfg) if "Conflicting provider" in issue.message]
+    assert len(warnings) == 1 and warnings[0].severity == "warning"
+
+
+@pytest.mark.parametrize("spelling", ["custom:twin", "twin"])
+def test_old_cross_schema_name_preserves_saved_inference_and_blocks_new_selection(monkeypatch, spelling):
+    from hermes_cli.config import get_compatible_custom_providers
+    from hermes_cli.providers import resolve_provider_full
+    from hermes_cli.runtime_provider import _get_named_custom_provider
+
+    a, b = _route_entry("Twin", 19541), _route_entry("Twin", 19542)
+    cfg = {"custom_providers": [a], "providers": {"map": b}}
+    monkeypatch.setattr("hermes_cli.runtime_provider.load_config", lambda: cfg)
+    entries = get_compatible_custom_providers(cfg)
+    rows = list_authenticated_providers(current_provider=spelling, custom_providers=entries,
+                                        user_providers=cfg["providers"], probe_custom_providers=False)
+    disputed = [r for r in rows if r["slug"] == "custom:twin"]
+    assert len(disputed) == 1 and disputed[0]["route_conflict"] and disputed[0]["is_current"]
+    assert resolve_provider_full(spelling, cfg["providers"], entries) is None
+    # Before the fix, the picker resolved to A but existing conversations reached B.
+    assert _get_named_custom_provider(spelling)["base_url"] == b["base_url"]
+    for stable in ("map", "custom:map"):
+        assert resolve_provider_full(stable, cfg["providers"], entries).base_url == b["base_url"]
+
+
+def test_mapping_only_display_order_and_mirrored_legacy_route():
+    from hermes_cli.config import get_compatible_custom_providers
+    from hermes_cli.providers import resolve_provider_full
+
+    entry = _route_entry("Palantir", 19542)
+    mapped = {"first": entry, "second": {**entry, "model": "another"}}
+    cfg = {"providers": mapped, "custom_providers": [entry]}
+    entries = get_compatible_custom_providers(cfg)
+    rows = list_authenticated_providers(custom_providers=entries, user_providers=mapped,
+                                        probe_custom_providers=False)
+    assert [row["slug"] for row in rows if row.get("is_user_defined")] == ["first"]
+    for slug in ["first", "second", "custom:first", "custom:second"]:
+        assert resolve_provider_full(slug, mapped, entries).base_url == entry["base_url"]

@@ -1728,7 +1728,7 @@ def _normalize_custom_provider_entry(
     # alias keys back into config.yaml through any later
     # save_config(load_config()) round-trip.
     entry = dict(entry)
-    provider_key = coerce_provider_id(provider_key)
+    provider_key = coerce_provider_id(provider_key) or coerce_provider_id(entry.get("provider_key"))
 
     # Accept camelCase aliases commonly used in hand-written configs.
     _CAMEL_ALIASES: Dict[str, str] = {
@@ -1751,7 +1751,7 @@ def _normalize_custom_provider_entry(
         # unused here, but Hermes' own config writer has historically emitted it
         # into provider entries. Accept it silently so those (self-written)
         # configs don't warn on every load.
-        "provider",
+        "provider", "provider_key",
         "name", "api", "url", "base_url", "api_key", "key_env", "api_key_env",
         "key_cmd",
         "api_mode", "transport", "model", "default_model", "models",
@@ -2005,39 +2005,32 @@ def get_compatible_custom_providers(
     if config is None:
         config = load_config()
 
-    compatible: List[Dict[str, Any]] = []
-    seen_provider_keys: set = set()
-    seen_name_url_pairs: set = set()
+    from hermes_cli.custom_provider_routes import route_signature
 
-    def _append_if_new(entry: Optional[Dict[str, Any]]) -> None:
+    mapped = providers_dict_to_custom_providers(config.get("providers"))
+    by_route = {}
+    for entry in mapped:
+        by_route.setdefault(route_signature(entry), entry["provider_key"])
+
+    raw = config.get("custom_providers")
+    if raw is not None and not isinstance(raw, list):
+        return []
+    compatible = []
+    seen = {}
+    for source in raw or []:
+        entry = _normalize_custom_provider_entry(source)
         if entry is None:
-            return
-        provider_key = str(entry.get("provider_key", "") or "").strip().lower()
-        name = str(entry.get("name", "") or "").strip().lower()
-        base_url = str(entry.get("base_url", "") or "").strip().rstrip("/").lower()
-        model = str(entry.get("model", "") or "").strip().lower()
-        pair = (name, base_url, model)
-
-        if provider_key and provider_key in seen_provider_keys:
-            return
-        if name and base_url and pair in seen_name_url_pairs:
-            return
-
-        compatible.append(entry)
-        if provider_key:
-            seen_provider_keys.add(provider_key)
-        if name and base_url:
-            seen_name_url_pairs.add(pair)
-
-    custom_providers = config.get("custom_providers")
-    if custom_providers is not None:
-        if not isinstance(custom_providers, list):
-            return []
-        for entry in custom_providers:
-            _append_if_new(_normalize_custom_provider_entry(entry))
-
-    for entry in providers_dict_to_custom_providers(config.get("providers")):
-        _append_if_new(entry)
+            continue
+        signature = route_signature(entry)
+        if not entry.get("provider_key") and signature in by_route:
+            entry["provider_key"] = by_route[signature]
+        bucket = seen.setdefault((signature, entry.get("provider_key", "")), [])
+        if entry not in bucket:
+            bucket.append(entry)
+            compatible.append(entry)
+    for entry in mapped:
+        if entry not in seen.get((route_signature(entry), entry["provider_key"]), ()):
+            compatible.append(entry)
 
     return compatible
 
@@ -2521,6 +2514,13 @@ def validate_config_structure(
                             "Add the API endpoint URL, e.g.: base_url: https://api.example.com/v1",
                         )
                     )
+
+    if isinstance(cp, list):
+        from hermes_cli.custom_provider_routes import custom_routes
+
+        routes = custom_routes(get_compatible_custom_providers(config), config.get("providers"))
+        for warning in dict.fromkeys(r.warning for r in routes if r.conflict):
+            issues.append(ConfigIssue("warning", warning, "Set distinct provider_key values or rename one endpoint."))
 
     # ── fallback_model: single dict OR list of dicts (chain) ─────────────
     fb = config.get("fallback_model")

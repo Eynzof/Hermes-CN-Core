@@ -896,6 +896,7 @@ def custom_provider_aliases(
 def resolve_custom_provider(
     name: str,
     custom_providers: Optional[List[Dict[str, Any]]],
+    user_providers: Optional[Dict[str, Any]] = None,
 ) -> Optional[ProviderDef]:
     """Resolve a provider from the user's config.yaml ``custom_providers`` list."""
     if not custom_providers or not isinstance(custom_providers, list):
@@ -905,71 +906,26 @@ def resolve_custom_provider(
     if not requested:
         return None
 
-    # If the stored provider is the bare string "custom" (corrupt state
-    # from a prior model-switch bug), fall back to the first custom
-    # provider entry so existing configs self-heal.  (GH #17478)
-    bare_custom_fallback = requested == "custom"
-    first_valid: Optional[Tuple[str, str, Tuple[str, ...], str]] = None
+    from hermes_cli.custom_provider_routes import custom_routes, find_custom_route
 
-    for entry in custom_providers:
-        if not isinstance(entry, dict):
-            continue
-
-        display_name = (entry.get("name") or "").strip()
-        api_url = (
-            entry.get("base_url", "")
-            or entry.get("url", "")
-            or entry.get("api", "")
-            or ""
-        ).strip()
-        if not display_name or not api_url:
-            continue
-
-        key_env = (entry.get("key_env") or "").strip()
-        provider_key = (entry.get("provider_key") or "").strip()
-        env_vars: List[str] = []
-        if key_env:
-            env_vars.append(key_env)
-
-        # Stash the first valid entry for bare-"custom" fallback
-        if first_valid is None:
-            first_valid = (
-                display_name,
-                api_url,
-                tuple(env_vars),
-                custom_provider_slug(display_name, provider_key),
-            )
-
-        slug = custom_provider_slug(display_name, provider_key)
-        if requested not in custom_provider_aliases(display_name, provider_key):
-            continue
-
-        return ProviderDef(
-            id=slug,
-            name=display_name,
-            transport="openai_chat",
-            api_key_env_vars=tuple(env_vars),
-            base_url=api_url,
-            is_aggregator=False,
-            auth_type="api_key",
-            source="user-config",
-        )
-
-    # Self-heal: bare "custom" matched nothing — return first valid entry
-    if bare_custom_fallback and first_valid:
-        dname, aurl, denv, slug = first_valid
-        return ProviderDef(
-            id=slug,
-            name=dname,
-            transport="openai_chat",
-            api_key_env_vars=denv,
-            base_url=aurl,
-            is_aggregator=False,
-            auth_type="api_key",
-            source="user-config",
-        )
-
-    return None
+    routes = custom_routes(custom_providers, user_providers)
+    route = find_custom_route(requested, routes)
+    if route is None and requested == "custom" and routes:
+        route = routes[0]
+    if route is None or route.conflict:
+        return None
+    entry = route.entries[0]
+    key_env = str(entry.get("key_env") or "").strip()
+    return ProviderDef(
+        id=route.slug,
+        name=str(entry["name"]).strip(),
+        transport="openai_chat",
+        api_key_env_vars=(key_env,) if key_env else (),
+        base_url=str(entry.get("base_url") or entry.get("url") or entry["api"]).strip(),
+        is_aggregator=False,
+        auth_type="api_key",
+        source="user-config",
+    )
 
 
 def resolve_provider_full(
@@ -991,6 +947,13 @@ def resolve_provider_full(
     """
     canonical = normalize_provider(name)
     raw = name.strip().lower()
+
+    if custom_providers and user_providers and raw in user_providers:
+        from hermes_cli.custom_provider_routes import custom_routes, find_custom_route
+
+        match = find_custom_route(raw, custom_routes(custom_providers, user_providers))
+        if match and match.conflict:
+            return None
 
     # 0. User-defined config providers win over the built-in alias table.
     #    A user who declares ``providers.<name>`` in config.yaml has stated
@@ -1052,7 +1015,7 @@ def resolve_provider_full(
             return user_pdef
 
     # 2b. Saved custom providers from config
-    custom_pdef = resolve_custom_provider(name, custom_providers)
+    custom_pdef = resolve_custom_provider(name, custom_providers, user_providers)
     if custom_pdef is not None:
         return custom_pdef
 

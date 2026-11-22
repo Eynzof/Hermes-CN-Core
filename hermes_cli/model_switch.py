@@ -1739,18 +1739,14 @@ def _resolve_named_custom_model_id(
     if not prefix or not candidate:
         return model_name
 
-    for entry in custom_providers or []:
-        if not isinstance(entry, dict):
-            continue
-        entry_slugs = custom_provider_aliases(
-            str(entry.get("name") or ""),
-            str(entry.get("provider_key") or ""),
-        )
-        if provider not in entry_slugs or f"custom:{prefix}" not in entry_slugs:
-            continue
-        for model_id in _declared_model_ids(entry.get("models")):
-            if model_id.lower() == candidate.lower():
-                return model_id
+    from hermes_cli.custom_provider_routes import custom_routes, find_custom_route
+
+    route = find_custom_route(provider, custom_routes(custom_providers))
+    if route and not route.conflict and (f"custom:{prefix.lower()}" == route.slug or f"custom:{prefix.lower()}" in route.aliases):
+        for entry in route.entries:
+            for model_id in _declared_model_ids(entry.get("models")):
+                if model_id.lower() == candidate.lower():
+                    return model_id
     return model_name
 
 
@@ -1836,6 +1832,11 @@ def switch_model(
         if pdef is None and explicit_provider.strip().lower() == "custom":
             pdef = _bare_custom_provider_def(current_base_url)
         if pdef is None:
+            from hermes_cli.custom_provider_routes import custom_routes, find_custom_route
+
+            route = find_custom_route(explicit_provider, custom_routes(custom_providers, user_providers))
+            if route and route.conflict:
+                return ModelSwitchResult(success=False, is_global=is_global, error_message=route.warning)
             _switch_err = (
                 f"Unknown provider '{explicit_provider}'. "
                 f"Check 'hermes model' for available providers, or define it "
@@ -3644,7 +3645,13 @@ def list_authenticated_providers(
     # merges ``providers:`` into the list) — without this, the same endpoint
     # produces two picker rows: one bare-slug ("openrouter") from section 3
     # and one "custom:openrouter" from section 4, both labelled identically.
-    _section3_emitted_pairs: set = set()
+    from hermes_cli.custom_provider_routes import custom_routes, find_custom_route, route_signature
+
+    routes = custom_routes(custom_providers, user_providers)
+    active_route = find_custom_route(_current_provider_norm, routes)
+    conflicting_slugs = {r.slug for r in routes if r.conflict}
+    mapped_routes = set()
+    builtin_slugs = set(seen_slugs)
     if user_providers and isinstance(user_providers, dict):
         # Group ``providers:`` entries by (api_url, key_env, api_mode) so that
         # multiple keyed providers pointing at the same endpoint with the
@@ -3673,6 +3680,8 @@ def list_authenticated_providers(
                 continue
             if ep_name.lower() in seen_slugs:
                 continue
+            if custom_provider_slug(ep_name) in conflicting_slugs:
+                continue  # Section 4 emits both conflicting rows with the same ID.
             display_name = coerce_provider_id(ep_cfg.get("name")) or ep_name
             api_url = (
                 ep_cfg.get("base_url", "")
@@ -3757,9 +3766,9 @@ def list_authenticated_providers(
                     # ``Authorization: Bearer``), so two rows that differ only
                     # by it must not share a cached catalog.
                     "api_mode": api_mode,
-                    "raw_names": [],
                     "aliases": set(),
                 }
+            mapped_routes.add((custom_provider_slug(ep_name), route_signature({**ep_cfg, "name": display_name})))
             # Aggregate models across all members of the group (preserve order).
             for _m in entry_models:
                 if _m and _m not in ep_groups[group_key]["models"]:
@@ -3774,7 +3783,6 @@ def list_authenticated_providers(
                 ep_cfg.get("models"), _entry_models_discovered(ep_cfg)
             ):
                 ep_groups[group_key]["has_explicit_models"] = True
-            ep_groups[group_key]["raw_names"].append(display_name)
             ep_groups[group_key]["aliases"].update(
                 custom_provider_aliases(display_name, str(ep_name))
             )
@@ -3833,6 +3841,8 @@ def list_authenticated_providers(
                     and _ep_url_norm == _current_base_url_norm
                 )
             )
+            if active_route and active_route.conflict:
+                _ep_is_current = False  # The saved alias is shown on its own conflict row.
             # See section 4: when live probing is suppressed for latency, a
             # warm same-fingerprint cache entry still serves the full catalog
             # with no network round-trip.
@@ -3907,26 +3917,6 @@ def list_authenticated_providers(
             })
             seen_slugs.add(ep_name.lower())
             seen_slugs.update(_ep_aliases)
-            # Record (display_name, api_url) for each raw entry that joined
-            # this group so section-4's _section3_emitted_pairs dedup can
-            # match per-model custom_providers rows ("Palantir Claude 4.7 Opus")
-            # even though we collapsed the group label to "Palantir Claude".
-            _url_norm_for_pair = str(api_url).strip().rstrip("/").lower()
-            for _raw_name in grp.get("raw_names") or [display_name]:
-                _pair = (
-                    str(_raw_name).strip().lower(),
-                    _url_norm_for_pair,
-                )
-                if _pair[0] and _pair[1]:
-                    _section3_emitted_pairs.add(_pair)
-                    seen_slugs.add(custom_provider_slug(_raw_name).lower())
-            _pair = (
-                str(display_name).strip().lower(),
-                _url_norm_for_pair,
-            )
-            if _pair[0] and _pair[1]:
-                _section3_emitted_pairs.add(_pair)
-
     # --- 3b. Active bare custom endpoint from model config ---
     # A config can still use the direct one-off form:
     #   model.provider: custom
@@ -4003,180 +3993,46 @@ def list_authenticated_providers(
     # that differ only by suffix. Same-host entries with different ``key_env``
     # or ``api_mode`` remain distinct providers.
     if custom_providers and isinstance(custom_providers, list):
-        from collections import OrderedDict
-
-        # Key by endpoint + credential identity + wire protocol + display
-        # prefix instead of slug: names frequently differ per model
-        # ("Ollama — X") while the endpoint stays the same.  Keep same-host
-        # providers with distinct env-backed credentials or API protocols
-        # separate so picker selection cannot route through the wrong
-        # credential/mode pair. The display prefix (text before " — " /
-        # " - ") is included so intentionally distinct providers sharing an
-        # endpoint (e.g. a proxy fronting cerebras, groq and perplexity at
-        # a single base_url) each get their own picker row instead of
-        # collapsing into one. Per-model suffix entries that share the same
-        # prefix ("Ollama — A", "Ollama — B") still group together.
-        groups: "OrderedDict[tuple, dict]" = OrderedDict()
-        for entry in custom_providers:
-            if not isinstance(entry, dict):
-                continue
-
-            raw_name = coerce_provider_id(entry.get("name"))
-            api_url = str(
-                entry.get("base_url", "")
-                or entry.get("url", "")
-                or entry.get("api", "")
-                or ""
-            ).strip().rstrip("/")
-            if not raw_name or not api_url:
-                continue
-            inline_api_key = str(entry.get("api_key") or "").strip()
-            key_env = str(entry.get("key_env") or "").strip()
-            api_key = inline_api_key or _scoped_key_env(key_env)
-            api_mode = str(
-                entry.get("api_mode")
-                or entry.get("transport")
-                or ""
-            ).strip().lower() or None
-            credential_identity = (
-                inline_api_key
-                if inline_api_key
-                else (f"env:{key_env}" if key_env else "")
-            )
-
-            # Read discover_models from the entry (same semantics as
-            # section 3: true by default, set false to keep the explicit
-            # ``models:`` list instead of replacing it with live /models).
-            discover = entry.get("discover_models", True)
-            if isinstance(discover, str):
-                discover = discover.lower() not in {"false", "no", "0"}
-
-            # Per-provider extra_headers participate in the group identity:
-            # two entries sharing (api_url, credential, api_mode) but declaring
-            # different headers are distinct endpoints (e.g. different tenants
-            # behind one proxy URL, routed by header) and must probe /models
-            # with their own headers rather than collapsing into one row and
-            # silently adopting whichever header set was seen first.
-            entry_extra_headers = _extra_headers_from_config(entry)
-            headers_identity = tuple(sorted(entry_extra_headers.items()))
-
-            # Display-name prefix (text before " — " / " - "), used both
-            # as a grouping dimension and to derive the row's display name.
-            _display_prefix = raw_name
-            for sep in ("—", " - "):
-                if sep in _display_prefix:
-                    _display_prefix = _display_prefix.split(sep)[0].strip()
-                    break
-
-            group_key = (api_url, credential_identity, api_mode, headers_identity, _display_prefix.lower())
-            if group_key not in groups:
-                # Reuse the prefix computed above as the row display name;
-                # fall back to the raw name if stripping left it empty.
-                display_name = _display_prefix or raw_name
-                provider_key = str(entry.get("provider_key") or "").strip()
-                slug = custom_provider_slug(display_name, provider_key)
-                groups[group_key] = {
-                    "slug": slug,
-                    "name": display_name,
-                    "api_url": api_url,
-                    "api_key": api_key,
-                    "models": [],
-                    "has_explicit_models": False,
-                    "discover_models": discover,
-                    "api_mode": api_mode,
-                    "extra_headers": entry_extra_headers,
-                    # Part of group_key, so constant across the group. Needed
-                    # in the render loop to key the model cache — api_mode
-                    # selects the wire protocol, so rows differing only by it
-                    # must not share a cached catalog.
-                    "api_mode": api_mode,
-                    "aliases": set(),
-                }
-            else:
-                if api_key and not groups[group_key].get("api_key"):
-                    groups[group_key]["api_key"] = api_key
-                # extra_headers is part of group_key, so every entry in this
-                # group already carries identical headers — nothing to merge.
-                # If any entry in this group opts out of discovery,
-                # honour that for the whole grouped row.
-                if not discover:
-                    groups[group_key]["discover_models"] = False
-            groups[group_key]["aliases"].update(
-                custom_provider_aliases(
-                    raw_name,
-                    str(entry.get("provider_key") or ""),
-                )
-            )
-
-            # The singular ``model:`` field only holds the currently
-            # active model. Hermes's own writer (main.py::_save_custom_provider)
-            # stores every configured model as a dict under ``models:``;
-            # downstream readers (agent/models_dev.py, gateway/run.py,
-            # run_agent.py, hermes_cli/config.py) already consume that dict.
-            default_model = (entry.get("model") or "").strip()
-            if default_model and default_model not in groups[group_key]["models"]:
-                groups[group_key]["models"].append(default_model)
-
-            models_field = entry.get("models", {})
-            declared_models = _declared_model_ids(models_field)
-            # Dict-shaped models: is context_length metadata from
-            # ``_save_custom_provider``, not an allowlist — see
-            # ``_models_config_is_allowlist``.
-            if _models_config_is_allowlist(
-                models_field, _entry_models_discovered(entry)
+        _current_base_url_group_count = sum(r.base_url.lower() == _current_base_url_norm for r in routes)
+        for route in routes:
+            entry = route.entries[0]
+            slug = route.slug
+            api_url = route.base_url
+            sig = route_signature(entry)
+            if not route.conflict and (
+                slug.lower() in builtin_slugs
+                or (slug, sig) in mapped_routes
+                or (not route.keyed and any(mapped_sig == sig for _, mapped_sig in mapped_routes))
             ):
-                groups[group_key]["has_explicit_models"] = True
-            for model_id in declared_models:
-                if model_id not in groups[group_key]["models"]:
-                    groups[group_key]["models"].append(model_id)
-
-        _section4_emitted_slugs: set = set()
-        _current_base_url_group_count = sum(
-            1
-            for _grp in groups.values()
-            if _current_base_url_norm
-            and str(_grp["api_url"]).strip().rstrip("/").lower() == _current_base_url_norm
-        )
-        for grp in groups.values():
-            api_url = grp["api_url"]
-            api_key = grp.get("api_key", "")
-            slug = grp["slug"]
-            # If the slug is already claimed by a built-in / overlay /
-            # user-provider row (sections 1-3), skip this custom group
-            # to avoid shadowing a real provider.
-            if slug.lower() in seen_slugs and slug.lower() not in _section4_emitted_slugs:
                 continue
-            # If a prior section-4 group already used this slug (two custom
-            # endpoints with the same cleaned name — e.g. two OpenAI-
-            # compatible gateways named identically with different keys),
-            # append a counter so both rows stay visible in the picker.
-            if slug.lower() in _section4_emitted_slugs:
-                base_slug = slug
-                n = 2
-                while f"{base_slug}-{n}".lower() in seen_slugs:
-                    n += 1
-                slug = f"{base_slug}-{n}"
-                grp["slug"] = slug
-            # Skip if section 3 already emitted this endpoint under its
-            # ``providers:`` dict key — matches on (display_name, base_url).
-            # Prevents two picker rows labelled identically when callers
-            # pass both ``user_providers`` and a compatibility-merged
-            # ``custom_providers`` list.
-            _pair_key = (
-                str(grp["name"]).strip().lower(),
-                str(grp["api_url"]).strip().rstrip("/").lower(),
-            )
-            if _pair_key[0] and _pair_key[1] and _pair_key in _section3_emitted_pairs:
+            _grp_url_norm = api_url.rstrip("/").lower()
+            if not route.conflict and _grp_url_norm in _builtin_endpoints:
                 continue
-            # Skip if a built-in row (sections 1/2/2b) already represents this
-            # endpoint. Fixes #16970: a user-defined "my-dashscope" pointing at
-            # https://coding-intl.dashscope.aliyuncs.com/v1 duplicates the
-            # built-in alibaba-coding-plan row whenever DASHSCOPE_API_KEY is
-            # set. The built-in row carries the curated model list, correct
-            # auth wiring, and canonical slug — keep it and hide the shadow.
-            _grp_url_norm = _pair_key[1]
-            if _grp_url_norm and _grp_url_norm in _builtin_endpoints:
-                continue
+            key_env = str(entry.get("key_env") or "").strip()
+            api_key = str(entry.get("api_key") or "").strip() or _scoped_key_env(key_env)
+            declared = []
+            has_allowlist = False
+            discover = True
+            for member in route.entries:
+                value = member.get("discover_models", True)
+                if value is False or str(value).lower() in {"false", "no", "0"}:
+                    discover = False
+                models_field = member.get("models", {})
+                has_allowlist |= _models_config_is_allowlist(models_field, _entry_models_discovered(member))
+                default = str(member.get("model") or "").strip()
+                if default:
+                    declared.append(default)
+                declared.extend(_declared_model_ids(models_field))
+            grp = {
+                "name": route.display_name,
+                "api_url": api_url,
+                "models": list(dict.fromkeys(declared)),
+                "aliases": route.aliases,
+                "has_explicit_models": has_allowlist,
+                "discover_models": discover,
+                "api_mode": str(entry.get("api_mode") or entry.get("transport") or "").strip().lower() or None,
+                "extra_headers": _extra_headers_from_config(entry),
+            }
             # Live model discovery from custom provider endpoints (matches
             # Section 3 behavior for user ``providers:`` entries).
             # Also probes when no api_key is set (e.g. local llama.cpp /
@@ -4201,11 +4057,7 @@ def list_authenticated_providers(
             # - When discover_models: false is set, skip live discovery and
             #   keep the configured ``models:`` list regardless of api_key.
             _grp_is_current = (
-                slug.lower() == _current_provider_norm
-                or _current_provider_norm in {
-                    str(alias).lower()
-                    for alias in grp.get("aliases", set())
-                }
+                route is active_route
             ) or (
                 _current_provider_norm == "custom"
                 and bool(_current_base_url_norm)
@@ -4232,7 +4084,7 @@ def list_authenticated_providers(
             # self-pins on its first probe and can never widen again. f66319097
             # already carved the dict shape out of that trap for the same
             # reason; the list shape is the other door into it.
-            _discovery_allowed = bool(api_url) and grp.get("discover_models", True)
+            _discovery_allowed = not route.conflict and bool(api_url) and grp.get("discover_models", True)
             _probe_live = (
                 _discovery_allowed
                 and (bool(api_key) or not grp.get("has_explicit_models"))
@@ -4294,6 +4146,7 @@ def list_authenticated_providers(
                 "slug": slug,
                 "name": grp["name"],
                 "is_current": _grp_is_current,
+                **({"warning": route.warning, "route_conflict": True} if route.conflict else {}),
                 "is_user_defined": True,
                 "models": grp["models"],
                 "total_models": len(grp["models"]),
@@ -4302,7 +4155,6 @@ def list_authenticated_providers(
                 "native_catalog_empty": native_catalog_empty,
             })
             seen_slugs.add(slug.lower())
-            _section4_emitted_slugs.add(slug.lower())
 
     # Apply final ``providers.<name>.enabled: false`` post-filter — covers
     # built-in PROVIDER_REGISTRY rows (sections 1-2) which would otherwise

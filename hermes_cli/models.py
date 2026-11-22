@@ -81,8 +81,14 @@ def _custom_provider_ssl_context(base_url: str):
 
 # Fallback OpenRouter snapshot used when the live catalog is unavailable.
 # (model_id, display description shown in menus)
+# 2026-11-22: Google/Anthropic IDs and tool support verified via
+# https://openrouter.ai/api/v1/models and https://inference-api.nousresearch.com/v1/models
 OPENROUTER_MODELS: list[tuple[str, str]] = [
     # Anthropic
+    ("anthropic/claude-opus-5.5",              ""),
+    ("anthropic/claude-sonnet-5.5",            ""),
+    ("anthropic/claude-haiku-5.5",             ""),
+    ("anthropic/claude-fable-5.2",             ""),
     ("anthropic/claude-fable-5",               ""),
     ("anthropic/claude-opus-5",                ""),
     ("anthropic/claude-opus-5-fast",           "2x price, higher output speed"),
@@ -101,6 +107,13 @@ OPENROUTER_MODELS: list[tuple[str, str]] = [
     ("openai/gpt-5.5-pro",                     ""),
     ("openai/gpt-5.4-mini",                    ""),
     # Google
+    ("google/gemini-4-carbon",                 ""),
+    ("google/gemini-4-neon",                   ""),
+    ("google/gemini-4-hydrogen",               ""),
+    ("google/gemini-4-argon",                  ""),
+    ("google/gemini-3.8-flash",                ""),
+    ("google/gemini-3.6-flash",                ""),
+    ("google/gemini-3.5-flash-lite",           ""),
     ("google/gemini-3.1-pro-preview",          ""),
     ("google/gemini-3.7-flash",                ""),
     # xAI
@@ -269,6 +282,10 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
     "moa": ["default"],
     "nous": [
         # Anthropic
+        "anthropic/claude-opus-5.5",
+        "anthropic/claude-sonnet-5.5",
+        "anthropic/claude-haiku-5.5",
+        "anthropic/claude-fable-5.2",
         "anthropic/claude-fable-5",
         "anthropic/claude-opus-5",
         "anthropic/claude-opus-4.8",
@@ -285,6 +302,13 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "openai/gpt-5.5-pro",
         "openai/gpt-5.4-mini",
         # Google
+        "google/gemini-4-carbon",
+        "google/gemini-4-neon",
+        "google/gemini-4-hydrogen",
+        "google/gemini-4-argon",
+        "google/gemini-3.8-flash",
+        "google/gemini-3.6-flash",
+        "google/gemini-3.5-flash-lite",
         "google/gemini-3.1-pro-preview",
         "google/gemini-3.7-flash",
         # xAI
@@ -375,6 +399,12 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
     ],
     "gemini": [
         "gemini-3.1-pro-preview",
+        "gemini-4-carbon",
+        "gemini-4-neon",
+        "gemini-4-hydrogen",
+        "gemini-4-argon",
+        "gemini-3.8-flash",
+        "gemini-3.5-flash-lite",
         "gemini-3-pro-preview",
         "gemini-3.6-flash",
         "gemini-3.1-flash-lite-preview",
@@ -458,6 +488,10 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
     ],
     "anthropic": [
         "claude-fable-5",
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "claude-fable-5-2",
         "claude-sonnet-5",
         "claude-opus-4-8",
         "claude-opus-4-7",

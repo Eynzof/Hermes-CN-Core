@@ -7,6 +7,7 @@ identity="${APPLE_SIGNING_IDENTITY:-}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 entitlements_file="$script_dir/macos-runtime.entitlements.plist"
+node_entitlements="$script_dir/macos-node.entitlements.plist"
 
 if [[ ! -d "$runtime_dir" ]]; then
   echo "macOS runtime payload not found: $runtime_dir" >&2
@@ -67,6 +68,11 @@ if [[ -z "$main_binary" ]]; then
   echo "macOS runtime main executable not found under: $runtime_dir" >&2
   exit 1
 fi
+node_binary="$runtime_dir/node/bin/node"
+if [[ ! -f "$node_binary" || ! -x "$node_binary" || -L "$node_binary" ]] || ! is_macho "$node_binary"; then
+  echo "Missing bundled Node executable: $node_binary" >&2
+  exit 1
+fi
 
 sign_path() {
   local path="$1"
@@ -77,6 +83,12 @@ sign_path() {
     # argparse reaches even `dashboard --help`. Entitlements belong on the
     # loading executable; bundled dylibs/frameworks should not receive them.
     path_sign_args+=(--entitlements "$entitlements_file")
+  elif [[ "$path" == "$node_binary" ]]; then
+    # Exercise V8 under the hardened runtime with a local diagnostic identity.
+    if [[ "$identity" == "-" ]]; then
+      path_sign_args+=(--options runtime)
+    fi
+    path_sign_args+=(--entitlements "$node_entitlements")
   fi
   codesign "${path_sign_args[@]}" "$path"
 }
@@ -84,6 +96,25 @@ sign_path() {
 verify_path() {
   local path="$1"
   codesign --verify --strict --verbose=2 "$path"
+  local actual expected
+  actual="$(codesign -d --entitlements - --xml "$path" 2>/dev/null)"
+  if [[ "$path" == "$node_binary" ]]; then
+    expected="$node_entitlements"
+  elif [[ "$path" == "$main_binary" ]]; then
+    expected="$entitlements_file"
+  elif [[ -z "$actual" ]]; then
+    return
+  else
+    echo "Unexpected entitlements on $path" >&2
+    return 1
+  fi
+  python3 -c '
+import plistlib, sys
+from pathlib import Path
+actual = sys.stdin.buffer.read().strip()
+if not actual or plistlib.loads(actual) != plistlib.loads(Path(sys.argv[1]).read_bytes()):
+    sys.exit(f"Incorrect entitlements on {sys.argv[2]}")
+' "$expected" "$path" <<< "$actual"
 }
 
 echo "Signing macOS runtime payload with identity: $identity"
@@ -122,12 +153,23 @@ while IFS= read -r -d '' path; do
   fi
 done < <(find "$runtime_dir" -type f -print0)
 
-echo "Verifying entitlements on main runtime binary: $main_binary"
-if ! codesign -d --entitlements - "$main_binary" 2>/dev/null \
-     | grep -q 'com.apple.security.cs.allow-unsigned-executable-memory'; then
-  echo "ERROR: Main runtime binary is missing the allow-unsigned-executable-memory entitlement" >&2
-  exit 1
-fi
-echo "Main runtime binary entitlements OK."
+# --version does not start V8. Exercise the signed executable and its launchers.
+"$node_binary" <<'JS'
+const assert = require('node:assert/strict')
+const crypto = require('node:crypto')
+let count = 0
+for (let i = 0; i < 1_000_000; i++) count += 1
+assert.equal(count, 1_000_000)
+assert.match('Hermes-42', /^Hermes-\d+$/)
+assert.equal(Buffer.from('48', 'hex').toString(), 'H')
+assert.equal(crypto.createHash('sha256').update('abc').digest('hex'),
+  'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
+// A WebAssembly function returning i32.const 42.
+const wasm = Buffer.from('0061736d010000000105016000017f030201000707010372756e00000a06010400412a0b', 'hex')
+assert.equal(new WebAssembly.Instance(new WebAssembly.Module(wasm)).exports.run(), 42)
+JS
+node_bin_dir="$(cd "$runtime_dir/node/bin" && pwd)"
+PATH="$node_bin_dir" "$node_bin_dir/npm" --version
+PATH="$node_bin_dir" "$node_bin_dir/npx" --version
 
 echo "macOS runtime payload signing verification passed."

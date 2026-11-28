@@ -586,102 +586,92 @@ def test_runtime_workflow_signs_and_preserves_macos_frameworks():
     assert "zip -r -y" in workflow
 
 
-def test_macos_runtime_signing_grants_ctypes_executable_memory_to_main_only():
-    """The hardened Python 3.14 executable must permit libffi trampolines.
-
-    macOS 13 otherwise spins in ``ffi_closure_alloc`` before even
-    ``dashboard --help`` returns. The exception belongs on the loading main
-    executable, not on every bundled dylib/framework.
-    """
-    root = _repo_root()
-    script = (root / "scripts" / "sign_macos_runtime_payload.sh").read_text(
-        encoding="utf-8", errors="replace"
-    )
-    entitlements_path = root / "scripts" / "macos-runtime.entitlements.plist"
-    with entitlements_path.open("rb") as handle:
-        entitlements = plistlib.load(handle)
-
-    assert entitlements == {
+def test_macos_runtime_executable_entitlements():
+    scripts = _repo_root() / "scripts"
+    assert plistlib.loads((scripts / "macos-runtime.entitlements.plist").read_bytes()) == {
         "com.apple.security.cs.allow-unsigned-executable-memory": True,
     }
-    assert "find_main_runtime_binary()" in script
-    assert 'main_binary="$(find_main_runtime_binary || true)"' in script
-    assert 'if [[ "$path" == "$main_binary" ]]; then' in script
-    assert 'path_sign_args+=(--entitlements "$entitlements_file")' in script
-    assert 'codesign -d --entitlements - "$main_binary"' in script
-    assert "grep -q 'com.apple.security.cs.allow-unsigned-executable-memory'" in script
-    assert "<key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>" not in script
+    assert plistlib.loads((scripts / "macos-node.entitlements.plist").read_bytes()) == {
+        "com.apple.security.cs.allow-jit": True,
+    }
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Windows baseline: bash signing script emits POSIX-style (/c/dev/...) paths that differ from Windows paths in the assertions")
-def test_macos_runtime_signing_script_applies_entitlement_to_main_only(tmp_path):
+@pytest.mark.skipif(sys.platform == "win32", reason="The macOS signing script uses POSIX executable paths")
+@pytest.mark.parametrize(("fault", "error"), [
+    ("none", None),
+    ("missing-node", "Missing bundled Node executable"),
+    ("wrong-path", "Missing bundled Node executable"),
+    ("missing-jit", "Incorrect entitlements"),
+    ("extra-key", "Incorrect entitlements"),
+    ("entitled-library", "Unexpected entitlements"),
+])
+def test_macos_signer_checks_its_final_payload(tmp_path, fault, error):
+    """Mock signing for portable path/entitlement checks. Actual V8 needs hardened macOS."""
     bash = shutil.which("bash")
     if bash is None:
         pytest.skip("bash is required to exercise the signing script")
 
-    root = _repo_root()
-    runtime_dir = tmp_path / "runtime"
-    runtime_dir.mkdir()
-    main_binary = runtime_dir / "hermes-agent-cn-runtime-darwin-arm64"
-    helper_dylib = runtime_dir / "libhelper.dylib"
-    framework = runtime_dir / "Helper.framework"
-    main_binary.write_text("main", encoding="utf-8")
-    helper_dylib.write_text("helper", encoding="utf-8")
-    framework.mkdir()
+    scripts = _repo_root() / "scripts"
+    runtime = tmp_path / "runtime"
+    node_bin = runtime / "node/bin"
+    node_bin.mkdir(parents=True)
+    main = runtime / "hermes-agent-cn-runtime-darwin-arm64"
+    library = runtime / "libhelper.dylib"
+    main.touch()
+    library.touch()
+    (runtime / "Helper.framework").mkdir()
+    log = tmp_path / "signatures.log"
+    tools = tmp_path / "tools"
+    tools.mkdir()
 
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    log_path = tmp_path / "codesign.log"
-    fake_file = bin_dir / "file"
-    fake_file.write_text(
-        "#!/usr/bin/env bash\n"
-        "printf '%s: Mach-O 64-bit executable\\n' \"$1\"\n",
-        encoding="utf-8",
-    )
-    fake_codesign = bin_dir / "codesign"
-    fake_codesign.write_text(
-        "#!/usr/bin/env bash\n"
-        "printf '%s\\n' \"$*\" >> \"$CODESIGN_LOG\"\n"
-        "if [[ \"$1\" == '-d' ]]; then\n"
-        "  printf '<plist><dict><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/></dict></plist>\\n'\n"
-        "fi\n",
-        encoding="utf-8",
-    )
-    fake_file.chmod(0o755)
-    fake_codesign.chmod(0o755)
+    def executable(path, body):
+        path.write_text(body)
+        path.chmod(0o755)
 
-    env = {
-        "APPLE_SIGNING_IDENTITY": "-",
-        "CODESIGN_LOG": str(log_path),
-        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
-    }
-    result = subprocess.run(
-        [bash, str(root / "scripts" / "sign_macos_runtime_payload.sh"), str(runtime_dir)],
-        cwd=root,
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-
+    node = node_bin / "node"
+    if fault != "missing-node":
+        executable(runtime / "node-alternate" if fault == "wrong-path" else node,
+                   "#!/bin/sh\n/bin/cat > /dev/null\n")
+    for name in ("npm", "npx"):
+        executable(node_bin / name, "#!/bin/sh\nexit 0\n")
+    executable(tools / "file", "#!/bin/sh\necho Mach-O\n")
+    executable(tools / "codesign", f"#!{sys.executable}\n" + """
+import os, plistlib, sys
+from pathlib import Path
+args = sys.argv[1:]
+path = Path(args[-1])
+if args[0] == "--force":
+    with open(os.environ["CODESIGN_LOG"], "a") as log:
+        print(" ".join(args), file=log)
+    if "--entitlements" in args:
+        entitlement = Path(args[args.index("--entitlements") + 1])
+        (Path(os.environ["FAKE_STORE"]) / path.name).write_bytes(entitlement.read_bytes())
+elif args[0] == "-d":
+    record = Path(os.environ["FAKE_STORE"]) / path.name
+    values = plistlib.loads(record.read_bytes()) if record.exists() else {}
+    fault = os.environ["FAULT"]
+    if path.name == "node" and fault == "missing-jit":
+        values.clear()
+    if path.name == "node" and fault == "extra-key":
+        values["extra"] = True
+    if path.name == "libhelper.dylib" and fault == "entitled-library":
+        values["com.apple.security.cs.allow-jit"] = True
+    if values:
+        sys.stdout.buffer.write(plistlib.dumps(values))
+""")
+    store = tmp_path / "entitlements"
+    store.mkdir()
+    env = {**os.environ, "APPLE_SIGNING_IDENTITY": "-", "CODESIGN_LOG": str(log),
+           "FAKE_STORE": str(store), "FAULT": fault, "PATH": f"{tools}:{os.environ['PATH']}"}
+    result = subprocess.run([bash, str(scripts / "sign_macos_runtime_payload.sh"), str(runtime)],
+                            env=env, capture_output=True, text=True, check=False)
+    if error:
+        assert result.returncode != 0
+        assert error in result.stderr
+        return
     assert result.returncode == 0, result.stderr
-    calls = log_path.read_text(encoding="utf-8").splitlines()
-    signing_calls = [call for call in calls if call.startswith("--force --sign -")]
-    entitlement_signing_calls = [
-        call for call in signing_calls if "--entitlements" in call
-    ]
-    expected_entitlements = root / "scripts" / "macos-runtime.entitlements.plist"
-    assert entitlement_signing_calls == [
-        f"--force --sign - --entitlements {expected_entitlements} {main_binary}"
-    ]
-    assert not any(
-        "--entitlements" in call and str(helper_dylib) in call
-        for call in signing_calls
-    )
-    assert not any(
-        "--entitlements" in call and str(framework) in call
-        for call in signing_calls
-    )
-    assert f"-d --entitlements - {main_binary}" in calls
+    calls = [line for line in log.read_text().splitlines() if "--entitlements" in line]
+    assert set(calls) == {
+        f"--force --sign - --entitlements {scripts / 'macos-runtime.entitlements.plist'} {main}",
+        f"--force --sign - --options runtime --entitlements {scripts / 'macos-node.entitlements.plist'} {node}",
+    }
